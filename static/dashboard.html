@@ -314,6 +314,19 @@
             padding: 12px;
             border-bottom: 1px solid var(--border);
             font-size: 14px;
+            white-space: nowrap;
+        }
+
+        /* Sticky ticker column */
+        #positionsTable th:first-child,
+        #positionsTable td:first-child {
+            position: sticky;
+            left: 0;
+            z-index: 1;
+            background: var(--card-bg);
+        }
+        #positionsTable tr:hover td:first-child {
+            background: var(--card-hover);
         }
 
         tr:hover {
@@ -344,6 +357,7 @@
         .cat-foundational { background: #312e81; color: var(--purple); }
         .cat-international { background: #3f2e1d; color: var(--gold); }
         .cat-bonds { background: #2e3620; color: #84cc16; }
+        .cat-cash { background: #2e2e2e; color: #a0a0a0; }
 
         .signal-strong-buy { background: #1d3f2e; color: var(--green); }
         .signal-buy { background: #1e3a8a; color: var(--blue); }
@@ -974,6 +988,10 @@
                 <select class="filter-select" id="sectorFilter">
                     <option value="">All Sectors</option>
                 </select>
+                <select class="filter-select" id="signalMode">
+                    <option value="avgCost">Signal: Avg Cost</option>
+                    <option value="iv">Signal: Intrinsic Value</option>
+                </select>
             </div>
             <div class="table-wrapper">
                 <table id="positionsTable">
@@ -984,15 +1002,26 @@
                             <th onclick="sortTable(this)">Shares</th>
                             <th onclick="sortTable(this)">Avg Cost</th>
                             <th onclick="sortTable(this)">Price</th>
+                            <th onclick="sortTable(this)">Day Chg/Sh</th>
+                            <th onclick="sortTable(this)">Day Chg %</th>
                             <th onclick="sortTable(this)">Cost Basis</th>
                             <th onclick="sortTable(this)">Market Value</th>
+                            <th onclick="sortTable(this)">Market Ret.</th>
+                            <th onclick="sortTable(this)">Market Ret.%</th>
+                            <th onclick="sortTable(this)">Divs Recv'd</th>
                             <th onclick="sortTable(this)">Total Return</th>
                             <th onclick="sortTable(this)">Return %</th>
                             <th onclick="sortTable(this)">Weight</th>
                             <th onclick="sortTable(this)">Div Yield</th>
+                            <th onclick="sortTable(this)">Yield on Cost</th>
+                            <th onclick="sortTable(this)">Ann. Div Inc</th>
+                            <th onclick="sortTable(this)">% of Income</th>
+                            <th onclick="sortTable(this)">Ann. Sh Purch</th>
+                            <th onclick="sortTable(this)">Intrinsic Val</th>
+                            <th onclick="sortTable(this)">Distance</th>
+                            <th onclick="sortTable(this)">Signal</th>
                             <th>Category</th>
                             <th>Sector</th>
-                            <th>Signal</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -1639,6 +1668,8 @@
         }
 
         function getSignalBadge(signal) {
+            if (!signal) return '';
+            const key = signal.toLowerCase().replace(/\s+/g, '-');
             const signalMap = {
                 'strong-buy': 'signal-strong-buy',
                 'buy': 'signal-buy',
@@ -1646,20 +1677,25 @@
                 'overrated': 'signal-overrated',
                 'expensive': 'signal-expensive'
             };
-            const className = signalMap[signal] || 'signal-hold';
-            return `<span class="badge ${className}">${signal.replace('-', ' ').toUpperCase()}</span>`;
+            const className = signalMap[key] || 'signal-hold';
+            return `<span class="badge ${className}">${signal.toUpperCase()}</span>`;
         }
 
         function getCategoryBadge(category) {
+            if (!category) return '';
+            const key = category.toLowerCase().replace(/\s+/g, ' ');
             const categoryMap = {
                 'growth': 'cat-growth',
+                'value stocks': 'cat-value',
                 'value': 'cat-value',
                 'foundational': 'cat-foundational',
                 'international': 'cat-international',
-                'bonds': 'cat-bonds'
+                'us bonds': 'cat-bonds',
+                'bonds': 'cat-bonds',
+                'cash': 'cat-cash'
             };
-            const className = categoryMap[category] || 'cat-growth';
-            return `<span class="badge ${className}">${category.toUpperCase()}</span>`;
+            const className = categoryMap[key] || 'cat-growth';
+            return `<span class="badge ${className}">${category}</span>`;
         }
 
         function showAlert(message, type = 'info') {
@@ -1855,31 +1891,73 @@
             searchInput.addEventListener('input', () => filterPositionsTable(positions));
             categoryFilter.addEventListener('change', () => filterPositionsTable(positions));
             sectorFilter.addEventListener('change', () => filterPositionsTable(positions));
+            document.getElementById('signalMode').addEventListener('change', () => filterPositionsTable(positions));
         }
 
         function renderPositionsTable(positions) {
             const tbody = document.getElementById('positionsBody');
             const categories = ['Growth', 'Value Stocks', 'Foundational', 'International', 'US Bonds'];
+            const mode = document.getElementById('signalMode').value;
+            const useIV = mode === 'iv';
 
-            tbody.innerHTML = positions.map(p => `
-                <tr>
+            const rows = positions.map(p => {
+                const dist = useIV ? p.distFromIV : p.distFromAvgCost;
+                const signal = useIV ? (p.ivSignal || p.avgCostSignal) : p.avgCostSignal;
+                const distClass = useIV
+                    ? ((p.distFromIV||0) <= 0 ? 'positive' : 'negative')
+                    : ((p.distFromAvgCost||0) >= 0 ? 'positive' : 'negative');
+                const distDisplay = useIV && !p.intrinsicValue ? '—' : formatPercent(dist);
+
+                return `<tr>
                     <td><strong>${p.ticker}</strong></td>
                     <td>${p.company}</td>
                     <td class="editable" onclick="editCell(this, '${p.ticker}', 'shares', ${p.shares}, 'number')">${parseFloat(p.shares).toFixed(3)}</td>
                     <td class="editable" onclick="editCell(this, '${p.ticker}', 'avgCost', ${p.avgCost}, 'number')">${formatMoney(p.avgCost)}</td>
                     <td>${formatMoney(p.price)}</td>
+                    <td class="${(p.dayChangeShare||0) >= 0 ? 'positive' : 'negative'}">${formatMoney(p.dayChangeShare)}</td>
+                    <td class="${(p.dayChangePct||0) >= 0 ? 'positive' : 'negative'}">${formatPercent(p.dayChangePct)}</td>
                     <td>${formatMoney(p.costBasis)}</td>
                     <td>${formatMoney(p.marketValue)}</td>
+                    <td class="${(p.marketReturn||0) >= 0 ? 'positive' : 'negative'}">${formatMoney(p.marketReturn)}</td>
+                    <td class="${(p.marketReturnPct||0) >= 0 ? 'positive' : 'negative'}">${formatPercent(p.marketReturnPct)}</td>
+                    <td>${formatMoney(p.totalDivsReceived)}</td>
                     <td class="${p.totalReturn >= 0 ? 'positive' : 'negative'}">${formatMoney(p.totalReturn)}</td>
                     <td class="${p.returnPercent >= 0 ? 'positive' : 'negative'}">${formatPercent(p.returnPercent)}</td>
                     <td>${formatPercent(p.weight)}</td>
                     <td>${p.divYield ? p.divYield.toFixed(2) + '%' : '—'}</td>
+                    <td>${p.yieldOnCost ? p.yieldOnCost.toFixed(2) + '%' : '—'}</td>
+                    <td>${formatMoney(p.annualDivIncome)}</td>
+                    <td>${p.pctOfTotalIncome ? p.pctOfTotalIncome.toFixed(1) + '%' : '—'}</td>
+                    <td>${p.annualSharesPurch ? p.annualSharesPurch.toFixed(3) : '—'}</td>
+                    <td>${p.intrinsicValue ? formatMoney(p.intrinsicValue) : '—'}</td>
+                    <td class="${distClass}">${distDisplay}</td>
+                    <td>${getSignalBadge(signal)}</td>
                     <td class="editable" onclick="editCellSelect(this, '${p.ticker}', 'category', '${p.category}', ${JSON.stringify(categories).replace(/"/g, '&quot;')})">${getCategoryBadge(p.category)}</td>
                     <td class="editable" onclick="editCell(this, '${p.ticker}', 'sector', '${p.sector}', 'text')">${p.sector}</td>
-                    <td>${getSignalBadge(p.signal)}</td>
                     <td><button class="delete-row-btn" onclick="deletePosition('${p.ticker}')" title="Remove position">✕</button></td>
-                </tr>
-            `).join('');
+                </tr>`;
+            }).join('');
+
+            // Cash row (26 columns total)
+            const cash = portfolioData?.summary?.cash || 0;
+            const totalPortfolio = portfolioData?.summary?.totalPortfolio || 1;
+            const cashWeight = (cash / totalPortfolio * 100);
+            const cashRow = `<tr style="border-top: 2px solid var(--border); font-style: italic; opacity: 0.85;">
+                <td><strong>CASH</strong></td>
+                <td>Cash & Equivalents</td>
+                <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+                <td>—</td>
+                <td>${formatMoney(cash)}</td>
+                <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+                <td>${formatPercent(cashWeight)}</td>
+                <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+                <td>—</td><td>—</td><td>—</td>
+                <td>${getCategoryBadge('Cash')}</td>
+                <td>—</td>
+                <td></td>
+            </tr>`;
+
+            tbody.innerHTML = rows + cashRow;
         }
 
         function filterPositionsTable(positions) {
