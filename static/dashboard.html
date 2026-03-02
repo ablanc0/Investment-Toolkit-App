@@ -1184,6 +1184,21 @@
                 </div>
             </div>
 
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px; margin-bottom: 24px;">
+                <div class="card">
+                    <div class="card-title">📊 Current Allocation</div>
+                    <div class="chart-container">
+                        <canvas id="rebalCurrentChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title">📈 Allocation After Buys</div>
+                    <div class="chart-container">
+                        <canvas id="rebalProjectedChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
             <div class="card">
                 <div class="card-title">⚖️ Category Allocation vs Target</div>
                 <div id="rebalancingComparators"></div>
@@ -2435,7 +2450,25 @@
                 <td id="rebalTotalNewMV">${formatMoney(totalMV)}</td>
                 <td colspan="2"></td>
             </tr>`;
+
+            // Current allocation chart
+            const catAlloc = {};
+            positions.forEach(p => {
+                const cat = p.category || 'Other';
+                catAlloc[cat] = (catAlloc[cat] || 0) + (p.marketValue || 0);
+            });
+            const totalWithCash = totalMV + cash;
+            const catAllocPct = {};
+            Object.entries(catAlloc).forEach(([k, v]) => {
+                catAllocPct[k] = round2(v / totalWithCash * 100);
+            });
+            if (cash > 0) catAllocPct['Cash'] = round2(cash / totalWithCash * 100);
+            createAllocationChart('rebalCurrentChart', catAllocPct, 'Current');
+            // Initial projected = same as current
+            createAllocationChart('rebalProjectedChart', catAllocPct, 'After Buys');
         }
+
+        function round2(n) { return Math.round(n * 100) / 100; }
 
         function updateRebalRow(input) {
             const row = input.closest('tr');
@@ -2490,6 +2523,30 @@
                 remainingEl.textContent = formatMoney(remaining);
                 remainingEl.className = `kpi-value ${remaining >= 0 ? '' : 'negative'}`;
             }
+
+            // Update projected allocation chart
+            const positions = portfolioData?.positions || [];
+            const projCatMV = {};
+            positions.forEach(p => {
+                const cat = p.category || 'Other';
+                projCatMV[cat] = (projCatMV[cat] || 0) + (p.marketValue || 0);
+            });
+            // Add buy amounts per category
+            allInputs.forEach(inp => {
+                const qty = parseInt(inp.value) || 0;
+                if (qty > 0) {
+                    const ticker = inp.dataset.ticker;
+                    const pos = positions.find(p => p.ticker === ticker);
+                    const cat = pos?.category || 'Other';
+                    projCatMV[cat] = (projCatMV[cat] || 0) + qty * parseFloat(inp.dataset.price);
+                }
+            });
+            const projAllocPct = {};
+            Object.entries(projCatMV).forEach(([k, v]) => {
+                projAllocPct[k] = round2(v / newTotalPortfolio * 100);
+            });
+            if (remaining > 0) projAllocPct['Cash'] = round2(remaining / newTotalPortfolio * 100);
+            createAllocationChart('rebalProjectedChart', projAllocPct, 'After Buys');
         }
 
         // Tab 7: Alerts & Strategy
