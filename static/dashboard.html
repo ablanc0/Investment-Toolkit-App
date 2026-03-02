@@ -1551,8 +1551,9 @@
             </div>
         </div>
 
-        <!-- Rule 4% Tab (will be added with more functionality) -->
+        <!-- Rule 4% Tab -->
         <div class="tab-content" id="rule4pct">
+            <!-- FIRE Calculator -->
             <div class="card">
                 <div class="card-title">💰 Rule 4% - FIRE Calculator</div>
                 <div class="fire-calculator">
@@ -1572,18 +1573,102 @@
                         <div class="fire-value" id="fireNumber">$1,250,000</div>
                     </div>
                 </div>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px;">
+            </div>
+
+            <!-- Historical Simulation -->
+            <div class="card" style="margin-top: 16px;">
+                <div class="card-title">📊 Historical S&P 500 Simulation (1928–Present)</div>
+                <div style="display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label">Starting Balance ($)</label>
+                        <input type="number" id="simBalance" class="form-input" value="1000000" step="10000" style="width: 140px;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label">Withdrawal Rate (%)</label>
+                        <input type="number" id="simRate" class="form-input" value="4" step="0.5" min="1" max="12" style="width: 90px;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label">Strategy</label>
+                        <select id="simStrategy" class="form-input" style="width: 130px;" onchange="toggleStrategyInputs()">
+                            <option value="fixed">Fixed (Classic)</option>
+                            <option value="guardrails">Guardrails</option>
+                            <option value="dividend">Dividends Only</option>
+                            <option value="combined">Combined</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label">Cash Buffer (yrs)</label>
+                        <input type="number" id="simCashBuffer" class="form-input" value="0" min="0" max="5" step="1" style="width: 70px;">
+                    </div>
+                    <div id="divInputs" style="display: none; display: none; gap: 16px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label">Div Yield (%)</label>
+                            <input type="number" id="simDivYield" class="form-input" value="4" step="0.5" min="0.5" max="10" style="width: 80px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label">Div Growth (%)</label>
+                            <input type="number" id="simDivGrowth" class="form-input" value="5.6" step="0.5" min="0" max="15" style="width: 80px;">
+                        </div>
+                    </div>
+                    <div id="guardrailInputs" style="display: none; gap: 16px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label">Floor (%)</label>
+                            <input type="number" id="simGrFloor" class="form-input" value="80" step="5" min="50" max="100" style="width: 70px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label">Ceiling (%)</label>
+                            <input type="number" id="simGrCeiling" class="form-input" value="120" step="5" min="100" max="200" style="width: 70px;">
+                        </div>
+                    </div>
+                    <button class="add-row-btn" onclick="runHistoricalSimulation()" style="border-color: #6366f1; color: #6366f1;">▶ Run Simulation</button>
+                </div>
+
+                <!-- Success Rate Cards -->
+                <div id="simSummaryCards" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px;"></div>
+
+                <!-- Charts Row -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
                     <div class="card">
-                        <div class="card-title">Portfolio Growth to FIRE</div>
-                        <div class="chart-container">
-                            <canvas id="fireChart"></canvas>
+                        <div class="card-title">Balance Trajectories</div>
+                        <div class="chart-container" style="height: 300px;">
+                            <canvas id="simChart"></canvas>
                         </div>
                     </div>
                     <div class="card">
-                        <div class="card-title">FIRE Timeline (20/30/40 years)</div>
-                        <div id="fireTimeline"></div>
+                        <div class="card-title">Success Rate by Withdrawal Rate</div>
+                        <div class="chart-container" style="height: 300px;">
+                            <canvas id="simSuccessChart"></canvas>
+                        </div>
                     </div>
                 </div>
+
+                <!-- Inflation Impact Chart -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    <div class="card">
+                        <div class="card-title">🔥 Inflation Impact: Cost of Living Growth</div>
+                        <div class="chart-container" style="height: 280px;">
+                            <canvas id="simInflationChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">⚔️ Strategy Comparison (Success Rates)</div>
+                        <div id="strategyCompare" style="min-height: 280px;"></div>
+                    </div>
+                </div>
+
+                <!-- Scenario Detail -->
+                <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap;">
+                    <label class="form-label" style="margin-bottom: 0;">Horizon:</label>
+                    <select id="simHorizon" class="form-input" style="width: 100px;" onchange="renderSimScenarios()">
+                        <option value="20">20 Years</option>
+                        <option value="30">30 Years</option>
+                        <option value="40">40 Years</option>
+                    </select>
+                    <label class="form-label" style="margin-bottom: 0; margin-left: 12px;">Starting Year:</label>
+                    <select id="simStartYear" class="form-input" style="width: 100px;" onchange="renderSimDetail()"></select>
+                    <span id="simScenarioStatus" style="font-size: 0.85rem;"></span>
+                </div>
+                <div id="simDetailTable"></div>
             </div>
         </div>
     </div><!-- /tabContainer -->
@@ -3432,89 +3517,324 @@
         function calculateFireNumber() {
             const expenses = parseFloat(document.getElementById('fireExpenses').value) || 50000;
             const swr = parseFloat(document.getElementById('fireSWR').value) || 4;
-
             const fireNumber = (expenses * 100) / swr;
             document.getElementById('fireNumber').textContent = formatMoney(fireNumber);
+        }
 
-            // Create FIRE timeline
-            const timeline = document.getElementById('fireTimeline');
-            const currentPortfolio = portfolioData?.summary?.totalMarketValue || 100000;
-            const annualReturn = 8;
+        // Historical Simulation
+        let simData = null;
 
-            let html = '<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">';
-            [20, 30, 40].forEach(years => {
-                let value = currentPortfolio;
-                for (let i = 0; i < years; i++) {
-                    value *= (1 + annualReturn / 100);
-                }
-                const progress = Math.min((value / fireNumber) * 100, 100);
+        function toggleStrategyInputs() {
+            const strategy = document.getElementById('simStrategy').value;
+            const divInputs = document.getElementById('divInputs');
+            const grInputs = document.getElementById('guardrailInputs');
+            divInputs.style.display = (strategy === 'dividend' || strategy === 'combined') ? 'flex' : 'none';
+            grInputs.style.display = strategy === 'guardrails' ? 'flex' : 'none';
+        }
+
+        async function runHistoricalSimulation() {
+            const balance = parseFloat(document.getElementById('simBalance').value) || 1000000;
+            const rate = parseFloat(document.getElementById('simRate').value) || 4;
+            const strategy = document.getElementById('simStrategy').value;
+            const cashBuffer = parseInt(document.getElementById('simCashBuffer').value) || 0;
+            const divYield = parseFloat(document.getElementById('simDivYield').value) || 4;
+            const divGrowth = parseFloat(document.getElementById('simDivGrowth').value) || 5.6;
+            const grFloor = parseFloat(document.getElementById('simGrFloor').value) || 80;
+            const grCeiling = parseFloat(document.getElementById('simGrCeiling').value) || 120;
+
+            document.getElementById('simSummaryCards').innerHTML = '<p style="color: var(--text-dim);">Running simulation...</p>';
+
+            try {
+                const params = `balance=${balance}&rate=${rate}&strategy=${strategy}&cashBuffer=${cashBuffer}&divYield=${divYield}&divGrowth=${divGrowth}&grFloor=${grFloor}&grCeiling=${grCeiling}`;
+                const resp = await fetch(`/api/rule4pct/simulate?${params}`);
+                simData = await resp.json();
+                renderSimSummary();
+                renderSimCharts();
+                renderSimScenarios();
+                renderStrategyComparison();
+            } catch(e) {
+                console.error(e);
+                document.getElementById('simSummaryCards').innerHTML = '<p style="color: #f87171;">Simulation failed.</p>';
+            }
+        }
+
+        function renderSimSummary() {
+            if (!simData) return;
+            const cards = document.getElementById('simSummaryCards');
+            const stratLabel = {fixed: 'Fixed (Classic)', guardrails: 'Guardrails', dividend: 'Dividends Only', combined: 'Combined'}[simData.strategy] || simData.strategy;
+            let html = '';
+            for (const h of ['20', '30', '40']) {
+                const r = simData.results[h];
+                const rateColor = r.successRate >= 90 ? '#4ade80' : r.successRate >= 70 ? '#facc15' : '#f87171';
                 html += `
-                    <div style="background: var(--card-hover); padding: 12px; border-radius: 8px;">
-                        <div style="font-weight: 600; margin-bottom: 8px;">${years} Years</div>
-                        <div style="font-size: 13px; color: var(--text-dim); margin-bottom: 8px;">${formatMoney(value)}</div>
-                        <div style="height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;">
-                            <div style="height: 100%; background: #6366f1; width: ${progress}%;"></div>
+                    <div style="background: var(--card-hover); padding: 16px; border-radius: 10px; border-left: 4px solid ${rateColor};">
+                        <div style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 4px;">${h}-Year · ${stratLabel}</div>
+                        <div style="font-size: 2rem; font-weight: 800; color: ${rateColor};">${r.successRate}%</div>
+                        <div style="font-size: 0.8rem; color: var(--text-dim); margin-top: 4px;">
+                            ${r.successCount}/${r.totalScenarios} survived
                         </div>
-                        <div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">${formatPercent(progress)}% to goal</div>
-                    </div>
-                `;
-            });
-            html += '</div>';
-            timeline.innerHTML = html;
+                        <div style="margin-top: 8px; font-size: 0.8rem;">
+                            <div>Best: <strong style="color: #4ade80;">${r.bestStartYear}</strong> → ${formatMoney(r.bestFinalBalance)}</div>
+                            <div>Worst: <strong style="color: #f87171;">${r.worstStartYear}</strong> → ${formatMoney(r.worstFinalBalance)}</div>
+                            <div>Avg: ${formatMoney(r.avgFinalBalance)}</div>
+                        </div>
+                    </div>`;
+            }
+            cards.innerHTML = html;
+        }
 
-            // FIRE chart
-            const labels = [];
-            const fireData = [];
-            let val = currentPortfolio;
-            for (let i = 0; i <= 40; i++) {
-                labels.push(`Year ${i}`);
-                fireData.push(val);
-                val *= (1 + annualReturn / 100);
+        function renderSimCharts() {
+            if (!simData) return;
+
+            const horizon = document.getElementById('simHorizon').value;
+            const scenarios = simData.results[horizon]?.scenarios || [];
+            if (!scenarios.length) return;
+
+            // Balance trajectories chart
+            const ctx = document.getElementById('simChart').getContext('2d');
+            if (charts.simTrajectory) charts.simTrajectory.destroy();
+
+            const labels = Array.from({length: parseInt(horizon)}, (_, i) => `Year ${i+1}`);
+            const datasets = [];
+
+            const best = scenarios.reduce((a, b) => a.finalBalance > b.finalBalance ? a : b, scenarios[0]);
+            const worst = scenarios.reduce((a, b) => a.finalBalance < b.finalBalance ? a : b, scenarios[0]);
+
+            const sampleCount = Math.min(8, scenarios.length);
+            const step = Math.max(1, Math.floor(scenarios.length / sampleCount));
+            for (let i = 0; i < scenarios.length; i += step) {
+                const s = scenarios[i];
+                datasets.push({
+                    label: `${s.startYear}`,
+                    data: s.data.map(d => d.balance),
+                    borderColor: s.survived ? 'rgba(74, 222, 128, 0.2)' : 'rgba(248, 113, 113, 0.2)',
+                    borderWidth: 1, pointRadius: 0, tension: 0.3, fill: false,
+                });
+            }
+            datasets.push({
+                label: `Best: ${best.startYear}`, data: best.data.map(d => d.balance),
+                borderColor: '#4ade80', borderWidth: 2.5, pointRadius: 0, tension: 0.3, fill: false,
+            });
+            datasets.push({
+                label: `Worst: ${worst.startYear}`, data: worst.data.map(d => d.balance),
+                borderColor: '#f87171', borderWidth: 2.5, pointRadius: 0, tension: 0.3, fill: false,
+            });
+            datasets.push({
+                label: 'Zero', data: Array(parseInt(horizon)).fill(0),
+                borderColor: '#8b92b2', borderDash: [4, 4], borderWidth: 1, pointRadius: 0, fill: false,
+            });
+
+            charts.simTrajectory = new Chart(ctx, {
+                type: 'line', data: { labels, datasets },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { ticks: { color: '#8b92b2', callback: v => v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v }, grid: { color: '#2a2e42' } },
+                        x: { ticks: { color: '#8b92b2', maxTicksLimit: 10 }, grid: { color: '#2a2e42' } },
+                    },
+                },
+            });
+
+            // Success rate by withdrawal rate
+            renderSuccessRateChart();
+            // Inflation impact chart
+            renderInflationChart();
+        }
+
+        async function renderSuccessRateChart() {
+            const balance = parseFloat(document.getElementById('simBalance').value) || 1000000;
+            const strategy = document.getElementById('simStrategy').value;
+            const ctx2 = document.getElementById('simSuccessChart').getContext('2d');
+            if (charts.simSuccess) charts.simSuccess.destroy();
+
+            const rates = [2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 7, 8];
+            const data20 = [], data30 = [], data40 = [];
+
+            for (const rate of rates) {
+                try {
+                    const resp = await fetch(`/api/rule4pct/simulate?balance=${balance}&rate=${rate}&strategy=${strategy}`);
+                    const d = await resp.json();
+                    data20.push(d.results['20'].successRate);
+                    data30.push(d.results['30'].successRate);
+                    data40.push(d.results['40'].successRate);
+                } catch(e) { data20.push(0); data30.push(0); data40.push(0); }
             }
 
-            const ctx = document.getElementById('fireChart').getContext('2d');
-            if (charts.fire) charts.fire.destroy();
-
-            charts.fire = new Chart(ctx, {
+            charts.simSuccess = new Chart(ctx2, {
                 type: 'line',
                 data: {
-                    labels: labels,
+                    labels: rates.map(r => r + '%'),
                     datasets: [
-                        {
-                            label: 'Portfolio Growth',
-                            data: fireData,
-                            borderColor: '#6366f1',
-                            backgroundColor: 'rgba(99, 102, 241, 0.1)',
-                            tension: 0.4,
-                            fill: true
-                        },
-                        {
-                            label: 'FIRE Number',
-                            data: Array(41).fill(fireNumber),
-                            borderColor: '#22c55e',
-                            borderDash: [5, 5],
-                            fill: false
-                        }
-                    ]
+                        { label: '20 Years', data: data20, borderColor: '#4ade80', tension: 0.3, fill: false },
+                        { label: '30 Years', data: data30, borderColor: '#facc15', tension: 0.3, fill: false },
+                        { label: '40 Years', data: data40, borderColor: '#f87171', tension: 0.3, fill: false },
+                    ],
                 },
                 options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { labels: { color: '#e0e6ed' } }
-                    },
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: '#e0e6ed' } } },
                     scales: {
-                        y: {
-                            ticks: { color: '#8b92b2' },
-                            grid: { color: '#2a2e42' }
-                        },
-                        x: {
-                            ticks: { color: '#8b92b2' },
-                            grid: { color: '#2a2e42' }
-                        }
-                    }
-                }
+                        y: { min: 0, max: 100, ticks: { color: '#8b92b2', callback: v => v + '%' }, grid: { color: '#2a2e42' } },
+                        x: { ticks: { color: '#8b92b2' }, grid: { color: '#2a2e42' } },
+                    },
+                },
             });
+        }
+
+        function renderInflationChart() {
+            if (!simData) return;
+            const horizon = document.getElementById('simHorizon').value;
+            const scenarios = simData.results[horizon]?.scenarios || [];
+            if (!scenarios.length) return;
+
+            const ctx = document.getElementById('simInflationChart').getContext('2d');
+            if (charts.simInflation) charts.simInflation.destroy();
+
+            const labels = Array.from({length: parseInt(horizon)}, (_, i) => `Year ${i+1}`);
+            const balance0 = simData.startingBalance;
+            const rate = simData.withdrawalRate / 100;
+            const baseWithdrawal = balance0 * rate;
+
+            // Pick notable periods: 1970 (high inflation), 2000 (dot-com), 2005 (pre-GFC), best & worst
+            const notablePeriods = [
+                { year: 1970, color: '#f87171', label: '1970 (Stagflation)' },
+                { year: 2000, color: '#facc15', label: '2000 (Dot-com)' },
+                { year: 2005, color: '#60a5fa', label: '2005 (Pre-GFC)' },
+            ];
+
+            const datasets = [];
+            // Baseline: no inflation
+            datasets.push({
+                label: 'No Inflation', data: Array(parseInt(horizon)).fill(baseWithdrawal),
+                borderColor: '#8b92b2', borderDash: [4, 4], borderWidth: 1, pointRadius: 0, fill: false,
+            });
+
+            for (const p of notablePeriods) {
+                const s = scenarios.find(s => s.startYear === p.year);
+                if (!s) continue;
+                datasets.push({
+                    label: p.label,
+                    data: s.data.map(d => d.withdrawalAmount),
+                    borderColor: p.color, borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false,
+                });
+            }
+
+            charts.simInflation = new Chart(ctx, {
+                type: 'line', data: { labels, datasets },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: '#e0e6ed', font: { size: 11 } } } },
+                    scales: {
+                        y: { ticks: { color: '#8b92b2', callback: v => '$' + (v/1000).toFixed(0) + 'K' }, grid: { color: '#2a2e42' } },
+                        x: { ticks: { color: '#8b92b2', maxTicksLimit: 10 }, grid: { color: '#2a2e42' } },
+                    },
+                },
+            });
+        }
+
+        async function renderStrategyComparison() {
+            const container = document.getElementById('strategyCompare');
+            container.innerHTML = '<p style="color: var(--text-dim);">Comparing strategies...</p>';
+
+            const balance = parseFloat(document.getElementById('simBalance').value) || 1000000;
+            const rate = parseFloat(document.getElementById('simRate').value) || 4;
+            const horizon = parseInt(document.getElementById('simHorizon').value) || 20;
+            const divYield = parseFloat(document.getElementById('simDivYield').value) || 4;
+            const cashBuffer = parseInt(document.getElementById('simCashBuffer').value) || 0;
+
+            try {
+                const resp = await fetch(`/api/rule4pct/compare?balance=${balance}&rate=${rate}&horizon=${horizon}&divYield=${divYield}&cashBuffer=${cashBuffer}`);
+                const data = await resp.json();
+
+                const strategies = [
+                    { key: 'fixed', label: 'Fixed (Classic)', icon: '📐', color: '#6366f1' },
+                    { key: 'guardrails', label: 'Guardrails', icon: '🛡️', color: '#60a5fa' },
+                    { key: 'dividend', label: 'Dividends Only', icon: '💰', color: '#4ade80' },
+                    { key: 'combined', label: 'Combined', icon: '⚡', color: '#facc15' },
+                ];
+
+                let html = '<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">';
+                for (const s of strategies) {
+                    const r = data.comparison[s.key];
+                    const rateColor = r.successRate >= 90 ? '#4ade80' : r.successRate >= 70 ? '#facc15' : '#f87171';
+                    const isActive = document.getElementById('simStrategy').value === s.key;
+                    html += `
+                        <div style="background: ${isActive ? 'var(--card)' : 'var(--card-hover)'}; padding: 12px; border-radius: 8px; border: ${isActive ? '2px solid ' + s.color : '1px solid var(--border)'}; cursor: pointer; text-align: center;"
+                             onclick="document.getElementById('simStrategy').value='${s.key}'; toggleStrategyInputs(); runHistoricalSimulation();">
+                            <div style="font-size: 1.2rem;">${s.icon}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-dim); margin: 4px 0;">${s.label}</div>
+                            <div style="font-size: 1.5rem; font-weight: 800; color: ${rateColor};">${r.successRate}%</div>
+                            <div style="font-size: 0.7rem; color: var(--text-dim);">${r.successCount}/${r.totalScenarios}</div>
+                            <div style="font-size: 0.7rem; margin-top: 4px;">Avg: ${formatMoney(r.avgFinalBalance)}</div>
+                        </div>`;
+                }
+                html += '</div>';
+                html += `<div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 8px; text-align: center;">${horizon}-year horizon · ${rate}% withdrawal · Click a strategy to switch</div>`;
+                container.innerHTML = html;
+            } catch(e) {
+                console.error(e);
+                container.innerHTML = '<p style="color: #f87171;">Comparison failed.</p>';
+            }
+        }
+
+        function renderSimScenarios() {
+            if (!simData) return;
+            const horizon = document.getElementById('simHorizon').value;
+            const scenarios = simData.results[horizon]?.scenarios || [];
+            const select = document.getElementById('simStartYear');
+
+            select.innerHTML = scenarios.map(s =>
+                `<option value="${s.startYear}" ${!s.survived ? 'style="color: #f87171;"' : ''}>${s.startYear}${s.survived ? '' : ' (FAILED)'}</option>`
+            ).join('');
+
+            renderSimCharts();
+            renderSimDetail();
+        }
+
+        function renderSimDetail() {
+            if (!simData) return;
+            const horizon = document.getElementById('simHorizon').value;
+            const startYear = parseInt(document.getElementById('simStartYear').value);
+            const scenarios = simData.results[horizon]?.scenarios || [];
+            const scenario = scenarios.find(s => s.startYear === startYear);
+            if (!scenario) return;
+
+            const statusEl = document.getElementById('simScenarioStatus');
+            if (scenario.survived) {
+                statusEl.innerHTML = `<span class="badge signal-buy">SURVIVED</span> Final: <strong class="positive">${formatMoney(scenario.finalBalance)}</strong>`;
+            } else {
+                statusEl.innerHTML = `<span class="badge signal-expensive">DEPLETED</span> Portfolio ran out of money`;
+            }
+
+            const hasCashReserve = scenario.data.some(d => d.cashReserve !== null && d.cashReserve !== undefined);
+            const container = document.getElementById('simDetailTable');
+            let html = `<div class="table-wrapper"><table style="font-size: 0.85rem;">
+                <thead><tr>
+                    <th>Year</th><th>Ret. Year</th><th style="text-align:right;">Balance</th>
+                    <th style="text-align:right;">Return %</th><th style="text-align:right;">Withdrawal</th>
+                    <th style="text-align:right;">Inflation</th><th style="text-align:right;">Cost of Living</th>
+                    ${hasCashReserve ? '<th style="text-align:right;">Cash Reserve</th>' : ''}
+                </tr></thead><tbody>`;
+
+            const baseWithdrawal = simData.startingBalance * (simData.withdrawalRate / 100);
+            for (const d of scenario.data) {
+                const balColor = d.balance > 0 ? '#4ade80' : '#f87171';
+                const retColor = d.returnPct >= 0 ? '#4ade80' : '#f87171';
+                const costMultiple = d.cumulativeInflation ? `${((d.cumulativeInflation - 1) * 100).toFixed(0)}%` : '—';
+                html += `<tr${d.balance <= 0 ? ' style="opacity: 0.4;"' : ''}>
+                    <td style="font-weight: 600;">${d.year}</td>
+                    <td>${d.retirementYear}</td>
+                    <td style="text-align:right; color: ${balColor};">${formatMoney(d.balance)}</td>
+                    <td style="text-align:right; color: ${retColor};">${(d.returnPct * 100).toFixed(1)}%</td>
+                    <td style="text-align:right;">${formatMoney(d.withdrawalAmount)}</td>
+                    <td style="text-align:right;">${(d.inflationPct * 100).toFixed(1)}%</td>
+                    <td style="text-align:right; color: ${d.cumulativeInflation > 1.5 ? '#f87171' : '#facc15'};">+${costMultiple}</td>
+                    ${hasCashReserve ? `<td style="text-align:right; color: #60a5fa;">${d.cashReserve != null ? formatMoney(d.cashReserve) : '—'}</td>` : ''}
+                </tr>`;
+            }
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
         }
 
         // ── Sold Positions ──────────────────────────────────
@@ -4275,6 +4595,8 @@
                 if (document.getElementById('fireExpenses')) document.getElementById('fireExpenses').value = r4.annualExpenses || 40000;
                 if (document.getElementById('fireSWR')) document.getElementById('fireSWR').value = r4.withdrawalPct || 4;
                 calculateFireNumber();
+                // Auto-run historical simulation
+                runHistoricalSimulation();
             } catch(e) { console.error(e); }
         }
 
