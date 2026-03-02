@@ -129,43 +129,80 @@
         }
 
         /* Tab Navigation - Two Rows */
-        .tab-nav-row {
+        /* Two-Level Navigation */
+        .nav-groups {
             display: flex;
-            gap: 8px;
+            gap: 6px;
             background: var(--card);
-            padding: 4px;
+            padding: 6px;
             border-radius: 12px;
-            margin-bottom: 16px;
+            margin-bottom: 4px;
             flex-wrap: wrap;
         }
 
-        .tab-nav-row:last-of-type {
-            margin-bottom: 32px;
-        }
-
-        .tab-button {
+        .group-btn {
             flex: 1;
-            min-width: 100px;
-            padding: 12px 16px;
+            min-width: 90px;
+            padding: 10px 14px;
             background: transparent;
             color: var(--text-dim);
             border: none;
             border-radius: 8px;
             cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            transition: all 0.3s;
-            letter-spacing: 0.5px;
+            font-size: 13px;
+            font-weight: 700;
+            transition: all 0.2s;
+            letter-spacing: 0.3px;
+            border-bottom: 3px solid transparent;
         }
 
-        .tab-button:hover {
+        .group-btn:hover {
             color: var(--text);
+            background: var(--card-hover);
         }
 
-        .tab-button.active {
+        .group-btn.active {
+            color: var(--group-color);
+            border-bottom-color: var(--group-color);
+            background: var(--card-hover);
+        }
+
+        .nav-tabs {
+            margin-bottom: 24px;
+        }
+
+        .tab-row {
+            display: flex;
+            gap: 4px;
+            background: var(--bg);
+            padding: 4px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+        }
+
+        .tab-btn {
+            flex: 1;
+            min-width: 80px;
+            padding: 8px 14px;
+            background: transparent;
+            color: var(--text-dim);
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .tab-btn:hover {
+            color: var(--text);
+            background: var(--card-hover);
+        }
+
+        .tab-btn.active {
             background: var(--accent);
             color: white;
-            box-shadow: 0 4px 12px var(--accent-glow);
+            box-shadow: 0 2px 8px var(--accent-glow);
         }
 
         /* Tab Content */
@@ -838,12 +875,17 @@
                 grid-template-columns: 1fr;
             }
 
-            .tab-nav-row {
-                flex-direction: column;
+            .nav-groups {
+                gap: 4px;
             }
-
-            .tab-button {
-                width: 100%;
+            .group-btn {
+                min-width: 50px;
+                padding: 8px 6px;
+                font-size: 12px;
+            }
+            .tab-btn {
+                font-size: 12px;
+                padding: 6px 8px;
             }
 
             .search-filter-bar {
@@ -905,31 +947,48 @@
         </div>
     </div>
 
-    <!-- Tab Navigation - Row 1 -->
-    <div class="tab-nav-row" id="tabNavRow1">
-        <button class="tab-button active" data-tab="overview">📊 Overview</button>
-        <button class="tab-button" data-tab="positions">📈 Positions</button>
-        <button class="tab-button" data-tab="performance">🎯 Performance</button>
-        <button class="tab-button" data-tab="dividends">💰 Dividends</button>
-        <button class="tab-button" data-tab="watchlist">👁️ Watchlist</button>
-        <button class="tab-button" data-tab="rebalancing">⚖️ Rebalancing</button>
-        <button class="tab-button" data-tab="alerts">🚨 Alerts</button>
+    <!-- Two-Level Top Navigation -->
+    <div class="nav-groups" id="navGroups">
+        <button class="group-btn active" data-group="dashboard" style="--group-color: #636363">📊 Dashboard</button>
+        <button class="group-btn" data-group="portfolio" style="--group-color: #4A86E8">💼 Portfolio</button>
+        <button class="group-btn" data-group="dividends" style="--group-color: #6AA84F">💰 Dividends</button>
+        <button class="group-btn" data-group="research" style="--group-color: #993333">🔍 Research</button>
+        <button class="group-btn" data-group="analysis" style="--group-color: #1BBC9D">🔬 Analysis</button>
+        <button class="group-btn" data-group="planning" style="--group-color: #E69138">🏦 Planning</button>
     </div>
 
-    <!-- Tab Navigation - Row 2 -->
-    <div class="tab-nav-row" id="tabNavRow2">
-        <button class="tab-button" data-tab="sold">💸 Sold</button>
-        <button class="tab-button" data-tab="divlog">📝 Div Log</button>
-        <button class="tab-button" data-tab="monthly">📅 Monthly</button>
-        <button class="tab-button" data-tab="annual">📊 Annual</button>
-        <button class="tab-button" data-tab="lab">🧪 Lab</button>
-        <button class="tab-button" data-tab="ivlist">💎 IV List</button>
-        <button class="tab-button" data-tab="superinv">⭐ Super Inv</button>
-        <button class="tab-button" data-tab="projections">🚀 Projections</button>
-        <button class="tab-button" data-tab="analyzer">🔬 Analyzer</button>
-        <button class="tab-button" data-tab="salary">💼 Salary</button>
-        <button class="tab-button" data-tab="passive">🌊 Passive</button>
-        <button class="tab-button" data-tab="rule4pct">📏 Rule 4%</button>
+    <div class="nav-tabs" id="navTabs">
+        <div class="tab-row" data-group="dashboard">
+            <button class="tab-btn active" data-tab="overview">Overview</button>
+            <button class="tab-btn" data-tab="performance">Performance</button>
+            <button class="tab-btn" data-tab="alerts">Alerts</button>
+        </div>
+        <div class="tab-row" data-group="portfolio" style="display:none">
+            <button class="tab-btn" data-tab="positions">Positions</button>
+            <button class="tab-btn" data-tab="rebalancing">Rebalancing</button>
+            <button class="tab-btn" data-tab="sold">Sold Positions</button>
+        </div>
+        <div class="tab-row" data-group="dividends" style="display:none">
+            <button class="tab-btn" data-tab="dividends">Summary</button>
+            <button class="tab-btn" data-tab="divlog">Dividend Log</button>
+            <button class="tab-btn" data-tab="monthly">Monthly Data</button>
+            <button class="tab-btn" data-tab="annual">Annual Data</button>
+        </div>
+        <div class="tab-row" data-group="research" style="display:none">
+            <button class="tab-btn" data-tab="watchlist">Watchlist</button>
+            <button class="tab-btn" data-tab="lab">My Lab</button>
+            <button class="tab-btn" data-tab="ivlist">Intrinsic Values</button>
+            <button class="tab-btn" data-tab="superinv">Super Investors</button>
+            <button class="tab-btn" data-tab="projections">Projections</button>
+        </div>
+        <div class="tab-row" data-group="analysis" style="display:none">
+            <button class="tab-btn" data-tab="analyzer">Stock Analyzer</button>
+        </div>
+        <div class="tab-row" data-group="planning" style="display:none">
+            <button class="tab-btn" data-tab="salary">Salary</button>
+            <button class="tab-btn" data-tab="passive">Passive Income</button>
+            <button class="tab-btn" data-tab="rule4pct">Rule 4%</button>
+        </div>
     </div>
 
     <!-- Tab Container -->
@@ -1520,7 +1579,7 @@
                 </div>
             </div>
         </div>
-    </div>
+    </div><!-- /tabContainer -->
 
     <script>
         // Global state
@@ -1588,24 +1647,77 @@
             fetchAllData();
         });
 
-        // Tab Navigation
+        // Two-Level Navigation
         function setupTabNavigation() {
-            const tabButtons = document.querySelectorAll('.tab-button');
-            tabButtons.forEach(button => {
-                button.addEventListener('click', () => {
-                    const tabId = button.dataset.tab;
-                    switchTab(tabId);
+            // Group buttons (top row)
+            document.querySelectorAll('.group-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    switchGroup(btn.dataset.group);
                 });
             });
+
+            // Tab buttons (second row)
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                if (btn.dataset.tab) {
+                    btn.addEventListener('click', () => {
+                        switchTab(btn.dataset.tab);
+                    });
+                }
+            });
+
+            // Restore last active tab
+            const lastTab = localStorage.getItem('activeTab');
+            if (lastTab && document.getElementById(lastTab)) {
+                switchTab(lastTab);
+            }
+        }
+
+        function switchGroup(groupId) {
+            // Update group buttons
+            document.querySelectorAll('.group-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`.group-btn[data-group="${groupId}"]`).classList.add('active');
+
+            // Show matching tab row, hide others
+            document.querySelectorAll('.tab-row').forEach(row => {
+                row.style.display = row.dataset.group === groupId ? 'flex' : 'none';
+            });
+
+            // Auto-select first tab in group if none active
+            const tabRow = document.querySelector(`.tab-row[data-group="${groupId}"]`);
+            const activeTab = tabRow.querySelector('.tab-btn.active');
+            if (!activeTab) {
+                const firstTab = tabRow.querySelector('.tab-btn');
+                if (firstTab) switchTab(firstTab.dataset.tab);
+            }
         }
 
         let loadedTabs = {};
 
         function switchTab(tabId) {
-            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
-            document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+            // Find which group this tab belongs to and activate it
+            const tabBtn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+            if (tabBtn) {
+                const tabRow = tabBtn.closest('.tab-row');
+                const groupId = tabRow?.dataset.group;
+                if (groupId) {
+                    document.querySelectorAll('.group-btn').forEach(btn => btn.classList.remove('active'));
+                    document.querySelector(`.group-btn[data-group="${groupId}"]`)?.classList.add('active');
+                    document.querySelectorAll('.tab-row').forEach(row => {
+                        row.style.display = row.dataset.group === groupId ? 'flex' : 'none';
+                    });
+                }
+            }
+
+            // Update tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            if (tabBtn) tabBtn.classList.add('active');
+
+            // Switch tab content
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             document.getElementById(tabId).classList.add('active');
+
+            // Persist active tab
+            localStorage.setItem('activeTab', tabId);
 
             // Lazy load new tabs on first visit
             if (!loadedTabs[tabId]) {
