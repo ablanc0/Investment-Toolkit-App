@@ -685,33 +685,86 @@
         }
 
         /* Stock Analyzer */
-        .analyzer-card {
+        .analyzer-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        .analyzer-header h2 { margin: 0; font-size: 1.4rem; }
+        .analyzer-header .ticker-badge {
+            background: var(--accent);
+            color: #fff;
+            padding: 4px 12px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+        .analyzer-header .rec-badge {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .analyzer-sections {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 20px;
+        }
+        .analyzer-section {
             background: var(--card);
             border: 1px solid var(--border);
             border-radius: 12px;
             padding: 16px;
-            margin-bottom: 16px;
         }
-
+        .analyzer-section-title {
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: var(--accent);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
         .analyzer-stat {
             display: flex;
             justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid var(--border);
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(42,46,66,0.5);
             font-size: 13px;
         }
-
-        .analyzer-stat:last-child {
-            border-bottom: none;
+        .analyzer-stat:last-child { border-bottom: none; }
+        .analyzer-stat-label { color: var(--text-dim); }
+        .analyzer-stat-value { font-weight: 600; color: var(--text); }
+        .analyzer-price-range {
+            background: var(--card-hover);
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin: 8px 0;
+            position: relative;
+            height: 28px;
         }
-
-        .analyzer-stat-label {
-            color: var(--text-dim);
+        .analyzer-price-bar {
+            position: absolute;
+            top: 50%;
+            left: 12px;
+            right: 12px;
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            transform: translateY(-50%);
         }
-
-        .analyzer-stat-value {
-            font-weight: 600;
-            color: var(--text);
+        .analyzer-price-dot {
+            position: absolute;
+            top: 50%;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent);
+            transform: translate(-50%, -50%);
+            border: 2px solid #fff;
         }
 
         /* Rule 4% Calculator */
@@ -1272,7 +1325,7 @@
             <div class="card">
                 <div class="card-title">🔬 Stock Analyzer</div>
                 <div class="search-filter-bar">
-                    <input type="text" id="analyzerTicker" class="search-input" placeholder="Search ticker...">
+                    <input type="text" id="analyzerTicker" class="search-input" placeholder="Enter ticker (e.g. AAPL)..." onkeydown="if(event.key==='Enter') analyzeStock();" style="text-transform: uppercase;">
                     <button class="add-row-btn" onclick="analyzeStock()" style="border-color: var(--accent); color: var(--accent);">🔍 Analyze</button>
                 </div>
                 <div id="analyzerResults"></div>
@@ -2670,56 +2723,160 @@
         }
 
         // Stock Analyzer
+        function fmtBigNum(n) {
+            if (!n) return '—';
+            if (n >= 1e12) return '$' + (n/1e12).toFixed(2) + 'T';
+            if (n >= 1e9) return '$' + (n/1e9).toFixed(2) + 'B';
+            if (n >= 1e6) return '$' + (n/1e6).toFixed(1) + 'M';
+            return formatMoney(n);
+        }
+        function fmtVal(v, fmt) {
+            if (v === null || v === undefined || v === 0) return '—';
+            if (fmt === '$') return formatMoney(v);
+            if (fmt === '%') return formatPercent(v);
+            if (fmt === 'big') return fmtBigNum(v);
+            if (fmt === 'x') return v.toFixed(2) + 'x';
+            return typeof v === 'number' ? v.toFixed(2) : v;
+        }
+        function statRow(label, val, fmt) {
+            const display = fmtVal(val, fmt);
+            const color = fmt === '%' && val !== 0 ? (val > 0 ? '#22c55e' : '#ef4444') : 'var(--text)';
+            return `<div class="analyzer-stat"><span class="analyzer-stat-label">${label}</span><span class="analyzer-stat-value" style="color:${display === '—' ? 'var(--text-dim)' : color}">${display}</span></div>`;
+        }
+        function recColor(rec) {
+            const r = (rec || '').toLowerCase();
+            if (r.includes('strong_buy') || r.includes('strongbuy')) return {bg:'#4ade8020', fg:'#4ade80'};
+            if (r.includes('buy')) return {bg:'#22d3ee20', fg:'#22d3ee'};
+            if (r.includes('sell')) return {bg:'#f8717120', fg:'#f87171'};
+            if (r.includes('hold')) return {bg:'#f59e0b20', fg:'#f59e0b'};
+            return {bg:'#6366f120', fg:'#6366f1'};
+        }
+
         async function analyzeStock() {
             const ticker = document.getElementById('analyzerTicker').value.toUpperCase().trim();
-            if (!ticker) {
-                alert('Enter a ticker');
-                return;
-            }
+            if (!ticker) return;
 
             const resultsDiv = document.getElementById('analyzerResults');
-            resultsDiv.innerHTML = '<p style="color: var(--text-dim);">Analyzing ' + ticker + '...</p>';
+            resultsDiv.innerHTML = '<p style="color: var(--text-dim); padding: 20px;">🔍 Analyzing ' + ticker + '…</p>';
 
             try {
-                const resp = await fetch(`/api/analyzer/${ticker}`);
-                const data = await resp.json();
+                const resp = await fetch(`/api/stock-analyzer/${ticker}`);
+                const d = await resp.json();
 
-                if (resp.ok) {
-                    const html = `
-                        <div class="analyzer-card">
-                            <h3 style="margin-bottom: 16px;">${data.ticker} - ${data.company}</h3>
-                            <div class="analyzer-stat">
-                                <span class="analyzer-stat-label">Price:</span>
-                                <span class="analyzer-stat-value">${formatMoney(data.price)}</span>
-                            </div>
-                            <div class="analyzer-stat">
-                                <span class="analyzer-stat-label">P/E Ratio:</span>
-                                <span class="analyzer-stat-value">${data.pe || '-'}</span>
-                            </div>
-                            <div class="analyzer-stat">
-                                <span class="analyzer-stat-label">Dividend Yield:</span>
-                                <span class="analyzer-stat-value">${data.yield ? formatPercent(data.yield) : '-'}</span>
-                            </div>
-                            <div class="analyzer-stat">
-                                <span class="analyzer-stat-label">Market Cap:</span>
-                                <span class="analyzer-stat-value">${data.marketCap || '-'}</span>
-                            </div>
-                            <div class="analyzer-stat">
-                                <span class="analyzer-stat-label">52W High:</span>
-                                <span class="analyzer-stat-value">${formatMoney(data.high52w || 0)}</span>
-                            </div>
-                            <div class="analyzer-stat">
-                                <span class="analyzer-stat-label">52W Low:</span>
-                                <span class="analyzer-stat-value">${formatMoney(data.low52w || 0)}</span>
-                            </div>
-                        </div>
-                    `;
-                    resultsDiv.innerHTML = html;
-                } else {
-                    resultsDiv.innerHTML = '<p style="color: var(--red);">Stock not found or API error.</p>';
+                if (!resp.ok) {
+                    resultsDiv.innerHTML = '<p style="color: var(--red); padding: 20px;">Stock not found or API error.</p>';
+                    return;
                 }
+
+                const rc = recColor(d.recommendationKey);
+                const low52 = d.fiftyTwoWeekLow || 0;
+                const high52 = d.fiftyTwoWeekHigh || 0;
+                const pricePos = high52 > low52 ? ((d.price - low52) / (high52 - low52) * 100) : 50;
+
+                resultsDiv.innerHTML = `
+                    <div class="analyzer-header">
+                        <span class="ticker-badge">${d.ticker}</span>
+                        <div>
+                            <h2>${d.name}</h2>
+                            <span style="color: var(--text-dim); font-size: 0.85rem;">${d.sector || ''} ${d.industry ? '· ' + d.industry : ''}</span>
+                        </div>
+                        <div style="margin-left: auto; text-align: right;">
+                            <div style="font-size: 1.6rem; font-weight: 700;">${formatMoney(d.price)}</div>
+                            ${d.recommendationKey ? `<span class="rec-badge" style="background:${rc.bg}; color:${rc.fg};">${d.recommendationKey.replace('_',' ')}</span>` : ''}
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <div style="display:flex; justify-content:space-between; font-size:0.78rem; color:var(--text-dim); margin-bottom:4px;">
+                            <span>52W Low: ${formatMoney(low52)}</span>
+                            <span>52W High: ${formatMoney(high52)}</span>
+                        </div>
+                        <div class="analyzer-price-range">
+                            <div class="analyzer-price-bar"></div>
+                            <div class="analyzer-price-dot" style="left: ${Math.max(2, Math.min(98, pricePos))}%"></div>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size:0.78rem; color:var(--text-dim); margin-top:4px;">
+                            <span>50D Avg: ${formatMoney(d.fiftyDayAvg)}</span>
+                            <span>200D Avg: ${formatMoney(d.twoHundredDayAvg)}</span>
+                        </div>
+                    </div>
+
+                    <div class="analyzer-sections">
+                        <div class="analyzer-section">
+                            <div class="analyzer-section-title">📊 Valuation</div>
+                            ${statRow('Trailing P/E', d.trailingPE)}
+                            ${statRow('Forward P/E', d.forwardPE)}
+                            ${statRow('PEG Ratio', d.pegRatio)}
+                            ${statRow('Price/Book', d.priceToBook, 'x')}
+                            ${statRow('Price/Sales', d.priceToSales, 'x')}
+                            ${statRow('EV/EBITDA', d.evToEbitda, 'x')}
+                            ${statRow('EV/Revenue', d.evToRevenue, 'x')}
+                        </div>
+
+                        <div class="analyzer-section">
+                            <div class="analyzer-section-title">💰 Dividends</div>
+                            ${statRow('Dividend Yield', d.dividendYield, '%')}
+                            ${statRow('Dividend Rate', d.dividendRate, '$')}
+                            ${statRow('Payout Ratio', d.payoutRatio, '%')}
+                            ${statRow('5Y Avg Yield', d.fiveYearAvgDivYield, '%')}
+                        </div>
+
+                        <div class="analyzer-section">
+                            <div class="analyzer-section-title">📈 Profitability</div>
+                            ${statRow('Gross Margin', d.grossMargin, '%')}
+                            ${statRow('Operating Margin', d.operatingMargin, '%')}
+                            ${statRow('Profit Margin', d.profitMargin, '%')}
+                            ${statRow('Return on Equity', d.returnOnEquity, '%')}
+                            ${statRow('Return on Assets', d.returnOnAssets, '%')}
+                        </div>
+
+                        <div class="analyzer-section">
+                            <div class="analyzer-section-title">🏦 Financial Health</div>
+                            ${statRow('Debt/Equity', d.debtToEquity)}
+                            ${statRow('Current Ratio', d.currentRatio, 'x')}
+                            ${statRow('Quick Ratio', d.quickRatio, 'x')}
+                            ${statRow('Total Debt', d.totalDebt, 'big')}
+                            ${statRow('Total Cash', d.totalCash, 'big')}
+                        </div>
+
+                        <div class="analyzer-section">
+                            <div class="analyzer-section-title">🚀 Growth</div>
+                            ${statRow('Revenue Growth', d.revenueGrowth, '%')}
+                            ${statRow('Earnings Growth', d.earningsGrowth, '%')}
+                            ${statRow('EPS (TTM)', d.earningsPerShare, '$')}
+                            ${statRow('Forward EPS', d.forwardEps, '$')}
+                            ${statRow('Revenue/Share', d.revenuePerShare, '$')}
+                        </div>
+
+                        <div class="analyzer-section">
+                            <div class="analyzer-section-title">🎯 Analyst Targets</div>
+                            ${statRow('Target Low', d.targetLowPrice, '$')}
+                            ${statRow('Target Mean', d.targetMeanPrice, '$')}
+                            ${statRow('Target High', d.targetHighPrice, '$')}
+                            ${statRow('# of Analysts', d.numberOfAnalysts)}
+                            ${statRow('Recommendation', d.recommendationKey ? d.recommendationKey.replace('_',' ').toUpperCase() : null)}
+                        </div>
+
+                        <div class="analyzer-section">
+                            <div class="analyzer-section-title">📋 Key Metrics</div>
+                            ${statRow('Market Cap', d.marketCap, 'big')}
+                            ${statRow('Enterprise Value', d.enterpriseValue, 'big')}
+                            ${statRow('Beta', d.beta)}
+                            ${statRow('Book Value', d.bookValue, '$')}
+                            ${statRow('Short Ratio', d.shortRatio)}
+                        </div>
+
+                        <div class="analyzer-section">
+                            <div class="analyzer-section-title">💵 Cash Flow</div>
+                            ${statRow('Free Cash Flow', d.freeCashflow, 'big')}
+                            ${statRow('Operating CF', d.operatingCashflow, 'big')}
+                            ${statRow('Total Revenue', d.totalRevenue, 'big')}
+                        </div>
+                    </div>
+                `;
             } catch (e) {
-                resultsDiv.innerHTML = '<p style="color: var(--red);">Error fetching data.</p>';
+                resultsDiv.innerHTML = '<p style="color: var(--red); padding: 20px;">Error fetching data. Check console.</p>';
+                console.error('Analyzer error:', e);
             }
         }
 
