@@ -1034,6 +1034,7 @@
                             <th>Signal</th>
                             <th>Priority</th>
                             <th>Day Change</th>
+                            <th>Div Yield</th>
                             <th>Sector</th>
                             <th></th>
                         </tr>
@@ -1493,23 +1494,31 @@
         }
 
         // Fetch Data
-        async function fetchAllData() {
+        async function fetchAllData(retryCount = 0) {
             if (isLoading) return;
             isLoading = true;
 
             setLoadingState(true);
             try {
+                const safeFetch = (url) => fetch(url).then(r => r.json()).catch(() => null);
                 const [portfolio, watchlist, dividends, status] = await Promise.all([
-                    fetch('/api/portfolio').then(r => r.json()),
-                    fetch('/api/watchlist').then(r => r.json()),
-                    fetch('/api/dividends').then(r => r.json()),
-                    fetch('/api/status').then(r => r.json()),
+                    safeFetch('/api/portfolio'),
+                    safeFetch('/api/watchlist'),
+                    safeFetch('/api/dividends'),
+                    safeFetch('/api/status'),
                 ]);
 
-                portfolioData = portfolio;
-                watchlistData = watchlist;
-                dividendData = dividends;
-                statusData = status;
+                if (!portfolio && retryCount < 2) {
+                    isLoading = false;
+                    setLoadingState(false);
+                    setTimeout(() => fetchAllData(retryCount + 1), 1500);
+                    return;
+                }
+
+                if (portfolio) portfolioData = portfolio;
+                if (watchlist) watchlistData = watchlist;
+                if (dividends) dividendData = dividends;
+                if (status) statusData = status;
 
                 // Populate all tabs
                 populateOverview();
@@ -1525,6 +1534,11 @@
                 updateTimestamp();
             } catch (error) {
                 console.error('Error fetching data:', error);
+                if (retryCount < 2) {
+                    isLoading = false;
+                    setTimeout(() => fetchAllData(retryCount + 1), 1500);
+                    return;
+                }
                 showAlert('Could not load data. Is the server running?', 'error');
                 setLoadingState(false);
             }
@@ -2036,6 +2050,7 @@
                         <td>${getSignalBadge(signal)}</td>
                         <td>${item.priority || 'Medium'}</td>
                         <td class="${item.dayChange >= 0 ? 'positive' : 'negative'}">${formatPercent(item.dayChange)}</td>
+                        <td>${item.divYield ? formatPercent(item.divYield) : '—'}</td>
                         <td>${item.sector}</td>
                         <td><button class="delete-row-btn" onclick="deleteFromWatchlist('${item.ticker}')" title="Remove">✕</button></td>
                     </tr>
@@ -2050,6 +2065,22 @@
             const summary = portfolioData.summary || {};
             const targets = portfolioData.targets || {};
             const allocations = portfolioData.allocations || {};
+            const positions = portfolioData.positions || [];
+
+            // Compute portfolio-level weighted div yield and per-category div yields
+            const totalMV = positions.reduce((s, p) => s + (p.marketValue || 0), 0);
+            let weightedDivYield = 0;
+            const catDivYield = {};
+            const catMV = {};
+            positions.forEach(p => {
+                const mv = p.marketValue || 0;
+                const dy = p.divYield || 0;
+                const cat = p.category || 'Other';
+                weightedDivYield += dy * mv;
+                catDivYield[cat] = (catDivYield[cat] || 0) + dy * mv;
+                catMV[cat] = (catMV[cat] || 0) + mv;
+            });
+            weightedDivYield = totalMV > 0 ? weightedDivYield / totalMV : 0;
 
             const cash = summary.cash || 0;
             const buyingPowerCards = document.getElementById('buyingPowerCards');
@@ -2059,6 +2090,12 @@
                     <div class="kpi-label">Cash Available</div>
                     <div class="kpi-value">${formatMoney(cash)}</div>
                     <div class="kpi-sub">Ready to deploy</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-emoji">💰</div>
+                    <div class="kpi-label">Portfolio Div Yield</div>
+                    <div class="kpi-value">${formatPercent(weightedDivYield)}</div>
+                    <div class="kpi-sub">Weighted average</div>
                 </div>
             `;
 
@@ -2070,6 +2107,7 @@
                 const actualPercent = categoryAlloc[category] || 0;
                 const difference = actualPercent - targetPercent;
                 const status = Math.abs(difference) > 5 ? '⚠️' : '✓';
+                const catYield = catMV[category] > 0 ? catDivYield[category] / catMV[category] : 0;
 
                 return `
                     <div class="comparator-card">
@@ -2091,6 +2129,10 @@
                         <div class="comparator-row" style="margin-top: 12px;">
                             <span>Difference:</span>
                             <span class="comparator-value" style="color: ${difference > 0 ? '#ef4444' : '#22c55e'}">${difference > 0 ? '+' : ''}${formatPercent(difference)}</span>
+                        </div>
+                        <div class="comparator-row" style="margin-top: 6px;">
+                            <span>Div Yield:</span>
+                            <span class="comparator-value" style="color: #22c55e;">${formatPercent(catYield)}</span>
                         </div>
                     </div>
                 `;
