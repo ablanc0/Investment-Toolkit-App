@@ -1,0 +1,26 @@
+# Data files (stored in Google Drive, not in repo)
+portfolio.json
+cache.json
+config.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+
+# Uploads / temp
+*.xlsx
+*.csv
