@@ -129,120 +129,80 @@
         }
 
         /* Tab Navigation - Two Rows */
-        /* App Layout */
-        .app-layout {
+        /* Two-Level Navigation */
+        .nav-groups {
             display: flex;
-            gap: 0;
-            min-height: calc(100vh - 100px);
-        }
-
-        .main-content {
-            flex: 1;
-            min-width: 0;
-            padding: 0 4px;
-        }
-
-        /* Sidebar */
-        .sidebar {
-            width: 220px;
-            min-width: 220px;
+            gap: 6px;
             background: var(--card);
-            border-right: 1px solid var(--border);
-            border-radius: 12px 0 0 12px;
-            padding: 8px 0;
-            overflow-y: auto;
-            transition: width 0.25s, min-width 0.25s;
-            position: sticky;
-            top: 0;
-            max-height: calc(100vh - 100px);
-        }
-
-        .sidebar.collapsed {
-            width: 52px;
-            min-width: 52px;
-        }
-
-        .sidebar.collapsed .group-label,
-        .sidebar.collapsed .sidebar-group-items {
-            display: none;
-        }
-
-        .sidebar-toggle {
-            width: 100%;
-            padding: 10px 16px;
-            background: transparent;
-            border: none;
-            color: var(--text-dim);
-            font-size: 18px;
-            cursor: pointer;
-            text-align: left;
-            border-bottom: 1px solid var(--border);
+            padding: 6px;
+            border-radius: 12px;
             margin-bottom: 4px;
-        }
-        .sidebar-toggle:hover { color: var(--text); }
-
-        .sidebar-group {
-            margin-bottom: 2px;
+            flex-wrap: wrap;
         }
 
-        .sidebar-group-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 16px;
-            cursor: pointer;
+        .group-btn {
+            flex: 1;
+            min-width: 90px;
+            padding: 10px 14px;
+            background: transparent;
             color: var(--text-dim);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
             font-size: 13px;
             font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
             transition: all 0.2s;
-            border-left: 3px solid transparent;
+            letter-spacing: 0.3px;
+            border-bottom: 3px solid transparent;
         }
 
-        .sidebar-group-header:hover {
+        .group-btn:hover {
             color: var(--text);
             background: var(--card-hover);
         }
 
-        .sidebar-group.active > .sidebar-group-header {
-            color: var(--text);
+        .group-btn.active {
+            color: var(--group-color);
+            border-bottom-color: var(--group-color);
+            background: var(--card-hover);
         }
 
-        .group-icon { font-size: 16px; }
-
-        .sidebar-group-items {
-            display: none;
-            padding: 2px 0;
+        .nav-tabs {
+            margin-bottom: 24px;
         }
 
-        .sidebar-group-items.active {
-            display: block;
+        .tab-row {
+            display: flex;
+            gap: 4px;
+            background: var(--bg);
+            padding: 4px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
         }
 
-        .sidebar-tab {
-            display: block;
-            width: 100%;
-            padding: 8px 16px 8px 46px;
+        .tab-btn {
+            flex: 1;
+            min-width: 80px;
+            padding: 8px 14px;
             background: transparent;
-            border: none;
             color: var(--text-dim);
-            font-size: 13px;
-            font-weight: 500;
+            border: none;
+            border-radius: 6px;
             cursor: pointer;
-            text-align: left;
-            transition: all 0.15s;
-            border-left: 3px solid transparent;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
         }
 
-        .sidebar-tab:hover {
+        .tab-btn:hover {
             color: var(--text);
             background: var(--card-hover);
         }
 
-        .sidebar-tab.active {
+        .tab-btn.active {
+            background: var(--accent);
             color: white;
-            font-weight: 600;
+            box-shadow: 0 2px 8px var(--accent-glow);
         }
 
         /* Tab Content */
@@ -915,13 +875,17 @@
                 grid-template-columns: 1fr;
             }
 
-            .sidebar {
-                width: 52px;
-                min-width: 52px;
+            .nav-groups {
+                gap: 4px;
             }
-            .sidebar .group-label,
-            .sidebar .sidebar-group-items {
-                display: none;
+            .group-btn {
+                min-width: 50px;
+                padding: 8px 6px;
+                font-size: 12px;
+            }
+            .tab-btn {
+                font-size: 12px;
+                padding: 6px 8px;
             }
 
             .search-filter-bar {
@@ -983,88 +947,52 @@
         </div>
     </div>
 
-    <!-- App Layout: Sidebar + Content -->
-    <div class="app-layout">
-        <!-- Sidebar Navigation -->
-        <nav class="sidebar" id="sidebar">
-            <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">☰</button>
+    <!-- Two-Level Top Navigation -->
+    <div class="nav-groups" id="navGroups">
+        <button class="group-btn active" data-group="dashboard" style="--group-color: #636363">📊 Dashboard</button>
+        <button class="group-btn" data-group="portfolio" style="--group-color: #4A86E8">💼 Portfolio</button>
+        <button class="group-btn" data-group="dividends" style="--group-color: #6AA84F">💰 Dividends</button>
+        <button class="group-btn" data-group="research" style="--group-color: #993333">🔍 Research</button>
+        <button class="group-btn" data-group="analysis" style="--group-color: #1BBC9D">🔬 Analysis</button>
+        <button class="group-btn" data-group="planning" style="--group-color: #E69138">🏦 Planning</button>
+    </div>
 
-            <div class="sidebar-group" data-color="#434343">
-                <div class="sidebar-group-header" onclick="toggleGroup(this)">
-                    <span class="group-icon">📊</span>
-                    <span class="group-label">Dashboard</span>
-                </div>
-                <div class="sidebar-group-items active">
-                    <button class="sidebar-tab active" data-tab="overview">Overview</button>
-                    <button class="sidebar-tab" data-tab="performance">Performance</button>
-                    <button class="sidebar-tab" data-tab="alerts">Alerts</button>
-                </div>
-            </div>
+    <div class="nav-tabs" id="navTabs">
+        <div class="tab-row" data-group="dashboard">
+            <button class="tab-btn active" data-tab="overview">Overview</button>
+            <button class="tab-btn" data-tab="performance">Performance</button>
+            <button class="tab-btn" data-tab="alerts">Alerts</button>
+        </div>
+        <div class="tab-row" data-group="portfolio" style="display:none">
+            <button class="tab-btn" data-tab="positions">Positions</button>
+            <button class="tab-btn" data-tab="rebalancing">Rebalancing</button>
+            <button class="tab-btn" data-tab="sold">Sold Positions</button>
+        </div>
+        <div class="tab-row" data-group="dividends" style="display:none">
+            <button class="tab-btn" data-tab="dividends">Summary</button>
+            <button class="tab-btn" data-tab="divlog">Dividend Log</button>
+            <button class="tab-btn" data-tab="monthly">Monthly Data</button>
+            <button class="tab-btn" data-tab="annual">Annual Data</button>
+        </div>
+        <div class="tab-row" data-group="research" style="display:none">
+            <button class="tab-btn" data-tab="watchlist">Watchlist</button>
+            <button class="tab-btn" data-tab="lab">My Lab</button>
+            <button class="tab-btn" data-tab="ivlist">Intrinsic Values</button>
+            <button class="tab-btn" data-tab="superinv">Super Investors</button>
+            <button class="tab-btn" data-tab="projections">Projections</button>
+        </div>
+        <div class="tab-row" data-group="analysis" style="display:none">
+            <button class="tab-btn" data-tab="analyzer">Stock Analyzer</button>
+        </div>
+        <div class="tab-row" data-group="planning" style="display:none">
+            <button class="tab-btn" data-tab="salary">Salary</button>
+            <button class="tab-btn" data-tab="passive">Passive Income</button>
+            <button class="tab-btn" data-tab="rule4pct">Rule 4%</button>
+        </div>
+    </div>
 
-            <div class="sidebar-group" data-color="#4A86E8">
-                <div class="sidebar-group-header" onclick="toggleGroup(this)">
-                    <span class="group-icon">💼</span>
-                    <span class="group-label">Portfolio</span>
-                </div>
-                <div class="sidebar-group-items">
-                    <button class="sidebar-tab" data-tab="positions">Positions</button>
-                    <button class="sidebar-tab" data-tab="rebalancing">Rebalancing</button>
-                    <button class="sidebar-tab" data-tab="sold">Sold Positions</button>
-                </div>
-            </div>
-
-            <div class="sidebar-group" data-color="#6AA84F">
-                <div class="sidebar-group-header" onclick="toggleGroup(this)">
-                    <span class="group-icon">💰</span>
-                    <span class="group-label">Dividends</span>
-                </div>
-                <div class="sidebar-group-items">
-                    <button class="sidebar-tab" data-tab="dividends">Summary</button>
-                    <button class="sidebar-tab" data-tab="divlog">Dividend Log</button>
-                    <button class="sidebar-tab" data-tab="monthly">Monthly Data</button>
-                    <button class="sidebar-tab" data-tab="annual">Annual Data</button>
-                </div>
-            </div>
-
-            <div class="sidebar-group" data-color="#660000">
-                <div class="sidebar-group-header" onclick="toggleGroup(this)">
-                    <span class="group-icon">🔍</span>
-                    <span class="group-label">Research</span>
-                </div>
-                <div class="sidebar-group-items">
-                    <button class="sidebar-tab" data-tab="watchlist">Watchlist</button>
-                    <button class="sidebar-tab" data-tab="lab">My Lab</button>
-                    <button class="sidebar-tab" data-tab="ivlist">Intrinsic Values</button>
-                    <button class="sidebar-tab" data-tab="superinv">Super Investors</button>
-                    <button class="sidebar-tab" data-tab="projections">Projections</button>
-                </div>
-            </div>
-
-            <div class="sidebar-group" data-color="#1BBC9D">
-                <div class="sidebar-group-header" onclick="toggleGroup(this)">
-                    <span class="group-icon">🔬</span>
-                    <span class="group-label">Analysis</span>
-                </div>
-                <div class="sidebar-group-items">
-                    <button class="sidebar-tab" data-tab="analyzer">Stock Analyzer</button>
-                </div>
-            </div>
-
-            <div class="sidebar-group" data-color="#E69138">
-                <div class="sidebar-group-header" onclick="toggleGroup(this)">
-                    <span class="group-icon">🏦</span>
-                    <span class="group-label">Planning</span>
-                </div>
-                <div class="sidebar-group-items">
-                    <button class="sidebar-tab" data-tab="salary">Salary</button>
-                    <button class="sidebar-tab" data-tab="passive">Passive Income</button>
-                    <button class="sidebar-tab" data-tab="rule4pct">Rule 4%</button>
-                </div>
-            </div>
-        </nav>
-
-        <!-- Tab Container -->
-        <div id="tabContainer" class="main-content">
+    <!-- Tab Container -->
+    <div id="tabContainer">
         <!-- Overview Tab -->
         <div class="tab-content active" id="overview">
             <!-- Section 1: Portfolio Overview -->
@@ -1651,8 +1579,7 @@
                 </div>
             </div>
         </div>
-    </div><!-- /main-content -->
-    </div><!-- /app-layout -->
+    </div><!-- /tabContainer -->
 
     <script>
         // Global state
@@ -1720,70 +1647,70 @@
             fetchAllData();
         });
 
-        // Sidebar Navigation
+        // Two-Level Navigation
         function setupTabNavigation() {
-            // Tab buttons in sidebar
-            document.querySelectorAll('.sidebar-tab').forEach(button => {
-                button.addEventListener('click', () => {
-                    switchTab(button.dataset.tab);
+            // Group buttons (top row)
+            document.querySelectorAll('.group-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    switchGroup(btn.dataset.group);
                 });
             });
 
-            // Sidebar toggle
-            document.getElementById('sidebarToggle').addEventListener('click', () => {
-                document.getElementById('sidebar').classList.toggle('collapsed');
-                localStorage.setItem('sidebarCollapsed', document.getElementById('sidebar').classList.contains('collapsed'));
+            // Tab buttons (second row)
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                if (btn.dataset.tab) {
+                    btn.addEventListener('click', () => {
+                        switchTab(btn.dataset.tab);
+                    });
+                }
             });
-
-            // Restore sidebar state
-            if (localStorage.getItem('sidebarCollapsed') === 'true') {
-                document.getElementById('sidebar').classList.add('collapsed');
-            }
 
             // Restore last active tab
             const lastTab = localStorage.getItem('activeTab');
             if (lastTab && document.getElementById(lastTab)) {
                 switchTab(lastTab);
             }
-
-            // Apply group accent colors
-            document.querySelectorAll('.sidebar-group').forEach(group => {
-                const color = group.dataset.color;
-                if (color) {
-                    group.querySelector('.sidebar-group-header').style.borderLeftColor = color;
-                    group.querySelectorAll('.sidebar-tab').forEach(tab => {
-                        tab.style.setProperty('--group-color', color);
-                    });
-                }
-            });
         }
 
-        function toggleGroup(header) {
-            const group = header.closest('.sidebar-group');
-            const items = group.querySelector('.sidebar-group-items');
-            items.classList.toggle('active');
+        function switchGroup(groupId) {
+            // Update group buttons
+            document.querySelectorAll('.group-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`.group-btn[data-group="${groupId}"]`).classList.add('active');
+
+            // Show matching tab row, hide others
+            document.querySelectorAll('.tab-row').forEach(row => {
+                row.style.display = row.dataset.group === groupId ? 'flex' : 'none';
+            });
+
+            // Auto-select first tab in group if none active
+            const tabRow = document.querySelector(`.tab-row[data-group="${groupId}"]`);
+            const activeTab = tabRow.querySelector('.tab-btn.active');
+            if (!activeTab) {
+                const firstTab = tabRow.querySelector('.tab-btn');
+                if (firstTab) switchTab(firstTab.dataset.tab);
+            }
         }
 
         let loadedTabs = {};
 
         function switchTab(tabId) {
-            // Update sidebar tabs
-            document.querySelectorAll('.sidebar-tab').forEach(btn => btn.classList.remove('active'));
-            const activeBtn = document.querySelector(`.sidebar-tab[data-tab="${tabId}"]`);
-            if (activeBtn) {
-                activeBtn.classList.add('active');
-                // Apply group color to active tab
-                const group = activeBtn.closest('.sidebar-group');
-                const color = group?.dataset.color || '#6366f1';
-                activeBtn.style.borderLeftColor = color;
-                activeBtn.style.color = color;
-
-                // Expand the parent group
-                const items = group?.querySelector('.sidebar-group-items');
-                if (items && !items.classList.contains('active')) {
-                    items.classList.add('active');
+            // Find which group this tab belongs to and activate it
+            const tabBtn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+            if (tabBtn) {
+                const tabRow = tabBtn.closest('.tab-row');
+                const groupId = tabRow?.dataset.group;
+                if (groupId) {
+                    document.querySelectorAll('.group-btn').forEach(btn => btn.classList.remove('active'));
+                    document.querySelector(`.group-btn[data-group="${groupId}"]`)?.classList.add('active');
+                    document.querySelectorAll('.tab-row').forEach(row => {
+                        row.style.display = row.dataset.group === groupId ? 'flex' : 'none';
+                    });
                 }
             }
+
+            // Update tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            if (tabBtn) tabBtn.classList.add('active');
 
             // Switch tab content
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
