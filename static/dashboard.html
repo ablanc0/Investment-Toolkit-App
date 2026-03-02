@@ -936,9 +936,24 @@
     <div id="tabContainer">
         <!-- Overview Tab -->
         <div class="tab-content active" id="overview">
+            <!-- Section 1: Portfolio Overview -->
+            <h3 style="color: var(--text); margin: 0 0 12px 0; font-size: 15px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim);">Portfolio Overview</h3>
             <div class="kpi-grid" id="overviewKpis"></div>
 
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px; margin-bottom: 32px;">
+            <!-- Section 2: Dividend Stats -->
+            <h3 style="color: var(--text); margin: 24px 0 12px 0; font-size: 15px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim);">Dividend Stats</h3>
+            <div class="kpi-grid" id="dividendKpis"></div>
+
+            <!-- Section 3: Dividend Income Expected -->
+            <h3 style="color: var(--text); margin: 24px 0 12px 0; font-size: 15px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim);">Dividend Income Expected</h3>
+            <div class="kpi-grid" id="divIncomeKpis"></div>
+
+            <!-- Section 4: Sold Positions -->
+            <h3 style="color: var(--text); margin: 24px 0 12px 0; font-size: 15px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim);">Sold Positions</h3>
+            <div class="kpi-grid" id="soldKpis"></div>
+
+            <!-- Charts -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px; margin: 32px 0;">
                 <div class="card">
                     <div class="card-title">📈 Total Returns by Holding</div>
                     <div class="chart-container">
@@ -1707,29 +1722,39 @@
         }
 
         // Tab 1: Overview
+        function renderKpiGrid(containerId, kpis) {
+            const grid = document.getElementById(containerId);
+            grid.innerHTML = kpis.map(kpi => `
+                <div class="kpi-card">
+                    <div class="kpi-emoji">${kpi.label.split(' ')[0]}</div>
+                    <div class="kpi-label">${kpi.label.split(' ').slice(1).join(' ')}</div>
+                    <div class="kpi-value ${kpi.positive !== undefined ? (kpi.positive ? 'positive' : 'negative') : ''}">
+                        ${kpi.value}
+                    </div>
+                    <div class="kpi-sub">${kpi.sub}</div>
+                </div>
+            `).join('');
+            return grid;
+        }
+
         function populateOverview() {
             if (!portfolioData) return;
 
             const summary = portfolioData.summary || {};
             const allocations = portfolioData.allocations || {};
 
-            // KPI Cards
-            const kpis = [
+            // Section 1: Portfolio Overview
+            const overviewKpis = [
                 {
-                    label: '💼 Market Value',
-                    value: formatMoney(summary.totalMarketValue),
-                    sub: `Cost: ${formatMoney(summary.totalCostBasis)}`
+                    label: '💼 Total Portfolio',
+                    value: formatMoney(summary.totalPortfolio),
+                    sub: `Market: ${formatMoney(summary.totalMarketValue)} + Cash: ${formatMoney(summary.cash)}`
                 },
                 {
                     label: '📈 Total Return',
                     value: formatMoney(summary.totalReturn),
                     sub: `${formatPercent(summary.totalReturnPercent)}`,
                     positive: summary.totalReturn >= 0
-                },
-                {
-                    label: '🚀 Market Return',
-                    value: formatPercent(summary.marketReturnPercent),
-                    sub: 'vs cost basis'
                 },
                 {
                     label: '📉 Day Change',
@@ -1740,7 +1765,12 @@
                 {
                     label: '💵 Cash Position',
                     value: formatMoney(summary.cash),
-                    sub: 'Available to trade'
+                    sub: `${formatPercent(summary.cashWeight)} of portfolio`
+                },
+                {
+                    label: '💰 Cost Basis',
+                    value: formatMoney(summary.totalCostBasis),
+                    sub: `Market: ${formatMoney(summary.totalMarketValue)}`
                 },
                 {
                     label: '📌 Holdings',
@@ -1749,26 +1779,82 @@
                 }
             ];
 
-            const kpiGrid = document.getElementById('overviewKpis');
-            kpiGrid.innerHTML = kpis.map(kpi => `
-                <div class="kpi-card">
-                    <div class="kpi-emoji">${kpi.label.split(' ')[0]}</div>
-                    <div class="kpi-label">${kpi.label.split(' ').slice(1).join(' ')}</div>
-                    <div class="kpi-value ${kpi.positive !== undefined ? (kpi.positive ? 'positive' : 'negative') : ''}">
-                        ${kpi.value}
-                    </div>
-                    <div class="kpi-sub">${kpi.sub}</div>
-                </div>
-            `).join('');
+            const kpiGrid = renderKpiGrid('overviewKpis', overviewKpis);
 
-            // Make cash KPI editable
-            const cashCard = kpiGrid.children[4];
+            // Make cash KPI editable (4th card, index 3)
+            const cashCard = kpiGrid.children[3];
             if (cashCard) {
                 const cashValue = cashCard.querySelector('.kpi-value');
                 cashValue.classList.add('kpi-editable');
                 cashValue.title = 'Click to edit';
                 cashValue.onclick = () => editCashValue(cashValue, summary.cash);
             }
+
+            // Section 2: Dividend Stats
+            const divStatsKpis = [
+                {
+                    label: '📊 Portfolio Yield',
+                    value: `${(summary.portfolioDivYield || 0).toFixed(2)}%`,
+                    sub: 'Dividend yield on market value'
+                },
+                {
+                    label: '🎯 Yield on Cost',
+                    value: `${(summary.portfolioYOC || 0).toFixed(2)}%`,
+                    sub: 'Dividend yield on cost basis'
+                },
+                {
+                    label: '💰 Dividends Received',
+                    value: formatMoney(summary.lifetimeDivsReceived),
+                    sub: 'Lifetime total'
+                },
+                {
+                    label: '📈 Annual Income',
+                    value: formatMoney(summary.annualDivIncome),
+                    sub: 'Expected annual dividends'
+                }
+            ];
+            renderKpiGrid('dividendKpis', divStatsKpis);
+
+            // Section 3: Dividend Income Expected
+            const divIncomeKpis = [
+                {
+                    label: '📅 Annual',
+                    value: formatMoney(summary.annualDivIncome),
+                    sub: 'Expected per year'
+                },
+                {
+                    label: '🗓️ Monthly',
+                    value: formatMoney(summary.monthlyDivIncome),
+                    sub: 'Expected per month'
+                },
+                {
+                    label: '📆 Weekly',
+                    value: formatMoney(summary.weeklyDivIncome),
+                    sub: 'Expected per week'
+                },
+                {
+                    label: '⏰ Daily',
+                    value: formatMoney(summary.dailyDivIncome),
+                    sub: 'Expected per day'
+                }
+            ];
+            renderKpiGrid('divIncomeKpis', divIncomeKpis);
+
+            // Section 4: Sold Positions
+            const soldKpis = [
+                {
+                    label: '📦 Sold Positions',
+                    value: summary.soldPositionsCount || 0,
+                    sub: 'Closed positions'
+                },
+                {
+                    label: '💵 Sold Return',
+                    value: formatMoney(summary.soldReturn),
+                    sub: 'Realized gains/losses',
+                    positive: (summary.soldReturn || 0) >= 0
+                }
+            ];
+            renderKpiGrid('soldKpis', soldKpis);
 
             // Charts
             if (portfolioData.positions && portfolioData.positions.length > 0) {
