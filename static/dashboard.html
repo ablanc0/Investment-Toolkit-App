@@ -205,6 +205,14 @@
             box-shadow: 0 2px 8px var(--accent-glow);
         }
 
+        .filter-btn {
+            padding: 6px 14px; background: transparent; color: var(--text-dim);
+            border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+            font-size: 12px; font-weight: 600; transition: all 0.2s;
+        }
+        .filter-btn:hover { color: var(--text); background: var(--card-hover); }
+        .filter-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
         /* Tab Content */
         .tab-content {
             display: none;
@@ -1523,9 +1531,9 @@
             <div class="card">
                 <div class="card-title">🏙️ Cost of Living Comparison</div>
                 <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-                    <button class="tab-btn active" onclick="filterCOL('all', this)">All</button>
-                    <button class="tab-btn" onclick="filterCOL('Downtown', this)">Downtown</button>
-                    <button class="tab-btn" onclick="filterCOL('Suburban', this)">Suburban</button>
+                    <button class="filter-btn active" onclick="filterCOL('all', this)">All</button>
+                    <button class="filter-btn" onclick="filterCOL('Downtown', this)">Downtown</button>
+                    <button class="filter-btn" onclick="filterCOL('Suburban', this)">Suburban</button>
                 </div>
                 <div class="table-wrapper"><table style="font-size: 0.82rem;">
                     <thead><tr>
@@ -4623,7 +4631,7 @@
             const filtered = type === 'all' ? allCOLData : allCOLData.filter(c => c.type === type);
             // Update active button
             if (btn) {
-                btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                btn.parentElement.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
             }
             tbody.innerHTML = filtered.sort((a,b) => a.rent - b.rent).map(c => `<tr>
