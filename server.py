@@ -400,6 +400,22 @@ def api_portfolio():
 
     day_change_pct_total = round((total_day_change / (total_market_value - total_day_change) * 100) if (total_market_value - total_day_change) > 0 else 0, 2)
 
+    # Portfolio-level dividend metrics
+    cash_weight = round((cash / total_portfolio * 100) if total_portfolio > 0 else 0, 2)
+    portfolio_div_yield = round((total_annual_div_income / total_market_value * 100) if total_market_value > 0 else 0, 2)
+    portfolio_yoc = round((total_annual_div_income / total_cost_basis * 100) if total_cost_basis > 0 else 0, 2)
+    lifetime_divs = round(sum(total_divs_received.values()), 2)
+
+    # Sold positions summary
+    sold_list = portfolio.get("soldPositions", [])
+    sold_market_return = 0
+    for sp in sold_list:
+        shares_s = float(sp.get("shares", 0))
+        sell_price = float(sp.get("sellPrice", 0))
+        buy_cost = float(sp.get("avgCost", 0))
+        sold_market_return += (sell_price - buy_cost) * shares_s
+    sold_total_return = round(sold_market_return, 2)
+
     return jsonify({
         "positions": enriched,
         "summary": {
@@ -415,9 +431,18 @@ def api_portfolio():
             "dayChangePct": day_change_pct_total,
             "dayChangePercent": day_change_pct_total,
             "cash": cash,
+            "cashWeight": cash_weight,
             "holdings": len(enriched),
             "totalPortfolio": round(total_portfolio, 2),
             "annualDivIncome": round(total_annual_div_income, 2),
+            "monthlyDivIncome": round(total_annual_div_income / 12, 2),
+            "weeklyDivIncome": round(total_annual_div_income / 52, 2),
+            "dailyDivIncome": round(total_annual_div_income / 365, 2),
+            "portfolioDivYield": portfolio_div_yield,
+            "portfolioYOC": portfolio_yoc,
+            "lifetimeDivsReceived": lifetime_divs,
+            "soldReturn": sold_total_return,
+            "soldPositionsCount": len(sold_list),
         },
         "allocations": {
             "category": cat_alloc,
