@@ -988,6 +988,7 @@
             <button class="tab-btn" data-tab="salary">Salary</button>
             <button class="tab-btn" data-tab="passive">Passive Income</button>
             <button class="tab-btn" data-tab="rule4pct">Rule 4%</button>
+            <button class="tab-btn" data-tab="costOfLiving">Cost of Living</button>
         </div>
     </div>
 
@@ -1495,50 +1496,31 @@
 
         <!-- Salary & Retirement Tab -->
         <div class="tab-content" id="salary">
-            <!-- Row 1: Savings + Tax Breakdown -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
-                <div class="card">
-                    <div class="card-title">💼 Current Savings</div>
-                    <div id="salSavings"></div>
+            <!-- KPI row -->
+            <div id="salaryKpis" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px;"></div>
+
+            <!-- Main Tax Breakdown Table -->
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div class="card-title" style="margin-bottom: 0;" id="salTableTitle">💰 Tax Filing</div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <label class="form-label" style="margin-bottom: 0; font-size: 0.8rem;">Year:</label>
+                        <select id="salaryYearSelect" class="form-input" style="width: 90px; font-size: 0.85rem;" onchange="switchSalaryYear()"></select>
+                    </div>
                 </div>
-                <div class="card">
-                    <div class="card-title" id="salTaxTitle">💰 Salary & Tax Breakdown</div>
-                    <div id="salTax"></div>
-                </div>
+                <div id="salaryBreakdownTable"></div>
             </div>
-            <!-- Row 2: W2/1099 Split + Projected + Company Contrib -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top: 24px;">
-                <div class="card">
-                    <div class="card-title">📄 W-2 Breakdown</div>
-                    <div id="salW2"></div>
-                </div>
-                <div class="card">
-                    <div class="card-title">📋 1099 Breakdown</div>
-                    <div id="sal1099"></div>
-                </div>
-                <div class="card">
-                    <div class="card-title">🏢 Employer Contributions</div>
-                    <div id="salCompany"></div>
-                </div>
-            </div>
-            <!-- Row 3: Projected + Retirement -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px;">
-                <div class="card">
-                    <div class="card-title">🔮 Projected Salary (W2)</div>
-                    <div id="salProjected"></div>
-                </div>
-                <div class="card">
-                    <div class="card-title">🏦 Retirement Plan</div>
-                    <div id="salRetirement"></div>
-                </div>
-            </div>
-            <!-- Row 4: History Table -->
-            <div class="card" style="margin-top: 24px;">
+
+            <!-- History -->
+            <div class="card" style="margin-top: 16px;">
                 <div class="card-title">📈 Salary History</div>
                 <div id="salHistory"></div>
             </div>
-            <!-- Row 5: Cost of Living -->
-            <div class="card" style="margin-top: 24px;">
+        </div>
+
+        <!-- Cost of Living Tab (independent) -->
+        <div class="tab-content" id="costOfLiving">
+            <div class="card">
                 <div class="card-title">🏙️ Cost of Living Comparison</div>
                 <div style="display: flex; gap: 8px; margin-bottom: 12px;">
                     <button class="tab-btn active" onclick="filterCOL('all', this)">All</button>
@@ -1857,6 +1839,7 @@
                 salary: fetchSalaryData,
                 passive: fetchPassiveIncome,
                 rule4pct: fetchRule4Pct,
+                costOfLiving: fetchCostOfLiving,
             };
             if (loaders[tabId]) loaders[tabId]();
         }
@@ -4466,152 +4449,168 @@
         }
 
         // ── Salary & Cost of Living ──────────────────────────────────
+        let currentSalaryData = null;
+
         async function fetchSalaryData() {
             try {
                 const data = await fetch('/api/salary').then(r => r.json());
-                renderSalary(data.salary || {});
+                currentSalaryData = data;
+                renderSalaryBreakdown(data.salary || {}, data.breakdown || {});
+            } catch(e) { console.error(e); }
+        }
+
+        async function fetchCostOfLiving() {
+            try {
+                const data = await fetch('/api/salary').then(r => r.json());
                 renderCostOfLiving(data.costOfLiving || []);
             } catch(e) { console.error(e); }
         }
-        function renderSalary(s) {
-            const savDiv = document.getElementById('salSavings');
-            const taxDiv = document.getElementById('salTax');
-            const w2Div = document.getElementById('salW2');
-            const t1099Div = document.getElementById('sal1099');
-            const compDiv = document.getElementById('salCompany');
-            const projDiv = document.getElementById('salProjected');
-            const retDiv = document.getElementById('salRetirement');
+        function renderSalaryBreakdown(s, breakdown) {
+            const kpis = document.getElementById('salaryKpis');
+            const tableDiv = document.getElementById('salaryBreakdownTable');
             const histDiv = document.getElementById('salHistory');
-            if (!savDiv) return;
+            const yearSelect = document.getElementById('salaryYearSelect');
+            if (!tableDiv) return;
 
-            const labelVal = (label, val, color) => `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border);">
-                <span style="color: var(--text-dim);">${label}</span><strong style="color:${color || 'var(--text)'};">${val}</strong></div>`;
-            const hr = '<hr style="border-color:var(--border); margin:8px 0;">';
-            const sec = (label) => `<div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-dim); letter-spacing: 0.5px; padding: 8px 0 4px; font-weight: 600;">${label}</div>`;
+            const summ = breakdown.summary || {};
+            const rows = breakdown.rows || [];
 
-            // W2 and 1099 derived values
-            const w2 = s.w2Salary || 0;
-            const t1099 = s.income1099 || 0;
-            const w2Monthly = w2 / 12;
-            const t1099Monthly = t1099 / 12;
-            const totalAnnual = s.annualGross || (w2 + t1099);
-            const totalMonthly = totalAnnual / 12;
-
-            // Savings
-            savDiv.innerHTML = labelVal('Saved Money', formatMoney(s.savedMoney), '#4ade80')
-                + labelVal('% to Invest', (s.pctSavingsToInvest*100)+'%')
-                + labelVal('Available to Invest', formatMoney(s.availableToInvest), '#6366f1')
-                + hr
-                + labelVal('Annual Salary (after tax)', formatMoney(s.annualSalaryAfterTax))
-                + labelVal('Monthly Salary', formatMoney(s.monthlySalary))
-                + labelVal('% Income Saveable', (s.pctIncomeCanSave*100)+'%')
-                + labelVal('Monthly Invest Amount', formatMoney(s.monthlyInvestAmount), '#6366f1');
-
-            // Tax title with year
-            const taxTitle = document.getElementById('salTaxTitle');
-            if (taxTitle) taxTitle.textContent = `💰 Total Payroll (${s.year || new Date().getFullYear()})`;
-
-            // Tax — Total Combined
-            taxDiv.innerHTML = sec('Total Payroll')
-                + labelVal('Annual Salary', formatMoney(totalAnnual), '#6366f1')
-                + labelVal('Monthly Salary', formatMoney(totalMonthly))
-                + hr + sec('Tax Breakdown')
-                + labelVal('Taxable Income', formatMoney(s.taxableIncome))
-                + labelVal('IRA Contribution (3%)', '-'+formatMoney(s.iraContribution))
-                + labelVal('Lansing Tax (1%)', '-'+formatMoney(s.lansingTax), '#f87171')
-                + labelVal('E Lansing Tax (0.3%)', '-'+formatMoney(s.eLansingTax), '#f87171')
-                + labelVal('Michigan Tax (4.25%)', '-'+formatMoney(s.michiganTax), '#f87171')
-                + labelVal('Federal Tax (12%)', '-'+formatMoney(s.federalTax), '#f87171')
-                + labelVal('Social Security (6.2%)', '-'+formatMoney(s.socialSecurity), '#f87171')
-                + labelVal('Medicare (1.45%)', '-'+formatMoney(s.medicare), '#f87171')
-                + hr + sec('Result')
-                + labelVal('Total Withheld', formatMoney(s.totalWithhold), '#f87171')
-                + labelVal('Take-Home Pay', formatMoney(s.takeHomePay), '#4ade80')
-                + labelVal('Hourly Rate', '$'+s.hourlyRate?.toFixed(2))
-                + labelVal('Effective Tax Rate', (s.effectiveTaxRate*100).toFixed(1)+'%');
-
-            // W-2 Breakdown
-            if (w2Div) {
-                w2Div.innerHTML = sec('W-2 Income')
-                    + labelVal('Annual', formatMoney(w2))
-                    + labelVal('Monthly', formatMoney(w2Monthly))
-                    + hr
-                    + labelVal('% of Total', ((w2/totalAnnual)*100).toFixed(1)+'%', '#60a5fa');
+            // KPI cards
+            if (kpis) {
+                kpis.innerHTML = `
+                    <div class="kpi-card"><div class="kpi-label">Gross Annual</div>
+                        <div class="kpi-value">${formatMoney(summ.annualGross)}</div><div class="kpi-sub">${formatMoney(summ.annualGross/12)}/mo</div></div>
+                    <div class="kpi-card"><div class="kpi-label">Take-Home</div>
+                        <div class="kpi-value positive">${formatMoney(summ.takeHomePay)}</div><div class="kpi-sub">${formatMoney(summ.monthlySalary)}/mo</div></div>
+                    <div class="kpi-card"><div class="kpi-label">W-2</div>
+                        <div class="kpi-value" style="color:#60a5fa;">${formatMoney(summ.w2Salary)}</div><div class="kpi-sub">${formatMoney(summ.w2Salary/12)}/mo</div></div>
+                    <div class="kpi-card"><div class="kpi-label">1099</div>
+                        <div class="kpi-value" style="color:#facc15;">${formatMoney(summ.income1099)}</div><div class="kpi-sub">${formatMoney(summ.income1099/12)}/mo</div></div>
+                    <div class="kpi-card"><div class="kpi-label">Eff. Tax Rate</div>
+                        <div class="kpi-value" style="color:#f87171;">${(summ.effectiveTaxRate*100).toFixed(1)}%</div><div class="kpi-sub">${formatMoney(summ.totalWithhold)} withheld</div></div>
+                    <div class="kpi-card"><div class="kpi-label">Hourly Rate</div>
+                        <div class="kpi-value">$${summ.hourlyRate?.toFixed(2)}</div><div class="kpi-sub">40 hr/wk</div></div>`;
             }
 
-            // 1099 Breakdown
-            if (t1099Div) {
-                t1099Div.innerHTML = sec('1099 Income')
-                    + labelVal('Annual', formatMoney(t1099))
-                    + labelVal('Monthly', formatMoney(t1099Monthly))
-                    + hr
-                    + labelVal('% of Total', ((t1099/totalAnnual)*100).toFixed(1)+'%', '#facc15');
+            // Year selector
+            if (yearSelect) {
+                const hist = s.history || [];
+                const curYear = s.year || new Date().getFullYear();
+                const years = hist.map(h => h.year).filter(y => y);
+                if (!years.includes(curYear)) years.push(curYear);
+                years.sort((a,b) => b - a);
+                yearSelect.innerHTML = years.map(y => `<option value="${y}" ${y === curYear ? 'selected' : ''}>${y}</option>`).join('');
             }
 
-            // Employer contributions
-            if (compDiv) {
-                compDiv.innerHTML = sec('Company Contributions')
-                    + labelVal('IRA Contribution', formatMoney(s.companyIRA || 0))
-                    + labelVal('Federal Unemployment', formatMoney(s.companyFUTA || 0))
-                    + labelVal('Social Security (6.2%)', formatMoney(s.companySS || 0))
-                    + labelVal('Medicare (1.45%)', formatMoney(s.companyMedicare || 0))
-                    + hr
-                    + labelVal('Total', formatMoney(s.companyTotal || 0), '#6366f1')
-                    + labelVal('% of Salary', ((s.companyPctSalary || 0)*100).toFixed(1)+'%');
-            }
+            // Spreadsheet table
+            let html = `<div class="table-wrapper"><table style="width:100%; font-size:0.82rem; border-collapse:collapse;">
+                <thead><tr style="border-bottom:2px solid var(--border);">
+                    <th style="text-align:left; padding:8px 6px;">Tax Filing</th>
+                    <th style="text-align:right; padding:8px 6px; color:#6366f1;">Total Annual</th>
+                    <th style="text-align:right; padding:8px 6px; color:#6366f1;">Total Monthly</th>
+                    <th style="text-align:right; padding:8px 6px; color:#60a5fa;">W2 Annual</th>
+                    <th style="text-align:right; padding:8px 6px; color:#60a5fa;">W2 Monthly</th>
+                    <th style="text-align:right; padding:8px 6px; color:#facc15;">1099 Annual</th>
+                    <th style="text-align:right; padding:8px 6px; color:#facc15;">1099 Monthly</th>
+                </tr></thead><tbody>`;
 
-            // Projected Salary
-            if (projDiv) {
-                const projW2 = s.projectedW2 || 0;
-                const projMo = s.projectedMonthly || 0;
-                const growthPct = w2 > 0 ? ((projW2 / w2 - 1) * 100).toFixed(1) : '—';
-                projDiv.innerHTML = sec('Projected W-2')
-                    + labelVal('Annual', formatMoney(projW2), '#4ade80')
-                    + labelVal('Monthly', formatMoney(projMo), '#4ade80')
-                    + hr
-                    + labelVal('Growth vs Current', growthPct + '%', parseFloat(growthPct) > 0 ? '#4ade80' : '#f87171');
-            }
+            rows.forEach((r, i) => {
+                const isTax = !r.editable && !r.isSummary && !r.isRate && i > 1;
+                const bg = r.isSummary ? 'background:rgba(99,102,241,0.08);' : '';
+                const fw = r.isSummary ? 'font-weight:700;' : '';
+                const clr = r.isPositive ? 'color:#4ade80;' : isTax ? 'color:#f87171;' : '';
+                const sign = isTax ? '-' : '';
 
-            // Retirement
-            retDiv.innerHTML = sec('Goals')
-                + labelVal('Years Until Retirement', s.yearsUntilRetirement)
-                + labelVal('Desired Annual', formatMoney(s.desiredRetirementSalary))
-                + labelVal('Desired Monthly', formatMoney(s.desiredMonthlyRetirement))
-                + hr + sec('Projections')
-                + labelVal('Annual Interest Rate', (s.annualInterestRate*100).toFixed(1)+'%')
-                + labelVal('Total at Retirement', formatMoney(s.totalInvestedAtRetirement), '#4ade80')
-                + labelVal('Return Rate', (s.returnRateRetirement*100)+'%')
-                + labelVal('Passive Income (annual)', formatMoney(s.passiveIncomeAnnual), '#6366f1')
-                + labelVal('Monthly in Retirement', formatMoney(s.monthlyRetirementPayment), '#6366f1')
-                + labelVal('Goal Fulfillment', s.goalFulfillment?.toFixed(1)+'x', '#4ade80');
+                const fmtVal = (v, isMo) => {
+                    if (r.isRate) return isMo ? (v*100).toFixed(1)+'%' : '$'+v.toFixed(2);
+                    return sign + formatMoney(Math.abs(v));
+                };
 
-            // History — expanded table
-            const hist = s.history || [];
-            const latestYear = hist.length > 0 ? hist[hist.length - 1] : null;
-            let histHtml = `<div class="table-wrapper"><table style="width:100%; font-size:0.85rem;"><thead><tr>
-                <th>Year</th>
-                <th style="text-align:right;">Total Annual</th>
-                <th style="text-align:right;">Total Monthly</th>
-                <th style="text-align:right;">Take-Home</th>
-                <th style="text-align:right;">YoY Change</th>
-            </tr></thead><tbody>`;
-            for (let i = 0; i < hist.length; i++) {
-                const h = hist[i];
-                const prev = i > 0 ? hist[i-1] : null;
-                const yoy = prev && prev.annualPayroll > 0
-                    ? ((h.annualPayroll / prev.annualPayroll - 1) * 100).toFixed(1)
-                    : null;
-                const yoyColor = yoy > 0 ? '#4ade80' : yoy < 0 ? '#f87171' : 'var(--text-dim)';
-                histHtml += `<tr>
-                    <td><strong>${h.year}</strong></td>
-                    <td style="text-align:right;">${formatMoney(h.annualPayroll)}</td>
-                    <td style="text-align:right;">${formatMoney(h.monthlyPayroll)}</td>
-                    <td style="text-align:right; color:#4ade80;">${formatMoney(h.takeHomePay)}</td>
-                    <td style="text-align:right; color:${yoyColor};">${yoy !== null ? (yoy > 0 ? '+' : '') + yoy + '%' : '—'}</td>
-                </tr>`;
+                // Label cell with optional editable rate
+                let labelCell = `<td style="padding:6px; ${fw}">${r.label}`;
+                if (r.rateKey) {
+                    labelCell += ` <input type="number" step="0.01" value="${r.ratePct}" style="width:55px; padding:2px 4px; font-size:0.78rem; background:var(--card-bg); border:1px solid var(--border); border-radius:3px; color:var(--text); text-align:right;" onchange="saveSalaryField('${r.rateKey}', this.value/100)">`;
+                }
+                labelCell += '</td>';
+
+                html += `<tr style="border-bottom:1px solid var(--border); ${bg}">
+                    ${labelCell}
+                    <td style="text-align:right; padding:6px; ${fw} ${clr}">${fmtVal(r.total, false)}</td>
+                    <td style="text-align:right; padding:6px; ${fw} ${clr}">${fmtVal(r.totalMo, true)}</td>`;
+
+                // W2 columns — editable on salary row
+                if (r.editable) {
+                    html += `<td style="text-align:right; padding:6px;"><input type="number" value="${r.w2}" style="width:90px; padding:2px 4px; font-size:0.82rem; background:var(--card-bg); border:1px solid var(--border); border-radius:3px; color:#60a5fa; text-align:right;" onchange="saveSalaryField('w2Salary', this.value)"></td>
+                        <td style="text-align:right; padding:6px; color:var(--text-dim);">${formatMoney(r.w2Mo)}</td>
+                        <td style="text-align:right; padding:6px;"><input type="number" value="${r.t1099}" style="width:90px; padding:2px 4px; font-size:0.82rem; background:var(--card-bg); border:1px solid var(--border); border-radius:3px; color:#facc15; text-align:right;" onchange="saveSalaryField('income1099', this.value)"></td>
+                        <td style="text-align:right; padding:6px; color:var(--text-dim);">${formatMoney(r.t1099Mo)}</td>`;
+                } else {
+                    html += `<td style="text-align:right; padding:6px; ${fw} ${clr}">${fmtVal(r.w2, false)}</td>
+                        <td style="text-align:right; padding:6px; ${fw} ${clr}">${fmtVal(r.w2Mo, true)}</td>
+                        <td style="text-align:right; padding:6px; ${fw} ${clr}">${fmtVal(r.t1099, false)}</td>
+                        <td style="text-align:right; padding:6px; ${fw} ${clr}">${fmtVal(r.t1099Mo, true)}</td>`;
+                }
+                html += '</tr>';
+            });
+            html += '</tbody></table></div>';
+            tableDiv.innerHTML = html;
+
+            // History table
+            if (histDiv) {
+                const hist = s.history || [];
+                let histHtml = `<div class="table-wrapper"><table style="width:100%; font-size:0.85rem;"><thead><tr>
+                    <th>Year</th>
+                    <th style="text-align:right;">Total Annual</th>
+                    <th style="text-align:right;">W-2</th>
+                    <th style="text-align:right;">1099</th>
+                    <th style="text-align:right;">Take-Home</th>
+                    <th style="text-align:right;">Eff. Tax %</th>
+                    <th style="text-align:right;">YoY Change</th>
+                </tr></thead><tbody>`;
+                for (let i = 0; i < hist.length; i++) {
+                    const h = hist[i];
+                    const prev = i > 0 ? hist[i-1] : null;
+                    const ann = h.annualPayroll || 0;
+                    const yoy = prev && prev.annualPayroll > 0
+                        ? ((ann / prev.annualPayroll - 1) * 100).toFixed(1)
+                        : null;
+                    const yoyColor = yoy > 0 ? '#4ade80' : yoy < 0 ? '#f87171' : 'var(--text-dim)';
+                    histHtml += `<tr>
+                        <td><strong>${h.year}</strong></td>
+                        <td style="text-align:right;">${formatMoney(ann)}</td>
+                        <td style="text-align:right; color:#60a5fa;">${formatMoney(h.w2Salary || 0)}</td>
+                        <td style="text-align:right; color:#facc15;">${formatMoney(h.income1099 || 0)}</td>
+                        <td style="text-align:right; color:#4ade80;">${formatMoney(h.takeHomePay || 0)}</td>
+                        <td style="text-align:right; color:#f87171;">${h.effectiveTaxRate ? (h.effectiveTaxRate*100).toFixed(1)+'%' : '—'}</td>
+                        <td style="text-align:right; color:${yoyColor};">${yoy !== null ? (yoy > 0 ? '+' : '') + yoy + '%' : '—'}</td>
+                    </tr>`;
+                }
+                histHtml += '</tbody></table></div>';
+                histDiv.innerHTML = histHtml;
             }
-            histHtml += '</tbody></table></div>';
-            histDiv.innerHTML = histHtml;
+        }
+
+        async function saveSalaryField(key, value) {
+            try {
+                const resp = await fetch('/api/salary/update', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({[key]: parseFloat(value)})
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    currentSalaryData = {salary: data.salary, breakdown: data.breakdown, costOfLiving: currentSalaryData?.costOfLiving || []};
+                    renderSalaryBreakdown(data.salary, data.breakdown);
+                }
+            } catch(e) { console.error('Save failed:', e); }
+        }
+
+        function switchSalaryYear() {
+            const yr = parseInt(document.getElementById('salaryYearSelect').value);
+            if (!yr || !currentSalaryData) return;
+            // For now just update the title — history-based year switching needs server support
+            const titleEl = document.getElementById('salTableTitle');
+            if (titleEl) titleEl.textContent = '💰 Tax Filing — ' + yr;
         }
         let allCOLData = [];
         function renderCostOfLiving(items) {

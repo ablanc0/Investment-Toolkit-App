@@ -1400,11 +1400,112 @@ def api_stock_analyzer(ticker):
 
 
 # ── Salary & Retirement ────────────────────────────────────────────────
+def compute_salary_breakdown(s):
+    """Compute full tax breakdown from editable inputs."""
+    w2 = s.get("w2Salary", 0)
+    t1099 = s.get("income1099", 0)
+    total = w2 + t1099
+    ira_pct = s.get("iraContributionPct", 0.03)
+    lansing_pct = s.get("lansingTaxPct", 0.01)
+    elansing_pct = s.get("eLansingTaxPct", 0.003)
+    michigan_pct = s.get("michiganTaxPct", 0.0425)
+    federal_pct = s.get("federalTaxPct", 0.12)
+    ss_pct = s.get("ssPct", 0.062)
+    medicare_pct = s.get("medicarePct", 0.0145)
+    se_factor = 0.9235  # self-employment tax factor
+
+    # IRA only on W2
+    w2_ira = round(w2 * ira_pct, 2)
+    t1099_ira = 0
+    total_ira = w2_ira
+
+    # Taxable base: salary minus IRA for W2, gross for 1099
+    w2_taxable_base = w2 - w2_ira
+    t1099_taxable_base = t1099
+
+    # Local & state taxes on taxable base
+    w2_lansing = round(w2_taxable_base * lansing_pct, 2)
+    t1099_lansing = round(t1099_taxable_base * lansing_pct, 2)
+    w2_elansing = round(w2_taxable_base * elansing_pct, 2)
+    t1099_elansing = round(t1099_taxable_base * elansing_pct, 2)
+    w2_michigan = round(w2_taxable_base * michigan_pct, 2)
+    t1099_michigan = round(t1099_taxable_base * michigan_pct, 2)
+
+    # Federal on taxable base
+    w2_federal = round(w2_taxable_base * federal_pct, 2)
+    t1099_federal = round(t1099_taxable_base * federal_pct, 2)
+
+    # SS & Medicare: W2 on gross, 1099 self-employed (both halves on 92.35%)
+    w2_ss = round(w2 * ss_pct, 2)
+    t1099_ss = round(t1099 * se_factor * ss_pct * 2, 2)
+    w2_medicare = round(w2 * medicare_pct, 2)
+    t1099_medicare = round(t1099 * se_factor * medicare_pct * 2, 2)
+
+    # Totals
+    w2_withheld = w2_ira + w2_lansing + w2_elansing + w2_michigan + w2_federal + w2_ss + w2_medicare
+    t1099_withheld = t1099_ira + t1099_lansing + t1099_elansing + t1099_michigan + t1099_federal + t1099_ss + t1099_medicare
+    total_withheld = w2_withheld + t1099_withheld
+
+    w2_takehome = round(w2 - w2_withheld, 2)
+    t1099_takehome = round(t1099 - t1099_withheld, 2)
+    total_takehome = round(total - total_withheld, 2)
+
+    w2_hourly = round(w2 / (52 * 40), 2) if w2 > 0 else 0
+    t1099_hourly = round(t1099 / (52 * 40), 2) if t1099 > 0 else 0
+    total_hourly = round(total / (52 * 40), 2) if total > 0 else 0
+
+    w2_eff_tax = round(w2_withheld / w2, 4) if w2 > 0 else 0
+    t1099_eff_tax = round(t1099_withheld / t1099, 4) if t1099 > 0 else 0
+    total_eff_tax = round(total_withheld / total, 4) if total > 0 else 0
+
+    w2_taxable = round(w2 - w2_ira, 2)
+    t1099_taxable = round(t1099, 2)
+    total_taxable = round(w2_taxable + t1099_taxable, 2)
+
+    return {
+        "rows": [
+            {"label": "Annual Salary", "total": total, "totalMo": round(total/12, 2),
+             "w2": w2, "w2Mo": round(w2/12, 2), "t1099": t1099, "t1099Mo": round(t1099/12, 2), "editable": True},
+            {"label": "Taxable Income", "total": total_taxable, "totalMo": round(total_taxable/12, 2),
+             "w2": w2_taxable, "w2Mo": round(w2_taxable/12, 2), "t1099": t1099_taxable, "t1099Mo": round(t1099_taxable/12, 2)},
+            {"label": f"Pre-Tax Deduct. (IRA - {ira_pct*100:.0f}%)", "total": total_ira, "totalMo": round(total_ira/12, 2),
+             "w2": w2_ira, "w2Mo": round(w2_ira/12, 2), "t1099": t1099_ira, "t1099Mo": 0, "ratePct": ira_pct*100, "rateKey": "iraContributionPct"},
+            {"label": f"Lansing Resident Tax ({lansing_pct*100:.0f}%)", "total": round(w2_lansing+t1099_lansing, 2), "totalMo": round((w2_lansing+t1099_lansing)/12, 2),
+             "w2": w2_lansing, "w2Mo": round(w2_lansing/12, 2), "t1099": t1099_lansing, "t1099Mo": round(t1099_lansing/12, 2), "ratePct": lansing_pct*100, "rateKey": "lansingTaxPct"},
+            {"label": f"E Lansing Nonresident ({elansing_pct*100:.1f}%)", "total": round(w2_elansing+t1099_elansing, 2), "totalMo": round((w2_elansing+t1099_elansing)/12, 2),
+             "w2": w2_elansing, "w2Mo": round(w2_elansing/12, 2), "t1099": t1099_elansing, "t1099Mo": round(t1099_elansing/12, 2), "ratePct": elansing_pct*100, "rateKey": "eLansingTaxPct"},
+            {"label": f"Michigan State Tax ({michigan_pct*100:.2f}%)", "total": round(w2_michigan+t1099_michigan, 2), "totalMo": round((w2_michigan+t1099_michigan)/12, 2),
+             "w2": w2_michigan, "w2Mo": round(w2_michigan/12, 2), "t1099": t1099_michigan, "t1099Mo": round(t1099_michigan/12, 2), "ratePct": michigan_pct*100, "rateKey": "michiganTaxPct"},
+            {"label": f"Federal Tax ({federal_pct*100:.0f}%)", "total": round(w2_federal+t1099_federal, 2), "totalMo": round((w2_federal+t1099_federal)/12, 2),
+             "w2": w2_federal, "w2Mo": round(w2_federal/12, 2), "t1099": t1099_federal, "t1099Mo": round(t1099_federal/12, 2), "ratePct": federal_pct*100, "rateKey": "federalTaxPct"},
+            {"label": f"Social Security ({ss_pct*100:.1f}%)", "total": round(w2_ss+t1099_ss, 2), "totalMo": round((w2_ss+t1099_ss)/12, 2),
+             "w2": w2_ss, "w2Mo": round(w2_ss/12, 2), "t1099": t1099_ss, "t1099Mo": round(t1099_ss/12, 2)},
+            {"label": f"Medicare ({medicare_pct*100:.2f}%)", "total": round(w2_medicare+t1099_medicare, 2), "totalMo": round((w2_medicare+t1099_medicare)/12, 2),
+             "w2": w2_medicare, "w2Mo": round(w2_medicare/12, 2), "t1099": t1099_medicare, "t1099Mo": round(t1099_medicare/12, 2)},
+            {"label": "Total Withheld", "total": round(total_withheld, 2), "totalMo": round(total_withheld/12, 2),
+             "w2": round(w2_withheld, 2), "w2Mo": round(w2_withheld/12, 2), "t1099": round(t1099_withheld, 2), "t1099Mo": round(t1099_withheld/12, 2), "isSummary": True},
+            {"label": "Take-Home Pay", "total": total_takehome, "totalMo": round(total_takehome/12, 2),
+             "w2": w2_takehome, "w2Mo": round(w2_takehome/12, 2), "t1099": t1099_takehome, "t1099Mo": round(t1099_takehome/12, 2), "isSummary": True, "isPositive": True},
+            {"label": "Hourly Rate / Eff. Tax %", "total": total_hourly, "totalMo": total_eff_tax,
+             "w2": w2_hourly, "w2Mo": w2_eff_tax, "t1099": t1099_hourly, "t1099Mo": t1099_eff_tax, "isRate": True},
+        ],
+        "summary": {
+            "annualGross": total, "w2Salary": w2, "income1099": t1099,
+            "takeHomePay": total_takehome, "totalWithhold": round(total_withheld, 2),
+            "effectiveTaxRate": total_eff_tax, "hourlyRate": total_hourly,
+            "monthlySalary": round(total_takehome/12, 2),
+        },
+    }
+
+
 @app.route("/api/salary")
 def api_salary():
     portfolio = load_portfolio()
+    salary = portfolio.get("salary", {})
+    breakdown = compute_salary_breakdown(salary)
     return jsonify({
-        "salary": portfolio.get("salary", {}),
+        "salary": salary,
+        "breakdown": breakdown,
         "costOfLiving": portfolio.get("costOfLiving", []),
         "lastUpdated": datetime.now().isoformat(),
     })
@@ -1414,13 +1515,28 @@ def api_salary_update():
     b = request.get_json()
     portfolio = load_portfolio()
     salary = portfolio.get("salary", {})
-    for key in ["annualGross", "monthlyNet", "currency", "retirement401k", "employerMatch",
-                "employerMatchPct", "iraContribution", "monthlyInvestment"]:
+    editable_keys = ["w2Salary", "income1099", "iraContributionPct", "lansingTaxPct",
+                     "eLansingTaxPct", "michiganTaxPct", "federalTaxPct", "ssPct", "medicarePct",
+                     "year", "savedMoney", "pctSavingsToInvest", "pctIncomeCanSave",
+                     "projectedW2", "projectedMonthly",
+                     "yearsUntilRetirement", "annualInterestRate", "returnRateRetirement",
+                     "desiredRetirementSalary", "otherRetirementIncome"]
+    for key in editable_keys:
         if key in b:
-            salary[key] = float(b[key]) if key != "currency" else b[key]
+            salary[key] = float(b[key]) if key != "year" else int(b[key])
+    # Recompute derived fields
+    breakdown = compute_salary_breakdown(salary)
+    summ = breakdown["summary"]
+    salary["annualGross"] = summ["annualGross"]
+    salary["takeHomePay"] = summ["takeHomePay"]
+    salary["totalWithhold"] = summ["totalWithhold"]
+    salary["effectiveTaxRate"] = summ["effectiveTaxRate"]
+    salary["hourlyRate"] = summ["hourlyRate"]
+    salary["monthlySalary"] = summ["monthlySalary"]
+    salary["annualSalaryAfterTax"] = summ["takeHomePay"]
     portfolio["salary"] = salary
     save_portfolio(portfolio)
-    return jsonify({"ok": True, "salary": salary})
+    return jsonify({"ok": True, "salary": salary, "breakdown": breakdown})
 
 @app.route("/api/cost-of-living")
 def api_cost_of_living():
