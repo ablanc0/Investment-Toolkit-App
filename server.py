@@ -1508,6 +1508,164 @@ def api_rule4pct_update():
     return jsonify({"ok": True, "rule4Pct": r4})
 
 
+# ── Historic S&P 500 Data ──────────────────────────────────────────────
+def load_historic_data():
+    """Load S&P 500 historic data from portfolio or import from Excel."""
+    portfolio = load_portfolio()
+    historic = portfolio.get("historicData")
+    if historic and len(historic) > 50:
+        return historic
+
+    # Try importing from Excel
+    xlsx_path = os.path.join(DATA_DIR, "Investments Toolkit-v1.0.xlsx")
+    if not os.path.exists(xlsx_path):
+        return []
+
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(xlsx_path, data_only=True)
+        ws = wb["Historic_Data"]
+        data = []
+        for r in range(2, ws.max_row + 1):
+            year = ws.cell(r, 1).value
+            if year is None or not isinstance(year, (int, float)) or year < 1900:
+                continue
+            data.append({
+                "year": int(year),
+                "avgClosing": ws.cell(r, 2).value or 0,
+                "yearOpen": ws.cell(r, 3).value or 0,
+                "yearHigh": ws.cell(r, 4).value or 0,
+                "yearLow": ws.cell(r, 5).value or 0,
+                "yearClose": ws.cell(r, 6).value or 0,
+                "annualReturn": ws.cell(r, 7).value or 0,
+                "cpi": ws.cell(r, 8).value or 0,
+            })
+        wb.close()
+        # Cache in portfolio
+        portfolio["historicData"] = data
+        save_portfolio(portfolio)
+        return data
+    except Exception as e:
+        print(f"Error importing historic data: {e}")
+        return []
+
+
+@app.route("/api/historic-data")
+def api_historic_data():
+    data = load_historic_data()
+    return jsonify({
+        "historicData": data,
+        "lastUpdated": datetime.now().isoformat(),
+    })
+
+
+@app.route("/api/rule4pct/simulate")
+def api_rule4pct_simulate():
+    """Run Rule 4% historical simulation across all possible starting years."""
+    starting_balance = float(request.args.get("balance", 1000000))
+    withdrawal_rate = float(request.args.get("rate", 4)) / 100
+
+    historic = load_historic_data()
+    if not historic:
+        return jsonify({"error": "No historic data available"}), 404
+
+    # Build return/CPI lookup by year
+    returns_by_year = {h["year"]: h["annualReturn"] for h in historic}
+    cpi_by_year = {h["year"]: h["cpi"] for h in historic}
+    all_years = sorted(returns_by_year.keys())
+    min_year = all_years[0]
+    max_year = all_years[-1]
+
+    results = {}
+    for horizon in [20, 30, 40]:
+        scenarios = []
+        success_count = 0
+        total_count = 0
+
+        for start_year in all_years:
+            end_year = start_year + horizon - 1
+            if end_year > max_year:
+                break
+
+            total_count += 1
+            balance = starting_balance
+            annual_withdrawal = starting_balance * withdrawal_rate
+            yearly_data = []
+            survived = True
+
+            for yr_offset in range(horizon):
+                yr = start_year + yr_offset
+                ret = returns_by_year.get(yr, 0)
+                cpi = cpi_by_year.get(yr, 0.03)
+
+                # Apply return first, then withdraw
+                balance = balance * (1 + ret)
+                balance -= annual_withdrawal
+
+                yearly_data.append({
+                    "year": yr,
+                    "retirementYear": yr_offset + 1,
+                    "balance": round(balance, 2),
+                    "returnPct": ret,
+                    "withdrawalAmount": round(annual_withdrawal, 2),
+                    "inflationPct": cpi,
+                })
+
+                if balance <= 0:
+                    survived = False
+                    # Mark remaining years as depleted
+                    for remaining in range(yr_offset + 1, horizon):
+                        yearly_data.append({
+                            "year": start_year + remaining,
+                            "retirementYear": remaining + 1,
+                            "balance": 0,
+                            "returnPct": returns_by_year.get(start_year + remaining, 0),
+                            "withdrawalAmount": 0,
+                            "inflationPct": cpi_by_year.get(start_year + remaining, 0),
+                        })
+                    break
+
+                # Adjust withdrawal for inflation
+                annual_withdrawal *= (1 + cpi)
+
+            if survived:
+                success_count += 1
+
+            scenarios.append({
+                "startYear": start_year,
+                "endYear": end_year,
+                "survived": survived,
+                "finalBalance": round(yearly_data[-1]["balance"], 2),
+                "data": yearly_data,
+            })
+
+        success_rate = round(success_count / total_count * 100, 1) if total_count > 0 else 0
+        avg_final = round(sum(s["finalBalance"] for s in scenarios if s["survived"]) / max(success_count, 1), 2)
+        worst_scenario = min(scenarios, key=lambda s: s["finalBalance"]) if scenarios else None
+        best_scenario = max(scenarios, key=lambda s: s["finalBalance"]) if scenarios else None
+
+        results[str(horizon)] = {
+            "horizon": horizon,
+            "totalScenarios": total_count,
+            "successCount": success_count,
+            "failureCount": total_count - success_count,
+            "successRate": success_rate,
+            "avgFinalBalance": avg_final,
+            "worstStartYear": worst_scenario["startYear"] if worst_scenario else None,
+            "worstFinalBalance": worst_scenario["finalBalance"] if worst_scenario else None,
+            "bestStartYear": best_scenario["startYear"] if best_scenario else None,
+            "bestFinalBalance": best_scenario["finalBalance"] if best_scenario else None,
+            "scenarios": scenarios,
+        }
+
+    return jsonify({
+        "startingBalance": starting_balance,
+        "withdrawalRate": withdrawal_rate * 100,
+        "results": results,
+        "lastUpdated": datetime.now().isoformat(),
+    })
+
+
 @app.route("/api/status")
 def api_status():
     """Health check."""
