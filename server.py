@@ -1559,109 +1559,216 @@ def api_historic_data():
     })
 
 
+def _run_simulation(returns_by_year, cpi_by_year, all_years, max_year,
+                     starting_balance, withdrawal_rate, horizon,
+                     strategy="fixed", guardrail_floor=None, guardrail_ceiling=None,
+                     cash_buffer_years=0, div_yield=0, div_growth=0):
+    """Core simulation engine supporting multiple strategies."""
+    scenarios = []
+    success_count = 0
+    total_count = 0
+
+    for start_year in all_years:
+        end_year = start_year + horizon - 1
+        if end_year > max_year:
+            break
+
+        total_count += 1
+        balance = starting_balance
+        base_withdrawal = starting_balance * withdrawal_rate
+        annual_withdrawal = base_withdrawal
+        cash_reserve = base_withdrawal * cash_buffer_years
+        yearly_data = []
+        survived = True
+        cumulative_inflation = 1.0
+
+        for yr_offset in range(horizon):
+            yr = start_year + yr_offset
+            ret = returns_by_year.get(yr, 0)
+            cpi = cpi_by_year.get(yr, 0.03)
+            cumulative_inflation *= (1 + cpi)
+
+            if strategy == "dividend":
+                # Dividend strategy: yield on current balance, no selling
+                div_income = balance * div_yield
+                balance = balance * (1 + ret)
+                actual_withdrawal = div_income
+            elif strategy == "combined":
+                # Combined: dividend income + sell remainder
+                div_income = balance * div_yield
+                balance = balance * (1 + ret)
+                sell_amount = max(0, annual_withdrawal - div_income)
+                balance -= sell_amount
+                actual_withdrawal = div_income + sell_amount
+            elif strategy == "guardrails":
+                # Guardrails: adjust withdrawal based on portfolio performance
+                balance = balance * (1 + ret)
+                floor_amount = base_withdrawal * cumulative_inflation * (guardrail_floor or 0.8)
+                ceiling_amount = base_withdrawal * cumulative_inflation * (guardrail_ceiling or 1.2)
+                # Target: withdrawal_rate of current balance
+                target = balance * withdrawal_rate
+                annual_withdrawal = max(floor_amount, min(ceiling_amount, target))
+                # Use cash buffer during down years
+                if ret < -0.1 and cash_reserve > 0:
+                    from_cash = min(cash_reserve, annual_withdrawal)
+                    cash_reserve -= from_cash
+                    balance -= (annual_withdrawal - from_cash)
+                else:
+                    balance -= annual_withdrawal
+                actual_withdrawal = annual_withdrawal
+            else:
+                # Fixed (classic Rule 4%)
+                balance = balance * (1 + ret)
+                # Use cash buffer during down years
+                if cash_buffer_years > 0 and ret < -0.1 and cash_reserve > 0:
+                    from_cash = min(cash_reserve, annual_withdrawal)
+                    cash_reserve -= from_cash
+                    balance -= (annual_withdrawal - from_cash)
+                else:
+                    balance -= annual_withdrawal
+                actual_withdrawal = annual_withdrawal
+
+            yearly_data.append({
+                "year": yr,
+                "retirementYear": yr_offset + 1,
+                "balance": round(balance, 2),
+                "returnPct": ret,
+                "withdrawalAmount": round(actual_withdrawal, 2),
+                "inflationPct": cpi,
+                "cumulativeInflation": round(cumulative_inflation, 4),
+                "cashReserve": round(cash_reserve, 2) if cash_buffer_years > 0 else None,
+            })
+
+            if balance <= 0:
+                survived = False
+                for remaining in range(yr_offset + 1, horizon):
+                    yearly_data.append({
+                        "year": start_year + remaining,
+                        "retirementYear": remaining + 1,
+                        "balance": 0,
+                        "returnPct": returns_by_year.get(start_year + remaining, 0),
+                        "withdrawalAmount": 0,
+                        "inflationPct": cpi_by_year.get(start_year + remaining, 0),
+                        "cumulativeInflation": round(cumulative_inflation, 4),
+                        "cashReserve": 0,
+                    })
+                break
+
+            # Adjust withdrawal for inflation (fixed & combined strategies)
+            if strategy in ("fixed", "combined"):
+                annual_withdrawal *= (1 + cpi)
+            elif strategy == "dividend":
+                # Dividend growth replaces inflation adjustment
+                div_yield_adj = div_yield  # yield stays same, applied to growing balance
+
+        if survived:
+            success_count += 1
+
+        scenarios.append({
+            "startYear": start_year,
+            "endYear": end_year,
+            "survived": survived,
+            "finalBalance": round(yearly_data[-1]["balance"], 2),
+            "data": yearly_data,
+        })
+
+    success_rate = round(success_count / total_count * 100, 1) if total_count > 0 else 0
+    avg_final = round(sum(s["finalBalance"] for s in scenarios if s["survived"]) / max(success_count, 1), 2)
+    worst = min(scenarios, key=lambda s: s["finalBalance"]) if scenarios else None
+    best = max(scenarios, key=lambda s: s["finalBalance"]) if scenarios else None
+
+    return {
+        "horizon": horizon,
+        "totalScenarios": total_count,
+        "successCount": success_count,
+        "failureCount": total_count - success_count,
+        "successRate": success_rate,
+        "avgFinalBalance": avg_final,
+        "worstStartYear": worst["startYear"] if worst else None,
+        "worstFinalBalance": worst["finalBalance"] if worst else None,
+        "bestStartYear": best["startYear"] if best else None,
+        "bestFinalBalance": best["finalBalance"] if best else None,
+        "scenarios": scenarios,
+    }
+
+
 @app.route("/api/rule4pct/simulate")
 def api_rule4pct_simulate():
     """Run Rule 4% historical simulation across all possible starting years."""
     starting_balance = float(request.args.get("balance", 1000000))
     withdrawal_rate = float(request.args.get("rate", 4)) / 100
+    strategy = request.args.get("strategy", "fixed")  # fixed, guardrails, dividend, combined
+    cash_buffer = int(request.args.get("cashBuffer", 0))
+    div_yield = float(request.args.get("divYield", 4)) / 100
+    div_growth = float(request.args.get("divGrowth", 5.6)) / 100
+    guardrail_floor = float(request.args.get("grFloor", 80)) / 100
+    guardrail_ceiling = float(request.args.get("grCeiling", 120)) / 100
 
     historic = load_historic_data()
     if not historic:
         return jsonify({"error": "No historic data available"}), 404
 
-    # Build return/CPI lookup by year
     returns_by_year = {h["year"]: h["annualReturn"] for h in historic}
     cpi_by_year = {h["year"]: h["cpi"] for h in historic}
     all_years = sorted(returns_by_year.keys())
-    min_year = all_years[0]
     max_year = all_years[-1]
 
     results = {}
     for horizon in [20, 30, 40]:
-        scenarios = []
-        success_count = 0
-        total_count = 0
-
-        for start_year in all_years:
-            end_year = start_year + horizon - 1
-            if end_year > max_year:
-                break
-
-            total_count += 1
-            balance = starting_balance
-            annual_withdrawal = starting_balance * withdrawal_rate
-            yearly_data = []
-            survived = True
-
-            for yr_offset in range(horizon):
-                yr = start_year + yr_offset
-                ret = returns_by_year.get(yr, 0)
-                cpi = cpi_by_year.get(yr, 0.03)
-
-                # Apply return first, then withdraw
-                balance = balance * (1 + ret)
-                balance -= annual_withdrawal
-
-                yearly_data.append({
-                    "year": yr,
-                    "retirementYear": yr_offset + 1,
-                    "balance": round(balance, 2),
-                    "returnPct": ret,
-                    "withdrawalAmount": round(annual_withdrawal, 2),
-                    "inflationPct": cpi,
-                })
-
-                if balance <= 0:
-                    survived = False
-                    # Mark remaining years as depleted
-                    for remaining in range(yr_offset + 1, horizon):
-                        yearly_data.append({
-                            "year": start_year + remaining,
-                            "retirementYear": remaining + 1,
-                            "balance": 0,
-                            "returnPct": returns_by_year.get(start_year + remaining, 0),
-                            "withdrawalAmount": 0,
-                            "inflationPct": cpi_by_year.get(start_year + remaining, 0),
-                        })
-                    break
-
-                # Adjust withdrawal for inflation
-                annual_withdrawal *= (1 + cpi)
-
-            if survived:
-                success_count += 1
-
-            scenarios.append({
-                "startYear": start_year,
-                "endYear": end_year,
-                "survived": survived,
-                "finalBalance": round(yearly_data[-1]["balance"], 2),
-                "data": yearly_data,
-            })
-
-        success_rate = round(success_count / total_count * 100, 1) if total_count > 0 else 0
-        avg_final = round(sum(s["finalBalance"] for s in scenarios if s["survived"]) / max(success_count, 1), 2)
-        worst_scenario = min(scenarios, key=lambda s: s["finalBalance"]) if scenarios else None
-        best_scenario = max(scenarios, key=lambda s: s["finalBalance"]) if scenarios else None
-
-        results[str(horizon)] = {
-            "horizon": horizon,
-            "totalScenarios": total_count,
-            "successCount": success_count,
-            "failureCount": total_count - success_count,
-            "successRate": success_rate,
-            "avgFinalBalance": avg_final,
-            "worstStartYear": worst_scenario["startYear"] if worst_scenario else None,
-            "worstFinalBalance": worst_scenario["finalBalance"] if worst_scenario else None,
-            "bestStartYear": best_scenario["startYear"] if best_scenario else None,
-            "bestFinalBalance": best_scenario["finalBalance"] if best_scenario else None,
-            "scenarios": scenarios,
-        }
+        results[str(horizon)] = _run_simulation(
+            returns_by_year, cpi_by_year, all_years, max_year,
+            starting_balance, withdrawal_rate, horizon,
+            strategy=strategy,
+            guardrail_floor=guardrail_floor,
+            guardrail_ceiling=guardrail_ceiling,
+            cash_buffer_years=cash_buffer,
+            div_yield=div_yield,
+            div_growth=div_growth,
+        )
 
     return jsonify({
         "startingBalance": starting_balance,
         "withdrawalRate": withdrawal_rate * 100,
+        "strategy": strategy,
         "results": results,
+        "lastUpdated": datetime.now().isoformat(),
+    })
+
+
+@app.route("/api/rule4pct/compare")
+def api_rule4pct_compare():
+    """Compare multiple strategies side by side for a specific horizon and starting year."""
+    starting_balance = float(request.args.get("balance", 1000000))
+    rate = float(request.args.get("rate", 4)) / 100
+    horizon = int(request.args.get("horizon", 20))
+    div_yield = float(request.args.get("divYield", 4)) / 100
+    cash_buffer = int(request.args.get("cashBuffer", 0))
+
+    historic = load_historic_data()
+    if not historic:
+        return jsonify({"error": "No historic data available"}), 404
+
+    returns_by_year = {h["year"]: h["annualReturn"] for h in historic}
+    cpi_by_year = {h["year"]: h["cpi"] for h in historic}
+    all_years = sorted(returns_by_year.keys())
+    max_year = all_years[-1]
+
+    comparison = {}
+    for strat in ["fixed", "guardrails", "dividend", "combined"]:
+        comparison[strat] = _run_simulation(
+            returns_by_year, cpi_by_year, all_years, max_year,
+            starting_balance, rate, horizon,
+            strategy=strat,
+            cash_buffer_years=cash_buffer,
+            div_yield=div_yield,
+        )
+
+    return jsonify({
+        "startingBalance": starting_balance,
+        "withdrawalRate": rate * 100,
+        "horizon": horizon,
+        "divYield": div_yield * 100,
+        "comparison": comparison,
         "lastUpdated": datetime.now().isoformat(),
     })
 
