@@ -1143,14 +1143,42 @@
 
         <!-- Rebalancing Tab -->
         <div class="tab-content" id="rebalancing">
-            <div class="card" style="margin-bottom: 32px;">
+            <div class="card" style="margin-bottom: 24px;">
                 <div class="card-title">💵 Buying Power</div>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;" id="buyingPowerCards"></div>
             </div>
 
-            <div class="card">
+            <div class="card" style="margin-bottom: 24px;">
                 <div class="card-title">⚖️ Category Allocation vs Target</div>
                 <div id="rebalancingComparators"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">📊 Rebalancing Calculator</div>
+                <div class="table-wrapper">
+                    <table id="rebalancingTable">
+                        <thead>
+                            <tr>
+                                <th onclick="sortTable(this)">Ticker</th>
+                                <th onclick="sortTable(this)">Price</th>
+                                <th onclick="sortTable(this)">Shares</th>
+                                <th onclick="sortTable(this)">Mkt Value</th>
+                                <th onclick="sortTable(this)">Alloc %</th>
+                                <th onclick="sortTable(this)">Div Yield</th>
+                                <th onclick="sortTable(this)">Signal</th>
+                                <th onclick="sortTable(this)">Category</th>
+                                <th onclick="sortTable(this)">Buying Power</th>
+                                <th>Shares to Buy</th>
+                                <th onclick="sortTable(this)">Buy Cost</th>
+                                <th onclick="sortTable(this)">New Mkt Val</th>
+                                <th onclick="sortTable(this)">New Alloc %</th>
+                                <th onclick="sortTable(this)">New Avg Cost</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rebalancingBody"></tbody>
+                        <tfoot id="rebalancingFoot"></tfoot>
+                    </table>
+                </div>
             </div>
         </div>
 
@@ -2284,22 +2312,10 @@
             const allocations = portfolioData.allocations || {};
             const positions = portfolioData.positions || [];
 
-            // Compute portfolio-level weighted div yield and per-category div yields
             const totalMV = positions.reduce((s, p) => s + (p.marketValue || 0), 0);
-            let weightedDivYield = 0;
-            const catDivYield = {};
-            const catMV = {};
-            positions.forEach(p => {
-                const mv = p.marketValue || 0;
-                const dy = p.divYield || 0;
-                const cat = p.category || 'Other';
-                weightedDivYield += dy * mv;
-                catDivYield[cat] = (catDivYield[cat] || 0) + dy * mv;
-                catMV[cat] = (catMV[cat] || 0) + mv;
-            });
-            weightedDivYield = totalMV > 0 ? weightedDivYield / totalMV : 0;
-
             const cash = summary.cash || 0;
+
+            // Buying power KPIs
             const buyingPowerCards = document.getElementById('buyingPowerCards');
             buyingPowerCards.innerHTML = `
                 <div class="kpi-card">
@@ -2311,11 +2327,18 @@
                 <div class="kpi-card">
                     <div class="kpi-emoji">💰</div>
                     <div class="kpi-label">Portfolio Div Yield</div>
-                    <div class="kpi-value">${formatPercent(weightedDivYield)}</div>
+                    <div class="kpi-value">${(summary.portfolioDivYield || 0).toFixed(2)}%</div>
                     <div class="kpi-sub">Weighted average</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-emoji">📊</div>
+                    <div class="kpi-label">Remaining Cash</div>
+                    <div class="kpi-value" id="remainingCash">${formatMoney(cash)}</div>
+                    <div class="kpi-sub">After proposed buys</div>
                 </div>
             `;
 
+            // Category allocation comparators
             const comparators = document.getElementById('rebalancingComparators');
             const categoryAlloc = allocations.category || {};
             const categoryTarget = targets.category || targets || {};
@@ -2324,7 +2347,6 @@
                 const actualPercent = categoryAlloc[category] || 0;
                 const difference = actualPercent - targetPercent;
                 const status = Math.abs(difference) > 5 ? '⚠️' : '✓';
-                const catYield = catMV[category] > 0 ? catDivYield[category] / catMV[category] : 0;
 
                 return `
                     <div class="comparator-card">
@@ -2347,13 +2369,106 @@
                             <span>Difference:</span>
                             <span class="comparator-value" style="color: ${difference > 0 ? '#ef4444' : '#22c55e'}">${difference > 0 ? '+' : ''}${formatPercent(difference)}</span>
                         </div>
-                        <div class="comparator-row" style="margin-top: 6px;">
-                            <span>Div Yield:</span>
-                            <span class="comparator-value" style="color: #22c55e;">${formatPercent(catYield)}</span>
-                        </div>
                     </div>
                 `;
             }).join('');
+
+            // Rebalancing calculator table
+            const tbody = document.getElementById('rebalancingBody');
+            const tfoot = document.getElementById('rebalancingFoot');
+            const signalMode = document.getElementById('signalMode')?.value || 'avgCost';
+            const useIV = signalMode === 'iv';
+
+            const totalPortfolio = summary.totalPortfolio || 1;
+            let totalBuyCost = 0;
+
+            tbody.innerHTML = positions.map(p => {
+                const buyingPower = p.price > 0 ? Math.floor(cash / p.price) : 0;
+                const signal = useIV ? (p.ivSignal || p.avgCostSignal) : p.avgCostSignal;
+
+                return `<tr>
+                    <td><strong>${p.ticker}</strong></td>
+                    <td>${formatMoney(p.price)}</td>
+                    <td>${parseFloat(p.shares).toFixed(3)}</td>
+                    <td>${formatMoney(p.marketValue)}</td>
+                    <td>${formatPercent(p.weight)}</td>
+                    <td>${p.divYield ? p.divYield.toFixed(2) + '%' : '—'}</td>
+                    <td>${getSignalBadge(signal)}</td>
+                    <td>${getCategoryBadge(p.category)}</td>
+                    <td>${buyingPower}</td>
+                    <td><input type="number" min="0" max="${buyingPower}" value="0" step="1"
+                        class="rebal-input" data-ticker="${p.ticker}" data-price="${p.price}"
+                        data-shares="${p.shares}" data-avgcost="${p.avgCost}" data-mv="${p.marketValue}"
+                        data-alloc="${p.weight}" onchange="updateRebalRow(this)"
+                        style="width: 70px; padding: 4px 6px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; text-align: center;"></td>
+                    <td class="rebal-cost">$0.00</td>
+                    <td class="rebal-newmv">${formatMoney(p.marketValue)}</td>
+                    <td class="rebal-newalloc">${formatPercent(p.weight)}</td>
+                    <td class="rebal-newavg">${formatMoney(p.avgCost)}</td>
+                </tr>`;
+            }).join('');
+
+            tfoot.innerHTML = `<tr style="font-weight: 600; border-top: 2px solid var(--border);">
+                <td colspan="10" style="text-align: right;">Totals:</td>
+                <td id="rebalTotalCost">$0.00</td>
+                <td id="rebalTotalNewMV">${formatMoney(totalMV)}</td>
+                <td colspan="2"></td>
+            </tr>`;
+        }
+
+        function updateRebalRow(input) {
+            const row = input.closest('tr');
+            const sharesToBuy = parseInt(input.value) || 0;
+            const price = parseFloat(input.dataset.price);
+            const currentShares = parseFloat(input.dataset.shares);
+            const avgCost = parseFloat(input.dataset.avgcost);
+            const currentMV = parseFloat(input.dataset.mv);
+
+            const buyCost = sharesToBuy * price;
+            const newMV = currentMV + buyCost;
+            const newShares = currentShares + sharesToBuy;
+            const newAvgCost = newShares > 0 ? (avgCost * currentShares + buyCost) / newShares : avgCost;
+
+            row.querySelector('.rebal-cost').textContent = formatMoney(buyCost);
+            row.querySelector('.rebal-newmv').textContent = formatMoney(newMV);
+            row.querySelector('.rebal-newavg').textContent = formatMoney(newAvgCost);
+
+            // Recalculate all allocations and totals
+            const allInputs = document.querySelectorAll('.rebal-input');
+            let totalBuyCost = 0;
+            let totalNewMV = 0;
+
+            allInputs.forEach(inp => {
+                const qty = parseInt(inp.value) || 0;
+                const p = parseFloat(inp.dataset.price);
+                const mv = parseFloat(inp.dataset.mv);
+                totalBuyCost += qty * p;
+                totalNewMV += mv + qty * p;
+            });
+
+            const cash = portfolioData?.summary?.cash || 0;
+            const remaining = cash - totalBuyCost;
+            const newTotalPortfolio = totalNewMV + remaining;
+
+            // Update all new allocation %
+            allInputs.forEach(inp => {
+                const r = inp.closest('tr');
+                const qty = parseInt(inp.value) || 0;
+                const p = parseFloat(inp.dataset.price);
+                const mv = parseFloat(inp.dataset.mv);
+                const rowNewMV = mv + qty * p;
+                const newAlloc = newTotalPortfolio > 0 ? (rowNewMV / newTotalPortfolio * 100) : 0;
+                r.querySelector('.rebal-newalloc').textContent = formatPercent(newAlloc);
+            });
+
+            document.getElementById('rebalTotalCost').textContent = formatMoney(totalBuyCost);
+            document.getElementById('rebalTotalNewMV').textContent = formatMoney(totalNewMV);
+
+            const remainingEl = document.getElementById('remainingCash');
+            if (remainingEl) {
+                remainingEl.textContent = formatMoney(remaining);
+                remainingEl.className = `kpi-value ${remaining >= 0 ? '' : 'negative'}`;
+            }
         }
 
         // Tab 7: Alerts & Strategy
