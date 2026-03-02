@@ -1123,16 +1123,24 @@
                 <table id="watchlistTable">
                     <thead>
                         <tr>
-                            <th>Ticker</th>
-                            <th>Company</th>
-                            <th>Price</th>
-                            <th>Intrinsic Value</th>
-                            <th>Distance from IV %</th>
-                            <th>Signal</th>
+                            <th onclick="sortTable(this)">Ticker</th>
+                            <th onclick="sortTable(this)">Company</th>
+                            <th onclick="sortTable(this)">Price</th>
+                            <th onclick="sortTable(this)">Day Chg/Sh</th>
+                            <th onclick="sortTable(this)">Day Chg %</th>
+                            <th onclick="sortTable(this)">52W Low</th>
+                            <th onclick="sortTable(this)">52W High</th>
+                            <th onclick="sortTable(this)">Target Price</th>
+                            <th onclick="sortTable(this)">Distance %</th>
+                            <th onclick="sortTable(this)">Signal</th>
+                            <th onclick="sortTable(this)">P/E</th>
+                            <th onclick="sortTable(this)">EPS</th>
+                            <th onclick="sortTable(this)">Div Yield</th>
+                            <th onclick="sortTable(this)">Ann. Dividend</th>
+                            <th onclick="sortTable(this)">Income (100 Sh)</th>
+                            <th onclick="sortTable(this)">Cost (100 Sh)</th>
+                            <th onclick="sortTable(this)">Sector</th>
                             <th>Priority</th>
-                            <th>Day Change</th>
-                            <th>Div Yield</th>
-                            <th>Sector</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -1149,11 +1157,6 @@
             </div>
 
             <div class="card" style="margin-bottom: 24px;">
-                <div class="card-title">⚖️ Category Allocation vs Target</div>
-                <div id="rebalancingComparators"></div>
-            </div>
-
-            <div class="card">
                 <div class="card-title">📊 Rebalancing Calculator</div>
                 <div class="table-wrapper">
                     <table id="rebalancingTable">
@@ -1179,6 +1182,26 @@
                         <tfoot id="rebalancingFoot"></tfoot>
                     </table>
                 </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px; margin-bottom: 24px;">
+                <div class="card">
+                    <div class="card-title">📊 Current Allocation</div>
+                    <div class="chart-container">
+                        <canvas id="rebalCurrentChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title">📈 Allocation After Buys</div>
+                    <div class="chart-container">
+                        <canvas id="rebalProjectedChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">⚖️ Category Allocation vs Target</div>
+                <div id="rebalancingComparators"></div>
             </div>
         </div>
 
@@ -2283,20 +2306,33 @@
             const tbody = document.getElementById('watchlistBody');
             tbody.innerHTML = watchlistData.watchlist.map(item => {
                 const distance = item.distance || 0;
-                const signal = distance < -5 ? 'strong-buy' : distance < 0 ? 'buy' : distance > 50 ? 'expensive' : 'hold';
+                let signal;
+                if (distance < -5) signal = 'Strong Buy';
+                else if (distance < 0) signal = 'Buy';
+                else if (distance > 50) signal = 'Overrated';
+                else if (distance > 20) signal = 'Expensive';
+                else signal = 'Hold';
 
                 return `
                     <tr>
                         <td><strong>${item.ticker}</strong></td>
                         <td>${item.company}</td>
                         <td>${formatMoney(item.price)}</td>
+                        <td class="${(item.dayChangeShare||0) >= 0 ? 'positive' : 'negative'}">${formatMoney(item.dayChangeShare)}</td>
+                        <td class="${(item.dayChangePct||0) >= 0 ? 'positive' : 'negative'}">${formatPercent(item.dayChangePct)}</td>
+                        <td>${formatMoney(item.fiftyTwoWeekLow)}</td>
+                        <td>${formatMoney(item.fiftyTwoWeekHigh)}</td>
                         <td>${formatMoney(item.intrinsicValue)}</td>
-                        <td class="${distance < 0 ? 'positive' : 'negative'}">${formatPercent(distance)}</td>
+                        <td class="${distance <= 0 ? 'positive' : 'negative'}">${formatPercent(distance)}</td>
                         <td>${getSignalBadge(signal)}</td>
-                        <td>${item.priority || 'Medium'}</td>
-                        <td class="${item.dayChange >= 0 ? 'positive' : 'negative'}">${formatPercent(item.dayChange)}</td>
-                        <td>${item.divYield ? formatPercent(item.divYield) : '—'}</td>
+                        <td>${item.pe ? item.pe.toFixed(1) : '—'}</td>
+                        <td>${item.eps ? formatMoney(item.eps) : '—'}</td>
+                        <td>${item.divYield ? item.divYield.toFixed(2) + '%' : '—'}</td>
+                        <td>${item.divRate ? formatMoney(item.divRate) : '—'}</td>
+                        <td>${item.annualIncome100 ? formatMoney(item.annualIncome100) : '—'}</td>
+                        <td>${formatMoney(item.cost100Shares)}</td>
                         <td>${item.sector}</td>
+                        <td>${item.priority || 'Low'}</td>
                         <td><button class="delete-row-btn" onclick="deleteFromWatchlist('${item.ticker}')" title="Remove">✕</button></td>
                     </tr>
                 `;
@@ -2414,7 +2450,25 @@
                 <td id="rebalTotalNewMV">${formatMoney(totalMV)}</td>
                 <td colspan="2"></td>
             </tr>`;
+
+            // Current allocation chart
+            const catAlloc = {};
+            positions.forEach(p => {
+                const cat = p.category || 'Other';
+                catAlloc[cat] = (catAlloc[cat] || 0) + (p.marketValue || 0);
+            });
+            const totalWithCash = totalMV + cash;
+            const catAllocPct = {};
+            Object.entries(catAlloc).forEach(([k, v]) => {
+                catAllocPct[k] = round2(v / totalWithCash * 100);
+            });
+            if (cash > 0) catAllocPct['Cash'] = round2(cash / totalWithCash * 100);
+            createAllocationChart('rebalCurrentChart', catAllocPct, 'Current');
+            // Initial projected = same as current
+            createAllocationChart('rebalProjectedChart', catAllocPct, 'After Buys');
         }
+
+        function round2(n) { return Math.round(n * 100) / 100; }
 
         function updateRebalRow(input) {
             const row = input.closest('tr');
@@ -2469,6 +2523,30 @@
                 remainingEl.textContent = formatMoney(remaining);
                 remainingEl.className = `kpi-value ${remaining >= 0 ? '' : 'negative'}`;
             }
+
+            // Update projected allocation chart
+            const positions = portfolioData?.positions || [];
+            const projCatMV = {};
+            positions.forEach(p => {
+                const cat = p.category || 'Other';
+                projCatMV[cat] = (projCatMV[cat] || 0) + (p.marketValue || 0);
+            });
+            // Add buy amounts per category
+            allInputs.forEach(inp => {
+                const qty = parseInt(inp.value) || 0;
+                if (qty > 0) {
+                    const ticker = inp.dataset.ticker;
+                    const pos = positions.find(p => p.ticker === ticker);
+                    const cat = pos?.category || 'Other';
+                    projCatMV[cat] = (projCatMV[cat] || 0) + qty * parseFloat(inp.dataset.price);
+                }
+            });
+            const projAllocPct = {};
+            Object.entries(projCatMV).forEach(([k, v]) => {
+                projAllocPct[k] = round2(v / newTotalPortfolio * 100);
+            });
+            if (remaining > 0) projAllocPct['Cash'] = round2(remaining / newTotalPortfolio * 100);
+            createAllocationChart('rebalProjectedChart', projAllocPct, 'After Buys');
         }
 
         // Tab 7: Alerts & Strategy
