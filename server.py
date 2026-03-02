@@ -1003,6 +1003,21 @@ def api_my_lab_delete_holding():
     save_portfolio(portfolio)
     return jsonify({"ok": True})
 
+@app.route("/api/my-lab/update-portfolio", methods=["POST"])
+def api_my_lab_update_portfolio():
+    b = request.get_json()
+    pi = int(b.get("portfolioIndex", -1))
+    portfolio = load_portfolio()
+    lab = portfolio.get("myLab", [])
+    if pi < 0 or pi >= len(lab):
+        return jsonify({"error": "Invalid portfolio index"}), 400
+    for field in ("name", "lastUpdate", "source"):
+        if field in b:
+            lab[pi][field] = b[field]
+    portfolio["myLab"] = lab
+    save_portfolio(portfolio)
+    return jsonify({"ok": True})
+
 
 # ── Intrinsic Values ───────────────────────────────────────────────────
 @app.route("/api/intrinsic-values")
