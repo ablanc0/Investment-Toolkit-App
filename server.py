@@ -470,8 +470,19 @@ def api_watchlist():
     for ticker in tickers:
         q = quotes.get(ticker, {})
         price = q.get("price", 0)
+        prev_close = q.get("previousClose", price)
         target_price = q.get("targetMeanPrice", 0)
         dist_pct = round(((price - target_price) / target_price * 100) if target_price > 0 else 0, 2)
+        div_rate = q.get("divRate", 0) or 0
+        div_yield = q.get("divYield", 0) or 0
+        if div_rate == 0 and div_yield > 0 and price > 0:
+            div_rate = round(price * div_yield / 100, 4)
+        annual_income_100 = round(div_rate * 100, 2) if div_rate else 0
+        cost_100_shares = round(price * 100, 2) if price else 0
+        eps = q.get("pe", 0)
+        pe = q.get("pe", 0)
+        # EPS = Price / PE
+        eps_val = round(price / pe, 2) if pe and pe > 0 else 0
 
         result.append({
             "ticker": ticker,
@@ -480,16 +491,24 @@ def api_watchlist():
             "price": round(price, 2),
             "intrinsicValue": round(target_price, 2),
             "iv": round(target_price, 2),
-            "pe": q.get("pe", 0),
+            "pe": pe,
+            "eps": eps_val,
             "marketCap": q.get("marketCap", 0),
             "priority": priorities.get(ticker, "Low"),
             "distance": dist_pct,
             "dist": dist_pct,
+            "dayChangeShare": round(price - prev_close, 2),
             "dayChange": q.get("changePercent", 0),
             "dayChangePct": q.get("changePercent", 0),
             "sector": q.get("sector", ""),
             "industry": q.get("industry", ""),
-            "divYield": q.get("divYield", 0),
+            "divYield": div_yield,
+            "divRate": div_rate,
+            "annualIncome100": annual_income_100,
+            "cost100Shares": cost_100_shares,
+            "fiftyTwoWeekHigh": q.get("fiftyTwoWeekHigh", 0),
+            "fiftyTwoWeekLow": q.get("fiftyTwoWeekLow", 0),
+            "beta": q.get("beta", 0),
         })
 
     return jsonify({"watchlist": result, "lastUpdated": datetime.now().isoformat()})
