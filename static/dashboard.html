@@ -1335,6 +1335,13 @@
                 </div>
                 <div id="monthlyContainer"></div>
             </div>
+            <div class="card" style="margin-top: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <div class="card-title" style="margin-bottom: 0;">💰 Monthly Income Distribution</div>
+                    <div id="incomeDistKpis" style="display: flex; gap: 16px; font-size: 0.85rem;"></div>
+                </div>
+                <div id="incomeDistContainer"></div>
+            </div>
         </div>
 
         <!-- ═══ ANNUAL DATA TAB ═══ -->
@@ -2755,8 +2762,80 @@
         }
 
         function populateMonthlyData() {
-            const container = document.getElementById('monthlyContainer');
-            container.innerHTML = '<p style="color: var(--text-dim);">Monthly data aggregation coming soon.</p>';
+            // Placeholder until fetchMonthlyData loads the actual data
+        }
+
+        function renderIncomeDistribution(matrix, years) {
+            const container = document.getElementById('incomeDistContainer');
+            const kpis = document.getElementById('incomeDistKpis');
+            if (!container || !matrix.length || !years.length) {
+                if (container) container.innerHTML = '<p style="color: var(--text-dim);">No income distribution data available.</p>';
+                return;
+            }
+
+            // Filter to years that have any data
+            const activeYears = years.filter(y => matrix.some(r => r[String(y)] > 0));
+            if (!activeYears.length) {
+                container.innerHTML = '<p style="color: var(--text-dim);">No dividend income recorded yet.</p>';
+                return;
+            }
+
+            // KPIs from totals row
+            const totalsRow = matrix.find(r => r.month === 'Total');
+            const currentYear = new Date().getFullYear();
+            const currentYearTotal = totalsRow ? totalsRow[String(currentYear)] || 0 : 0;
+            const prevYearTotal = totalsRow ? totalsRow[String(currentYear - 1)] || 0 : 0;
+            const yoyGrowth = totalsRow ? totalsRow[`yoy_${currentYear}`] : null;
+
+            if (kpis) {
+                kpis.innerHTML = `
+                    <span style="color: var(--text-dim);">${currentYear} YTD: <strong class="positive">${formatMoney(currentYearTotal)}</strong></span>
+                    <span style="color: var(--text-dim);">${currentYear - 1} Total: <strong>${formatMoney(prevYearTotal)}</strong></span>
+                    ${yoyGrowth !== null && yoyGrowth !== undefined ? `<span style="color: var(--text-dim);">YOY: <strong class="${yoyGrowth >= 0 ? 'positive' : 'negative'}">${yoyGrowth > 0 ? '+' : ''}${yoyGrowth.toFixed(1)}%</strong></span>` : ''}
+                `;
+            }
+
+            // Build table headers: Month | Year1 | Year2 | YOY% | Year3 | YOY% | ...
+            let headerHtml = '<th style="position: sticky; left: 0; z-index: 2; background: var(--card-hover);">Month</th>';
+            for (let i = 0; i < activeYears.length; i++) {
+                headerHtml += `<th style="text-align: right;">${activeYears[i]}</th>`;
+                if (i > 0) {
+                    headerHtml += `<th style="text-align: right; font-size: 0.75rem; color: var(--text-dim);">YOY %</th>`;
+                }
+            }
+
+            // Build rows (12 months + totals)
+            let bodyHtml = '';
+            for (const row of matrix) {
+                const isTotal = row.month === 'Total';
+                const rowStyle = isTotal ? 'font-weight: 700; background: var(--card-hover); border-top: 2px solid var(--border);' : '';
+                bodyHtml += `<tr style="${rowStyle}">`;
+                bodyHtml += `<td style="font-weight: 600; white-space: nowrap; position: sticky; left: 0; z-index: 1; background: ${isTotal ? 'var(--card-hover)' : 'var(--card)'};">${row.month}</td>`;
+
+                for (let i = 0; i < activeYears.length; i++) {
+                    const yr = activeYears[i];
+                    const val = row[String(yr)] || 0;
+                    const valColor = val > 0 ? '#4ade80' : 'var(--text-dim)';
+                    bodyHtml += `<td style="text-align: right; color: ${valColor};">${val > 0 ? formatMoney(val) : '—'}</td>`;
+
+                    if (i > 0) {
+                        const yoy = row[`yoy_${yr}`];
+                        if (yoy !== undefined && yoy !== null) {
+                            const yoyColor = yoy > 0 ? '#4ade80' : yoy < 0 ? '#f87171' : 'var(--text-dim)';
+                            bodyHtml += `<td style="text-align: right; font-size: 0.8rem; color: ${yoyColor};">${yoy > 0 ? '+' : ''}${yoy.toFixed(1)}%</td>`;
+                        } else {
+                            bodyHtml += `<td style="text-align: right; color: var(--text-dim);">—</td>`;
+                        }
+                    }
+                }
+                bodyHtml += '</tr>';
+            }
+
+            container.innerHTML = `
+                <div class="table-wrapper"><table style="font-size: 0.85rem;">
+                    <thead><tr>${headerHtml}</tr></thead>
+                    <tbody>${bodyHtml}</tbody>
+                </table></div>`;
         }
 
         function populateAnnualData() {
@@ -3624,6 +3703,7 @@
             try {
                 const data = await fetch('/api/monthly-data').then(r => r.json());
                 renderMonthlyData(data.monthlyData || []);
+                renderIncomeDistribution(data.incomeDistribution || [], data.years || []);
             } catch(e) { console.error(e); }
         }
 

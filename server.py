@@ -915,8 +915,46 @@ def api_monthly_data():
 
         month_entry["dividendIncome"] = round(dividend_total, 2)
     
+    # Build monthly income distribution matrix: months x years
+    month_names = ["January", "February", "March", "April", "May", "June",
+                   "July", "August", "September", "October", "November", "December"]
+    now = datetime.now()
+    current_year = now.year
+    current_month_idx = now.month  # 1-based
+    years = sorted(set(e.get("year") for e in monthly_data if e.get("year")))
+    income_matrix = []
+    for m_idx, m_name in enumerate(month_names, 1):
+        row = {"month": m_name}
+        prev_val = None
+        for y in years:
+            val = 0.0
+            for e in monthly_data:
+                if e.get("year") == y and e.get("month", "").startswith(m_name):
+                    val = e.get("dividendIncome", 0.0)
+                    break
+            row[str(y)] = round(val, 2)
+            # Only compute YOY if this month has already occurred in year y
+            month_has_passed = y < current_year or (y == current_year and m_idx <= current_month_idx)
+            if prev_val is not None and prev_val > 0 and month_has_passed:
+                row[f"yoy_{y}"] = round((val - prev_val) / prev_val * 100, 1)
+            prev_val = val
+        income_matrix.append(row)
+
+    # Yearly totals row
+    totals = {"month": "Total"}
+    prev_total = None
+    for y in years:
+        total = sum(r[str(y)] for r in income_matrix)
+        totals[str(y)] = round(total, 2)
+        if prev_total is not None and prev_total > 0 and y <= current_year:
+            totals[f"yoy_{y}"] = round((total - prev_total) / prev_total * 100, 1)
+        prev_total = total
+    income_matrix.append(totals)
+
     return jsonify({
         "monthlyData": monthly_data,
+        "incomeDistribution": income_matrix,
+        "years": years,
         "lastUpdated": datetime.now().isoformat()
     })
 
