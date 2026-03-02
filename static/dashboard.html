@@ -357,6 +357,7 @@
         .cat-foundational { background: #312e81; color: var(--purple); }
         .cat-international { background: #3f2e1d; color: var(--gold); }
         .cat-bonds { background: #2e3620; color: #84cc16; }
+        .cat-cash { background: #2e2e2e; color: #a0a0a0; }
 
         .signal-strong-buy { background: #1d3f2e; color: var(--green); }
         .signal-buy { background: #1e3a8a; color: var(--blue); }
@@ -987,6 +988,10 @@
                 <select class="filter-select" id="sectorFilter">
                     <option value="">All Sectors</option>
                 </select>
+                <select class="filter-select" id="signalMode">
+                    <option value="avgCost">Signal: Avg Cost</option>
+                    <option value="iv">Signal: Intrinsic Value</option>
+                </select>
             </div>
             <div class="table-wrapper">
                 <table id="positionsTable">
@@ -1013,13 +1018,10 @@
                             <th onclick="sortTable(this)">% of Income</th>
                             <th onclick="sortTable(this)">Ann. Sh Purch</th>
                             <th onclick="sortTable(this)">Intrinsic Val</th>
-                            <th onclick="sortTable(this)">Dist. from IV</th>
-                            <th onclick="sortTable(this)">IV Signal</th>
-                            <th onclick="sortTable(this)">Dist. Avg Cost</th>
-                            <th onclick="sortTable(this)">Avg Cost Signal</th>
+                            <th onclick="sortTable(this)">Distance</th>
+                            <th onclick="sortTable(this)">Signal</th>
                             <th>Category</th>
                             <th>Sector</th>
-                            <th>Signal</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -1680,15 +1682,20 @@
         }
 
         function getCategoryBadge(category) {
+            if (!category) return '';
+            const key = category.toLowerCase().replace(/\s+/g, ' ');
             const categoryMap = {
                 'growth': 'cat-growth',
+                'value stocks': 'cat-value',
                 'value': 'cat-value',
                 'foundational': 'cat-foundational',
                 'international': 'cat-international',
-                'bonds': 'cat-bonds'
+                'us bonds': 'cat-bonds',
+                'bonds': 'cat-bonds',
+                'cash': 'cat-cash'
             };
-            const className = categoryMap[category] || 'cat-growth';
-            return `<span class="badge ${className}">${category.toUpperCase()}</span>`;
+            const className = categoryMap[key] || 'cat-growth';
+            return `<span class="badge ${className}">${category}</span>`;
         }
 
         function showAlert(message, type = 'info') {
@@ -1884,14 +1891,24 @@
             searchInput.addEventListener('input', () => filterPositionsTable(positions));
             categoryFilter.addEventListener('change', () => filterPositionsTable(positions));
             sectorFilter.addEventListener('change', () => filterPositionsTable(positions));
+            document.getElementById('signalMode').addEventListener('change', () => filterPositionsTable(positions));
         }
 
         function renderPositionsTable(positions) {
             const tbody = document.getElementById('positionsBody');
             const categories = ['Growth', 'Value Stocks', 'Foundational', 'International', 'US Bonds'];
+            const mode = document.getElementById('signalMode').value;
+            const useIV = mode === 'iv';
 
-            tbody.innerHTML = positions.map(p => `
-                <tr>
+            const rows = positions.map(p => {
+                const dist = useIV ? p.distFromIV : p.distFromAvgCost;
+                const signal = useIV ? (p.ivSignal || p.avgCostSignal) : p.avgCostSignal;
+                const distClass = useIV
+                    ? ((p.distFromIV||0) <= 0 ? 'positive' : 'negative')
+                    : ((p.distFromAvgCost||0) >= 0 ? 'positive' : 'negative');
+                const distDisplay = useIV && !p.intrinsicValue ? '—' : formatPercent(dist);
+
+                return `<tr>
                     <td><strong>${p.ticker}</strong></td>
                     <td>${p.company}</td>
                     <td class="editable" onclick="editCell(this, '${p.ticker}', 'shares', ${p.shares}, 'number')">${parseFloat(p.shares).toFixed(3)}</td>
@@ -1913,16 +1930,34 @@
                     <td>${p.pctOfTotalIncome ? p.pctOfTotalIncome.toFixed(1) + '%' : '—'}</td>
                     <td>${p.annualSharesPurch ? p.annualSharesPurch.toFixed(3) : '—'}</td>
                     <td>${p.intrinsicValue ? formatMoney(p.intrinsicValue) : '—'}</td>
-                    <td class="${(p.distFromIV||0) <= 0 ? 'positive' : 'negative'}">${p.intrinsicValue ? formatPercent(p.distFromIV) : '—'}</td>
-                    <td>${p.ivSignal ? getSignalBadge(p.ivSignal) : '—'}</td>
-                    <td class="${(p.distFromAvgCost||0) >= 0 ? 'positive' : 'negative'}">${formatPercent(p.distFromAvgCost)}</td>
-                    <td>${getSignalBadge(p.avgCostSignal)}</td>
+                    <td class="${distClass}">${distDisplay}</td>
+                    <td>${getSignalBadge(signal)}</td>
                     <td class="editable" onclick="editCellSelect(this, '${p.ticker}', 'category', '${p.category}', ${JSON.stringify(categories).replace(/"/g, '&quot;')})">${getCategoryBadge(p.category)}</td>
                     <td class="editable" onclick="editCell(this, '${p.ticker}', 'sector', '${p.sector}', 'text')">${p.sector}</td>
-                    <td>${getSignalBadge(p.signal)}</td>
                     <td><button class="delete-row-btn" onclick="deletePosition('${p.ticker}')" title="Remove position">✕</button></td>
-                </tr>
-            `).join('');
+                </tr>`;
+            }).join('');
+
+            // Cash row (26 columns total)
+            const cash = portfolioData?.summary?.cash || 0;
+            const totalPortfolio = portfolioData?.summary?.totalPortfolio || 1;
+            const cashWeight = (cash / totalPortfolio * 100);
+            const cashRow = `<tr style="border-top: 2px solid var(--border); font-style: italic; opacity: 0.85;">
+                <td><strong>CASH</strong></td>
+                <td>Cash & Equivalents</td>
+                <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+                <td>—</td>
+                <td>${formatMoney(cash)}</td>
+                <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+                <td>${formatPercent(cashWeight)}</td>
+                <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+                <td>—</td><td>—</td><td>—</td>
+                <td>${getCategoryBadge('Cash')}</td>
+                <td>—</td>
+                <td></td>
+            </tr>`;
+
+            tbody.innerHTML = rows + cashRow;
         }
 
         function filterPositionsTable(positions) {
