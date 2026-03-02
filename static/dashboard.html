@@ -314,6 +314,19 @@
             padding: 12px;
             border-bottom: 1px solid var(--border);
             font-size: 14px;
+            white-space: nowrap;
+        }
+
+        /* Sticky ticker column */
+        #positionsTable th:first-child,
+        #positionsTable td:first-child {
+            position: sticky;
+            left: 0;
+            z-index: 1;
+            background: var(--card-bg);
+        }
+        #positionsTable tr:hover td:first-child {
+            background: var(--card-hover);
         }
 
         tr:hover {
@@ -984,12 +997,26 @@
                             <th onclick="sortTable(this)">Shares</th>
                             <th onclick="sortTable(this)">Avg Cost</th>
                             <th onclick="sortTable(this)">Price</th>
+                            <th onclick="sortTable(this)">Day Chg/Sh</th>
+                            <th onclick="sortTable(this)">Day Chg %</th>
                             <th onclick="sortTable(this)">Cost Basis</th>
                             <th onclick="sortTable(this)">Market Value</th>
+                            <th onclick="sortTable(this)">Market Ret.</th>
+                            <th onclick="sortTable(this)">Market Ret.%</th>
+                            <th onclick="sortTable(this)">Divs Recv'd</th>
                             <th onclick="sortTable(this)">Total Return</th>
                             <th onclick="sortTable(this)">Return %</th>
                             <th onclick="sortTable(this)">Weight</th>
                             <th onclick="sortTable(this)">Div Yield</th>
+                            <th onclick="sortTable(this)">Yield on Cost</th>
+                            <th onclick="sortTable(this)">Ann. Div Inc</th>
+                            <th onclick="sortTable(this)">% of Income</th>
+                            <th onclick="sortTable(this)">Ann. Sh Purch</th>
+                            <th onclick="sortTable(this)">Intrinsic Val</th>
+                            <th onclick="sortTable(this)">Dist. from IV</th>
+                            <th onclick="sortTable(this)">IV Signal</th>
+                            <th onclick="sortTable(this)">Dist. Avg Cost</th>
+                            <th onclick="sortTable(this)">Avg Cost Signal</th>
                             <th>Category</th>
                             <th>Sector</th>
                             <th>Signal</th>
@@ -1639,6 +1666,8 @@
         }
 
         function getSignalBadge(signal) {
+            if (!signal) return '';
+            const key = signal.toLowerCase().replace(/\s+/g, '-');
             const signalMap = {
                 'strong-buy': 'signal-strong-buy',
                 'buy': 'signal-buy',
@@ -1646,8 +1675,8 @@
                 'overrated': 'signal-overrated',
                 'expensive': 'signal-expensive'
             };
-            const className = signalMap[signal] || 'signal-hold';
-            return `<span class="badge ${className}">${signal.replace('-', ' ').toUpperCase()}</span>`;
+            const className = signalMap[key] || 'signal-hold';
+            return `<span class="badge ${className}">${signal.toUpperCase()}</span>`;
         }
 
         function getCategoryBadge(category) {
@@ -1868,12 +1897,26 @@
                     <td class="editable" onclick="editCell(this, '${p.ticker}', 'shares', ${p.shares}, 'number')">${parseFloat(p.shares).toFixed(3)}</td>
                     <td class="editable" onclick="editCell(this, '${p.ticker}', 'avgCost', ${p.avgCost}, 'number')">${formatMoney(p.avgCost)}</td>
                     <td>${formatMoney(p.price)}</td>
+                    <td class="${(p.dayChangeShare||0) >= 0 ? 'positive' : 'negative'}">${formatMoney(p.dayChangeShare)}</td>
+                    <td class="${(p.dayChangePct||0) >= 0 ? 'positive' : 'negative'}">${formatPercent(p.dayChangePct)}</td>
                     <td>${formatMoney(p.costBasis)}</td>
                     <td>${formatMoney(p.marketValue)}</td>
+                    <td class="${(p.marketReturn||0) >= 0 ? 'positive' : 'negative'}">${formatMoney(p.marketReturn)}</td>
+                    <td class="${(p.marketReturnPct||0) >= 0 ? 'positive' : 'negative'}">${formatPercent(p.marketReturnPct)}</td>
+                    <td>${formatMoney(p.totalDivsReceived)}</td>
                     <td class="${p.totalReturn >= 0 ? 'positive' : 'negative'}">${formatMoney(p.totalReturn)}</td>
                     <td class="${p.returnPercent >= 0 ? 'positive' : 'negative'}">${formatPercent(p.returnPercent)}</td>
                     <td>${formatPercent(p.weight)}</td>
                     <td>${p.divYield ? p.divYield.toFixed(2) + '%' : '—'}</td>
+                    <td>${p.yieldOnCost ? p.yieldOnCost.toFixed(2) + '%' : '—'}</td>
+                    <td>${formatMoney(p.annualDivIncome)}</td>
+                    <td>${p.pctOfTotalIncome ? p.pctOfTotalIncome.toFixed(1) + '%' : '—'}</td>
+                    <td>${p.annualSharesPurch ? p.annualSharesPurch.toFixed(3) : '—'}</td>
+                    <td>${p.intrinsicValue ? formatMoney(p.intrinsicValue) : '—'}</td>
+                    <td class="${(p.distFromIV||0) <= 0 ? 'positive' : 'negative'}">${p.intrinsicValue ? formatPercent(p.distFromIV) : '—'}</td>
+                    <td>${p.ivSignal ? getSignalBadge(p.ivSignal) : '—'}</td>
+                    <td class="${(p.distFromAvgCost||0) >= 0 ? 'positive' : 'negative'}">${formatPercent(p.distFromAvgCost)}</td>
+                    <td>${getSignalBadge(p.avgCostSignal)}</td>
                     <td class="editable" onclick="editCellSelect(this, '${p.ticker}', 'category', '${p.category}', ${JSON.stringify(categories).replace(/"/g, '&quot;')})">${getCategoryBadge(p.category)}</td>
                     <td class="editable" onclick="editCell(this, '${p.ticker}', 'sector', '${p.sector}', 'text')">${p.sector}</td>
                     <td>${getSignalBadge(p.signal)}</td>

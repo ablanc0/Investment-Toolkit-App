@@ -129,8 +129,8 @@ def fetch_ticker_data(ticker):
             "forwardPE": info.get("forwardPE", 0),
             "sector": info.get("sector", ""),
             "industry": info.get("industry", ""),
-            "divYield": round(info.get("dividendYield") or 0, 2),
-            "divRate": info.get("dividendRate", 0),
+            "divYield": round(info.get("dividendYield") or info.get("trailingAnnualDividendYield") or 0, 2),
+            "divRate": info.get("dividendRate") or info.get("trailingAnnualDividendRate", 0),
             "beta": info.get("beta", 0),
             "fiftyTwoWeekHigh": info.get("fiftyTwoWeekHigh", 0),
             "fiftyTwoWeekLow": info.get("fiftyTwoWeekLow", 0),
@@ -203,10 +203,27 @@ def api_portfolio():
 
     quotes = fetch_all_quotes(tickers)
 
+    # Build IV lookup from intrinsicValues
+    iv_list = portfolio.get("intrinsicValues", [])
+    iv_map = {}
+    for iv in iv_list:
+        t = iv.get("ticker", "")
+        if t:
+            iv_map[t] = iv
+
+    # Build total dividends received lookup from dividendLog
+    div_log = portfolio.get("dividendLog", [])
+    total_divs_received = {}
+    for entry in div_log:
+        for key, val in entry.items():
+            if key not in ("year", "month", "cashInterest", "total") and val:
+                total_divs_received[key] = total_divs_received.get(key, 0) + float(val or 0)
+
     enriched = []
     total_market_value = 0
     total_cost_basis = 0
     total_day_change = 0
+    total_annual_div_income = 0
 
     for p in pos_list:
         ticker = p["ticker"]
@@ -221,13 +238,62 @@ def api_portfolio():
         avg_cost = p["avgCost"]
         cost_basis = shares * avg_cost
         market_value = shares * price
-        total_return = market_value - cost_basis
-        total_return_pct = (total_return / cost_basis * 100) if cost_basis > 0 else 0
-        day_change_val = shares * (price - prev_close)
+        market_return = market_value - cost_basis
+        market_return_pct = (market_return / cost_basis * 100) if cost_basis > 0 else 0
+        day_change_share = price - prev_close
+        day_change_val = shares * day_change_share
+
+        # Dividend fields
+        div_rate = q.get("divRate", 0) or 0
+        div_yield = q.get("divYield", 0) or 0
+        # For ETFs where divRate is missing but divYield exists, derive rate from price
+        if div_rate == 0 and div_yield > 0 and price > 0:
+            div_rate = round(price * div_yield / 100, 4)
+        annual_div_income = div_rate * shares
+        yield_on_cost = (div_rate / avg_cost * 100) if avg_cost > 0 else 0
+        divs_received = total_divs_received.get(ticker, 0)
+        total_return_val = market_return + divs_received
+        total_return_pct = (total_return_val / cost_basis * 100) if cost_basis > 0 else 0
+        annual_shares_purch = (annual_div_income / price) if price > 0 else 0
+
+        # IV fields
+        iv_data = iv_map.get(ticker, {})
+        intrinsic_value = iv_data.get("intrinsicValue", 0) or 0
+        invt_score = iv_data.get("invtScore", 0) or 0
+        dist_from_iv = ((price - intrinsic_value) / intrinsic_value) if intrinsic_value > 0 else 0
+        dist_from_avg = ((price - avg_cost) / avg_cost) if avg_cost > 0 else 0
+
+        # IV Signal
+        if intrinsic_value > 0:
+            if dist_from_iv > 0.50:
+                iv_signal = "Overrated"
+            elif dist_from_iv > 0.20:
+                iv_signal = "Expensive"
+            elif dist_from_iv < -0.05:
+                iv_signal = "Strong Buy"
+            elif dist_from_iv < 0.05:
+                iv_signal = "Buy"
+            else:
+                iv_signal = "Hold"
+        else:
+            iv_signal = ""
+
+        # Avg Cost Signal
+        if dist_from_avg > 0.50:
+            avg_cost_signal = "Overrated"
+        elif dist_from_avg > 0.20:
+            avg_cost_signal = "Expensive"
+        elif dist_from_avg < -0.05:
+            avg_cost_signal = "Strong Buy"
+        elif dist_from_avg < 0.05:
+            avg_cost_signal = "Buy"
+        else:
+            avg_cost_signal = "Hold"
 
         total_market_value += market_value
         total_cost_basis += cost_basis
         total_day_change += day_change_val
+        total_annual_div_income += annual_div_income
 
         enriched.append({
             "ticker": ticker,
@@ -240,9 +306,12 @@ def api_portfolio():
             "costBasis": round(cost_basis, 2),
             "marketValue": round(market_value, 2),
             "mktValue": round(market_value, 2),
-            "totalReturn": round(total_return, 2),
+            "marketReturn": round(market_return, 2),
+            "marketReturnPct": round(market_return_pct, 2),
+            "totalReturn": round(total_return_val, 2),
             "returnPercent": round(total_return_pct, 2),
             "totalRetPct": round(total_return_pct, 2),
+            "dayChangeShare": round(day_change_share, 2),
             "dayChange": round(day_change_val, 2),
             "dayChangePercent": round(day_change_pct, 2),
             "dayChangePct": round(day_change_pct, 2),
@@ -252,7 +321,18 @@ def api_portfolio():
             "sector": p.get("sector", ""),
             "category": p.get("category", ""),
             "signal": "",
-            "divYield": q.get("divYield", 0),
+            "divYield": div_yield,
+            "divRate": div_rate,
+            "yieldOnCost": round(yield_on_cost, 2),
+            "annualDivIncome": round(annual_div_income, 2),
+            "totalDivsReceived": round(divs_received, 2),
+            "annualSharesPurch": round(annual_shares_purch, 3),
+            "intrinsicValue": round(intrinsic_value, 2),
+            "invtScore": round(invt_score, 2),
+            "distFromIV": round(dist_from_iv * 100, 2),
+            "ivSignal": iv_signal,
+            "distFromAvgCost": round(dist_from_avg * 100, 2),
+            "avgCostSignal": avg_cost_signal,
             "pe": q.get("pe", 0),
             "marketCap": q.get("marketCap", 0),
             "beta": q.get("beta", 0),
@@ -304,6 +384,10 @@ def api_portfolio():
         else:
             pos["signal"] = "Hold"
 
+    # Percent of total dividend income
+    for pos in enriched:
+        pos["pctOfTotalIncome"] = round((pos["annualDivIncome"] / total_annual_div_income * 100) if total_annual_div_income > 0 else 0, 2)
+
     # Goals array
     raw_goals = portfolio.get("goals", {})
     goals_array = []
@@ -333,6 +417,7 @@ def api_portfolio():
             "cash": cash,
             "holdings": len(enriched),
             "totalPortfolio": round(total_portfolio, 2),
+            "annualDivIncome": round(total_annual_div_income, 2),
         },
         "allocations": {
             "category": cat_alloc,
