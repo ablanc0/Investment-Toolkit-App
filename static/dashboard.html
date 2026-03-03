@@ -3662,77 +3662,208 @@
             uEl.className = 'value ' + (upside >= 0 ? 'green' : 'red');
         }
 
+        function _runDcfScenario(baseFcf, p1Growth, p2Growth, wacc, perpGrowth, totalDebt, totalCash, shares, mos, price) {
+            let pvSum = 0, fcfVal = baseFcf;
+            const projected = [];
+            for (let yr = 1; yr <= 9; yr++) {
+                const g = yr <= 5 ? p1Growth : p2Growth;
+                fcfVal *= (1 + g);
+                const pv = fcfVal / Math.pow(1 + wacc, yr);
+                pvSum += pv;
+                projected.push({year: yr, fcf: fcfVal, pvFcf: pv});
+            }
+            if (wacc <= perpGrowth) return null;
+            const terminal = fcfVal * (1 + perpGrowth) / (wacc - perpGrowth);
+            const pvTerminal = terminal / Math.pow(1 + wacc, 9);
+            const ev = pvSum + pvTerminal;
+            const eqVal = ev - totalDebt + totalCash;
+            const iv = shares > 0 ? eqVal / shares : 0;
+            const mosIv = iv * (mos / 100);
+            const upside = price > 0 ? ((mosIv - price) / price * 100) : 0;
+            return {projected, terminal, pvTerminal, ev, eqVal, iv, mosIv, upside};
+        }
+
+        function rebuildFcfTable() {
+            const tbody = document.getElementById('dcf-hist-tbody');
+            if (!tbody || !window._dcfFcfLookup) return;
+            const period = parseInt(document.getElementById('dcf-fcf-period').value) || 5;
+            const latest = window._dcfLatestYear;
+            const lookup = window._dcfFcfLookup;
+
+            let rows = '';
+            for (let i = period - 1; i >= 0; i--) {
+                const year = latest - i;
+                const hasFcf = lookup[String(year)] != null;
+                const fcfVal = hasFcf ? lookup[String(year)] : '';
+                const fcfDisplay = hasFcf ? Math.round(fcfVal) : '';
+                rows += `<tr>
+                    <td>${year}</td>
+                    <td><input type="number" class="dcf-fcf-input form-input" data-year="${year}"
+                        value="${fcfDisplay}" placeholder="Enter FCF"
+                        style="width:130px; text-align:right; padding:2px 6px; font-size:0.82rem;${hasFcf ? '' : ' border-color:var(--accent); background: rgba(99,102,241,0.05);'}"
+                        onchange="recalcFcfGrowth()"></td>
+                    <td class="dcf-growth-cell" data-year="${year}" style="font-size:0.82rem;">—</td>
+                </tr>`;
+            }
+            tbody.innerHTML = rows;
+            recalcFcfGrowth();
+        }
+
+        function recalcFcfGrowth() {
+            const inputs = document.querySelectorAll('.dcf-fcf-input');
+            const pairs = [];
+            inputs.forEach(inp => {
+                const yr = parseInt(inp.dataset.year);
+                const val = inp.value !== '' ? parseFloat(inp.value) : null;
+                pairs.push({year: yr, fcf: val});
+            });
+            // Compute growth rates
+            const growths = [];
+            for (let i = 1; i < pairs.length; i++) {
+                const cell = document.querySelector(`.dcf-growth-cell[data-year="${pairs[i].year}"]`);
+                if (pairs[i].fcf != null && pairs[i-1].fcf != null && pairs[i-1].fcf > 0 && pairs[i].fcf > 0) {
+                    const g = (pairs[i].fcf - pairs[i-1].fcf) / pairs[i-1].fcf;
+                    growths.push(g);
+                    if (cell) {
+                        cell.textContent = (g * 100).toFixed(1) + '%';
+                        cell.style.color = g >= 0 ? '#22c55e' : '#ef4444';
+                    }
+                } else {
+                    if (cell) { cell.textContent = '—'; cell.style.color = ''; }
+                }
+            }
+            // First row has no growth
+            const firstCell = document.querySelector(`.dcf-growth-cell[data-year="${pairs[0]?.year}"]`);
+            if (firstCell) { firstCell.textContent = '—'; firstCell.style.color = ''; }
+
+            // Trimmed mean (drop 20% extremes)
+            let avgGrowth = 0;
+            if (growths.length > 0) {
+                const sorted = [...growths].sort((a, b) => a - b);
+                const trimN = Math.floor(sorted.length * 0.2);
+                const trimmed = sorted.slice(trimN, sorted.length - trimN || sorted.length);
+                avgGrowth = trimmed.length > 0 ? trimmed.reduce((a, b) => a + b, 0) / trimmed.length : 0;
+            }
+            const avgEl = document.getElementById('dcf-histAvgGrowth');
+            if (avgEl) avgEl.textContent = (avgGrowth * 100).toFixed(1) + '%';
+
+            // Update Phase 1 Growth input with base scenario factor (×0.7)
+            const growthInput = document.getElementById('dcf-growth');
+            if (growthInput) {
+                const base = avgGrowth * 0.7;
+                const capped = Math.max(-0.05, Math.min(base, 0.30));
+                growthInput.value = (capped * 100).toFixed(1);
+            }
+
+            // Also store for recalcDcf scenario rebuild
+            window._dcfHistAvgGrowth = avgGrowth;
+
+            recalcDcf();
+        }
+
         function recalcDcf() {
             if (!_analyzerData || !_analyzerData.valuation || !_analyzerData.valuation.dcf) return;
             const dcf = _analyzerData.valuation.dcf;
             const riskFree = parseFloat(document.getElementById('dcf-riskFree').value) / 100 || 0.0425;
             const mktReturn = parseFloat(document.getElementById('dcf-mktReturn').value) / 100 || 0.10;
-            const growthRate = parseFloat(document.getElementById('dcf-growth').value) / 100;
+            const p1Growth = parseFloat(document.getElementById('dcf-growth').value) / 100;
             const perpGrowth = parseFloat(document.getElementById('dcf-perpGrowth').value) / 100 || 0.025;
             const mos = parseFloat(document.getElementById('dcf-mos').value) || 70;
+
+            const p2Growth = p1Growth * 0.7; // Phase 2 deceleration
+            document.getElementById('dcf-phase2').textContent = (p2Growth * 100).toFixed(1) + '%';
 
             // Recalc WACC
             const beta = dcf.beta;
             const costOfEquity = riskFree + beta * (mktReturn - riskFree);
             const debtW = dcf.debtToCapital / 100;
             const eqW = dcf.equityToCapital / 100;
-            const costOfDebt = dcf.costOfDebt / 100; // keep original
+            const costOfDebt = dcf.costOfDebt / 100;
             const wacc = Math.max(eqW * costOfEquity + debtW * costOfDebt, 0.05);
 
-            // Re-project FCF
-            const baseFcf = dcf.historicalFcf[dcf.historicalFcf.length - 1].fcf;
-            let pvSum = 0;
-            let fcfVal = baseFcf;
-            const projected = [];
-            for (let yr = 1; yr <= 9; yr++) {
-                fcfVal = fcfVal * (1 + growthRate);
-                const disc = Math.pow(1 + wacc, yr);
-                const pv = fcfVal / disc;
-                pvSum += pv;
-                projected.push({year: yr, fcf: fcfVal, pvFcf: pv});
+            // Get base FCF from the last filled row in the editable table
+            let baseFcf = dcf.historicalFcf[dcf.historicalFcf.length - 1].fcf;
+            const fcfInputs = document.querySelectorAll('.dcf-fcf-input');
+            if (fcfInputs.length > 0) {
+                // Find last row with a value
+                for (let i = fcfInputs.length - 1; i >= 0; i--) {
+                    if (fcfInputs[i].value !== '') {
+                        baseFcf = parseFloat(fcfInputs[i].value);
+                        break;
+                    }
+                }
             }
-
-            if (wacc <= perpGrowth) return;
-            const terminal = fcfVal * (1 + perpGrowth) / (wacc - perpGrowth);
-            const pvTerminal = terminal / Math.pow(1 + wacc, 9);
-            const ev = pvSum + pvTerminal;
-
-            // Use original debt/cash from the data
             const info = _analyzerData;
             const totalDebt = info.totalDebt || 0;
             const totalCash = info.totalCash || 0;
             const shares = info.sharesOutstanding || 0;
+            const price = info.price || 0;
             if (shares <= 0) return;
 
-            const eqVal = ev - totalDebt + totalCash;
-            const iv = eqVal / shares;
-            const mosIv = iv * (mos / 100);
-            const price = _analyzerData.price || 0;
-            const upside = price > 0 ? ((mosIv - price) / price * 100) : 0;
+            // Run base scenario
+            const base = _runDcfScenario(baseFcf, p1Growth, p2Growth, wacc, perpGrowth, totalDebt, totalCash, shares, mos, price);
+            if (!base) return;
 
             // Update display
             document.getElementById('dcf-costOfEquity').textContent = (costOfEquity * 100).toFixed(2) + '%';
             document.getElementById('dcf-wacc-display').textContent = (wacc * 100).toFixed(2) + '%';
-            document.getElementById('dcf-ev').textContent = fmtBigNum(ev);
-            document.getElementById('dcf-eqVal').textContent = fmtBigNum(eqVal);
-            document.getElementById('dcf-iv').textContent = formatMoney(iv);
-            document.getElementById('dcf-mosIv').textContent = formatMoney(mosIv);
+            document.getElementById('dcf-ev').textContent = fmtBigNum(base.ev);
+            document.getElementById('dcf-eqVal').textContent = fmtBigNum(base.eqVal);
+            document.getElementById('dcf-iv').textContent = formatMoney(base.iv);
+            document.getElementById('dcf-mosIv').textContent = formatMoney(base.mosIv);
             const uEl = document.getElementById('dcf-upside');
-            uEl.textContent = (upside >= 0 ? '+' : '') + upside.toFixed(1) + '%';
-            uEl.className = 'value ' + (upside >= 0 ? 'green' : 'red');
+            uEl.textContent = (base.upside >= 0 ? '+' : '') + base.upside.toFixed(1) + '%';
+            uEl.className = 'value ' + (base.upside >= 0 ? 'green' : 'red');
 
             // Update projected FCF table
             const tbody = document.getElementById('dcf-proj-tbody');
             if (tbody) {
-                tbody.innerHTML = projected.map(r => `<tr>
-                    <td>Year ${r.year}</td>
+                tbody.innerHTML = base.projected.map(r => `<tr>
+                    <td>Year ${r.year}${r.year === 6 ? ' <span style="color:var(--text-dim);font-size:0.72rem;">(Phase 2)</span>' : ''}</td>
                     <td>${fmtBigNum(r.fcf)}</td>
                     <td>${fmtBigNum(r.pvFcf)}</td>
                 </tr>`).join('') + `<tr style="font-weight: 700; border-top: 2px solid var(--border);">
                     <td>Terminal Value</td>
-                    <td>${fmtBigNum(terminal)}</td>
-                    <td>${fmtBigNum(pvTerminal)}</td>
+                    <td>${fmtBigNum(base.terminal)}</td>
+                    <td>${fmtBigNum(base.pvTerminal)}</td>
                 </tr>`;
+            }
+
+            // Update scenario comparison table — use live avg growth from editable table
+            const histAvg = window._dcfHistAvgGrowth != null ? window._dcfHistAvgGrowth : dcf.histAvgGrowth / 100;
+            // Swap factors when growth is negative so Best = least negative
+            const scenarios = histAvg >= 0 ? [
+                {name: 'Best', factor: 0.9},
+                {name: 'Base', factor: 0.7},
+                {name: 'Worst', factor: 0.5},
+            ] : [
+                {name: 'Best', factor: 0.5},
+                {name: 'Base', factor: 0.7},
+                {name: 'Worst', factor: 0.9},
+            ];
+            // Update scenario avg label
+            const scenLabel = document.getElementById('dcf-scenAvgLabel');
+            if (scenLabel) scenLabel.textContent = (histAvg * 100).toFixed(1) + '%';
+
+            const scenTbody = document.getElementById('dcf-scenario-tbody');
+            if (scenTbody) {
+                scenTbody.innerHTML = scenarios.map(s => {
+                    let sp1 = histAvg * s.factor;
+                    sp1 = Math.max(-0.05, Math.min(sp1, 0.30));
+                    let sp2 = sp1 * 0.7;
+                    sp2 = Math.max(-0.03, Math.min(sp2, 0.20));
+                    const r = _runDcfScenario(baseFcf, sp1, sp2, wacc, perpGrowth, totalDebt, totalCash, shares, mos, price);
+                    if (!r) return '';
+                    const upColor = r.upside >= 0 ? '#22c55e' : '#ef4444';
+                    return `<tr>
+                        <td>${s.name}</td>
+                        <td>${(sp1 * 100).toFixed(1)}%</td>
+                        <td>${(sp2 * 100).toFixed(1)}%</td>
+                        <td>${formatMoney(r.iv)}</td>
+                        <td>${formatMoney(r.mosIv)}</td>
+                        <td style="color:${upColor}">${r.upside >= 0 ? '+' : ''}${r.upside.toFixed(1)}%</td>
+                    </tr>`;
+                }).join('');
             }
         }
 
@@ -3899,28 +4030,49 @@
                 <div style="margin-top: 12px; font-size: 1.1rem; font-weight: 700; color: var(--accent);">WACC: <span id="dcf-wacc-display">${dcf.wacc}%</span></div>
             </div>`;
 
-            // Historical FCF
+            // Historical FCF with editable values and period selector
+            const apiYears = dcf.historicalFcf.map(r => ({year: String(r.year).replace(/^.*(\d{4}).*$/, '$1'), fcf: r.fcf}));
+            const latestYear = apiYears.length > 0 ? parseInt(apiYears[apiYears.length - 1].year) : new Date().getFullYear();
+            // Build 10-year range; pre-fill with API data
+            const fcfLookup = {};
+            apiYears.forEach(r => fcfLookup[r.year] = r.fcf);
+
             html += `<div class="valuation-card">
-                <div class="valuation-card-title">Historical Free Cash Flow</div>
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                    <div class="valuation-card-title" style="margin-bottom:0;">Historical Free Cash Flow</div>
+                    <div style="display:flex; align-items: center; gap: 8px; font-size: 0.82rem;">
+                        <span style="color: var(--text-dim);">Period:</span>
+                        <select id="dcf-fcf-period" class="form-input" style="padding:2px 8px; font-size:0.82rem;" onchange="rebuildFcfTable()">
+                            <option value="5">5 Years</option>
+                            <option value="10">10 Years</option>
+                        </select>
+                    </div>
+                </div>
                 <table class="fcf-table">
-                    <thead><tr><th>Year</th><th>FCF</th><th>Growth</th></tr></thead>
-                    <tbody>${dcf.historicalFcf.map(r => `<tr>
-                        <td>${r.year}</td>
-                        <td>${fmtBigNum(r.fcf)}</td>
-                        <td style="color: ${(r.growth || 0) >= 0 ? '#22c55e' : '#ef4444'}">${r.growth != null ? r.growth + '%' : '—'}</td>
-                    </tr>`).join('')}</tbody>
+                    <thead><tr><th>Year</th><th>FCF ($)</th><th>Growth</th></tr></thead>
+                    <tbody id="dcf-hist-tbody"></tbody>
                 </table>
-                <div style="margin-top: 8px; font-size: 0.85rem; display: flex; align-items: center; gap: 8px;">
-                    <span style="color: var(--text-dim);">FCF Growth Rate %</span>
+                <div style="margin-top: 8px; font-size: 0.82rem; color: var(--text-dim);">Historical Avg Growth: <strong style="color: var(--text);" id="dcf-histAvgGrowth">${dcf.histAvgGrowth}%</strong></div>
+                <div style="margin-top: 8px; font-size: 0.85rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <span style="color: var(--text-dim);">Phase 1 Growth (Yr 1-5) %</span>
                     <input id="dcf-growth" type="number" step="0.5" value="${dcf.growthRate}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcf()">
-                    <span style="color: var(--text-dim); font-size: 0.78rem;">(default: trimmed mean × 0.7)</span>
+                    <span style="color: var(--text-dim);">Phase 2 (Yr 6-9):</span>
+                    <span id="dcf-phase2" style="font-weight: 600;">${dcf.phase2Growth}%</span>
+                    <span style="color: var(--text-dim); font-size: 0.78rem;">(= Phase 1 × 0.7)</span>
                 </div>
             </div>`;
 
-            // Projected FCF
+            // Store FCF data globally for table rebuild
+            window._dcfFcfLookup = fcfLookup;
+            window._dcfLatestYear = latestYear;
+
+            // Build/rebuild the FCF table based on selected period
+            setTimeout(() => rebuildFcfTable(), 0);
+
+            // Projected FCF (base scenario)
             html += `<div class="valuation-card">
-                <div class="valuation-card-title">Projected Free Cash Flow (9 Years)</div>
-                <div style="margin-bottom: 8px; font-size: 0.85rem; display: flex; align-items: center; gap: 8px;">
+                <div class="valuation-card-title">Projected Free Cash Flow — Base Scenario (9 Years)</div>
+                <div style="margin-bottom: 8px; font-size: 0.85rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                     <span style="color: var(--text-dim);">Perpetual Growth %</span>
                     <input id="dcf-perpGrowth" type="number" step="0.25" value="2.5" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcf()">
                     <span style="color: var(--text-dim);">Margin of Safety %</span>
@@ -3929,7 +4081,7 @@
                 <table class="fcf-table">
                     <thead><tr><th>Year</th><th>FCF</th><th>PV of FCF</th></tr></thead>
                     <tbody id="dcf-proj-tbody">${dcf.projectedFcf.map(r => `<tr>
-                        <td>Year ${r.year}</td>
+                        <td>Year ${r.year}${r.year === 6 ? ' <span style="color:var(--text-dim);font-size:0.72rem;">(Phase 2)</span>' : ''}</td>
                         <td>${fmtBigNum(r.fcf)}</td>
                         <td>${fmtBigNum(r.pvFcf)}</td>
                     </tr>`).join('')}
@@ -3941,7 +4093,7 @@
                 </table>
             </div>`;
 
-            // Result
+            // Base result
             const upsideColor = dcf.upside >= 0 ? 'green' : 'red';
             html += `<div class="iv-result-box">
                 <div class="iv-result-item"><div class="label">Enterprise Value</div><div class="value" id="dcf-ev">${fmtBigNum(dcf.enterpriseValue)}</div></div>
@@ -3949,6 +4101,32 @@
                 <div class="iv-result-item"><div class="label">IV / Share</div><div class="value" id="dcf-iv">${formatMoney(dcf.ivPerShare)}</div></div>
                 <div class="iv-result-item"><div class="label">MoS IV</div><div class="value" id="dcf-mosIv">${formatMoney(dcf.marginOfSafetyIv)}</div></div>
                 <div class="iv-result-item"><div class="label">Upside</div><div class="value ${upsideColor}" id="dcf-upside">${(dcf.upside >= 0 ? '+' : '') + dcf.upside}%</div></div>
+            </div>`;
+
+            // Scenario comparison table (Best / Base / Worst)
+            const scenarios = dcf.scenarios || {};
+            const scenRows = ['best', 'base', 'worst'].map(name => {
+                const s = scenarios[name];
+                if (!s) return '';
+                const label = name.charAt(0).toUpperCase() + name.slice(1);
+                const upColor = s.upside >= 0 ? '#22c55e' : '#ef4444';
+                return `<tr>
+                    <td style="font-weight:600;">${label}</td>
+                    <td>${s.phase1Growth}%</td>
+                    <td>${s.phase2Growth}%</td>
+                    <td>${formatMoney(s.ivPerShare)}</td>
+                    <td>${formatMoney(s.marginOfSafetyIv)}</td>
+                    <td style="color:${upColor}">${s.upside >= 0 ? '+' : ''}${s.upside}%</td>
+                </tr>`;
+            }).join('');
+
+            html += `<div class="valuation-card">
+                <div class="valuation-card-title">Scenario Comparison (Best / Base / Worst)</div>
+                <p style="font-size: 0.78rem; color: var(--text-dim); margin-bottom: 8px;">Growth factors applied to historical avg (<span id="dcf-scenAvgLabel">${dcf.histAvgGrowth}%</span>): Best ×0.9, Base ×0.7, Worst ×0.5</p>
+                <table class="fcf-table">
+                    <thead><tr><th>Scenario</th><th>Phase 1</th><th>Phase 2</th><th>IV/Share</th><th>MoS IV</th><th>Upside</th></tr></thead>
+                    <tbody id="dcf-scenario-tbody">${scenRows}</tbody>
+                </table>
             </div>`;
 
             return html;

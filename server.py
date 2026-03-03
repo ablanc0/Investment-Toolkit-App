@@ -1386,8 +1386,51 @@ def _trimmean(values, pct=0.2):
     return sum(trimmed) / len(trimmed) if trimmed else 0
 
 
+def _dcf_scenario(base_fcf, phase1_growth, phase2_growth, wacc, total_debt, total_cash, shares, price):
+    """Run a single DCF scenario with two-phase growth. Returns dict or None."""
+    projected = []
+    pv_sum = 0
+    fcf_val = base_fcf
+    for yr in range(1, 10):
+        g = phase1_growth if yr <= 5 else phase2_growth
+        fcf_val = fcf_val * (1 + g)
+        discount = (1 + wacc) ** yr
+        pv = fcf_val / discount
+        pv_sum += pv
+        projected.append({"year": yr, "fcf": round(fcf_val), "pvFcf": round(pv)})
+
+    if wacc <= PERPETUAL_GROWTH:
+        return None
+    terminal = fcf_val * (1 + PERPETUAL_GROWTH) / (wacc - PERPETUAL_GROWTH)
+    pv_terminal = terminal / ((1 + wacc) ** 9)
+    enterprise_val = pv_sum + pv_terminal
+    equity_val = enterprise_val - total_debt + total_cash
+    if shares <= 0:
+        return None
+    iv = equity_val / shares
+    mos_iv = iv * MARGIN_OF_SAFETY
+    upside = ((mos_iv - price) / price * 100) if price > 0 else 0
+
+    return {
+        "phase1Growth": round(phase1_growth * 100, 1),
+        "phase2Growth": round(phase2_growth * 100, 1),
+        "projectedFcf": projected,
+        "terminalValue": round(terminal),
+        "pvTerminal": round(pv_terminal),
+        "enterpriseValue": round(enterprise_val),
+        "equityValue": round(equity_val),
+        "ivPerShare": round(iv, 2),
+        "marginOfSafetyIv": round(mos_iv, 2),
+        "upside": round(upside, 1),
+    }
+
+
 def compute_dcf(info, income, balance, cashflow):
-    """DCF valuation: WACC → FCF projections → terminal value → IV/share."""
+    """DCF valuation: WACC → two-phase FCF projections → 3 scenarios → IV/share.
+
+    Matches Excel model: Phase 1 (Yr 1-5) higher growth, Phase 2 (Yr 6-9) = Phase1 × 0.7.
+    Three scenarios: Best (avg × 0.9), Base (avg × 0.7), Worst (avg × 0.5).
+    """
     try:
         beta = info.get("beta") or 1.0
         cost_of_equity = RISK_FREE_RATE + beta * (MARKET_RETURN - RISK_FREE_RATE)
@@ -1451,45 +1494,41 @@ def compute_dcf(info, income, balance, cashflow):
                 growths.append((curr - prev) / prev)
                 historical_fcf[i]["growth"] = round((curr - prev) / prev * 100, 1)
 
-        growth_rate = _trimmean(growths) * 0.7 if growths else 0.05
-        growth_rate = max(-0.05, min(growth_rate, 0.25))
+        hist_avg_growth = _trimmean(growths) if growths else 0.07
 
-        # Project 9 years
+        # Three scenarios: Best (×0.9), Base (×0.7), Worst (×0.5) of historical avg
+        # Phase 1 (Yr 1-5): scenario growth, Phase 2 (Yr 6-9): Phase1 × 0.7
+        # When hist_avg is positive: Best has highest growth, Worst lowest
+        # When hist_avg is negative: swap factors so Best = least negative
+        if hist_avg_growth >= 0:
+            scenario_factors = {"best": 0.9, "base": 0.7, "worst": 0.5}
+        else:
+            scenario_factors = {"best": 0.5, "base": 0.7, "worst": 0.9}
+
         base_fcf = historical_fcf[-1]["fcf"]
         if base_fcf <= 0:
             base_fcf = info.get("freeCashflow") or 0
         if base_fcf <= 0:
             return None
 
-        projected = []
-        pv_sum = 0
-        fcf_val = base_fcf
-        for yr in range(1, 10):
-            fcf_val = fcf_val * (1 + growth_rate)
-            discount = (1 + wacc) ** yr
-            pv = fcf_val / discount
-            pv_sum += pv
-            projected.append({
-                "year": yr, "fcf": round(fcf_val), "pvFcf": round(pv)
-            })
-
-        # Terminal value
-        if wacc <= PERPETUAL_GROWTH:
-            return None
-        terminal = fcf_val * (1 + PERPETUAL_GROWTH) / (wacc - PERPETUAL_GROWTH)
-        pv_terminal = terminal / ((1 + wacc) ** 9)
-
-        enterprise_val = pv_sum + pv_terminal
-        total_cash = info.get("totalCash") or 0
-        equity_val = enterprise_val - total_debt + total_cash
-        shares = info.get("sharesOutstanding") or 0
-        if shares <= 0:
-            return None
-
-        iv = equity_val / shares
-        mos_iv = iv * MARGIN_OF_SAFETY
         price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
-        upside = ((mos_iv - price) / price * 100) if price > 0 else 0
+        total_cash = info.get("totalCash") or 0
+        shares = info.get("sharesOutstanding") or 0
+
+        scenarios = {}
+        for name, factor in scenario_factors.items():
+            p1 = hist_avg_growth * factor
+            p1 = max(-0.05, min(p1, 0.30))  # cap
+            p2 = p1 * 0.7  # deceleration in Phase 2
+            p2 = max(-0.03, min(p2, 0.20))
+            result = _dcf_scenario(base_fcf, p1, p2, wacc, total_debt, total_cash, shares, price)
+            if result:
+                scenarios[name] = result
+
+        if "base" not in scenarios:
+            return None
+
+        base = scenarios["base"]
 
         return {
             "riskFreeRate": round(RISK_FREE_RATE * 100, 2),
@@ -1502,15 +1541,19 @@ def compute_dcf(info, income, balance, cashflow):
             "debtToCapital": round(debt_weight * 100, 1),
             "equityToCapital": round(equity_weight * 100, 1),
             "historicalFcf": historical_fcf,
-            "growthRate": round(growth_rate * 100, 1),
-            "projectedFcf": projected,
-            "terminalValue": round(terminal),
-            "pvTerminal": round(pv_terminal),
-            "enterpriseValue": round(enterprise_val),
-            "equityValue": round(equity_val),
-            "ivPerShare": round(iv, 2),
-            "marginOfSafetyIv": round(mos_iv, 2),
-            "upside": round(upside, 1),
+            "histAvgGrowth": round(hist_avg_growth * 100, 1),
+            "scenarios": scenarios,
+            # Base scenario as top-level for backward compat
+            "growthRate": base["phase1Growth"],
+            "phase2Growth": base["phase2Growth"],
+            "projectedFcf": base["projectedFcf"],
+            "terminalValue": base["terminalValue"],
+            "pvTerminal": base["pvTerminal"],
+            "enterpriseValue": base["enterpriseValue"],
+            "equityValue": base["equityValue"],
+            "ivPerShare": base["ivPerShare"],
+            "marginOfSafetyIv": base["marginOfSafetyIv"],
+            "upside": base["upside"],
         }
     except Exception as e:
         print(f"[DCF] Error: {e}")
