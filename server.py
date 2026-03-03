@@ -1676,7 +1676,7 @@ def _get_salary_data(portfolio):
         salary = migrate_salary_data(salary)
         portfolio["salary"] = salary
         save_portfolio(portfolio)
-    # Fix legacy tax names
+    # Fix legacy tax names + backfill missing effectiveTaxRate in history
     changed = False
     for pid, profile in salary.get("profiles", {}).items():
         taxes = profile.get("taxes", {})
@@ -1684,6 +1684,10 @@ def _get_salary_data(portfolio):
             cfg = taxes.get(tkey, {})
             if cfg.get("name") in _TAX_NAME_MAP:
                 cfg["name"] = _TAX_NAME_MAP[cfg["name"]]
+                changed = True
+        for h in profile.get("history", []):
+            if "effectiveTaxRate" not in h and h.get("annualPayroll", 0) > 0:
+                h["effectiveTaxRate"] = round(1 - h["takeHomePay"] / h["annualPayroll"], 4)
                 changed = True
     if changed:
         portfolio["salary"] = salary
