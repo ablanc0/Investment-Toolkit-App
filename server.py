@@ -1400,143 +1400,419 @@ def api_stock_analyzer(ticker):
 
 
 # ── Salary & Retirement ────────────────────────────────────────────────
-def compute_salary_breakdown(s):
-    """Compute full tax breakdown from editable inputs."""
-    w2 = s.get("w2Salary", 0)
-    t1099 = s.get("income1099", 0)
+
+# Federal progressive tax brackets (2023 Single Filer — from Excel)
+FEDERAL_BRACKETS = [
+    (12400, 0.10), (50400, 0.12), (105700, 0.22),
+    (201775, 0.24), (256225, 0.32), (640600, 0.35),
+    (float('inf'), 0.37),
+]
+
+def compute_federal_tax(taxable_income):
+    """Progressive federal tax using standard brackets."""
+    if taxable_income <= 0:
+        return 0
+    tax = 0
+    prev = 0
+    for limit, rate in FEDERAL_BRACKETS:
+        amt = min(taxable_income, limit) - prev
+        if amt <= 0:
+            break
+        tax += amt * rate
+        prev = limit
+    return round(tax, 2)
+
+
+def _default_taxes():
+    return {
+        "iraContributionPct": 0.03,
+        "standardDeduction": 16100,
+        "cityResidentTax": {"name": "Lansing Resident Tax", "rate": 0.01, "enabled": True},
+        "cityNonResidentTax": {"name": "E Lansing Nonresident Tax", "rate": 0.003, "enabled": True},
+        "stateTax": {"name": "Michigan State Tax", "rate": 0.0425, "enabled": True},
+    }
+
+
+def migrate_salary_data(salary):
+    """Convert old flat salary format to new profiles structure. Idempotent."""
+    if "profiles" in salary:
+        return salary  # already migrated
+
+    old = salary.copy()
+    streams = []
+    if old.get("w2Salary", 0) > 0:
+        streams.append({"type": "W2", "amount": old["w2Salary"], "label": "Main Job"})
+    if old.get("income1099", 0) > 0:
+        streams.append({"type": "1099", "amount": old["income1099"], "label": "Freelance"})
+    if not streams:
+        streams.append({"type": "W2", "amount": 0, "label": "Main Job"})
+
+    taxes = _default_taxes()
+    if "iraContributionPct" in old:
+        taxes["iraContributionPct"] = old["iraContributionPct"]
+    if "lansingTaxPct" in old:
+        taxes["cityResidentTax"]["rate"] = old["lansingTaxPct"]
+    if "eLansingTaxPct" in old:
+        taxes["cityNonResidentTax"]["rate"] = old["eLansingTaxPct"]
+    if "michiganTaxPct" in old:
+        taxes["stateTax"]["rate"] = old["michiganTaxPct"]
+
+    profile = {
+        "name": "Alejandro",
+        "year": old.get("year", datetime.now().year),
+        "incomeStreams": streams,
+        "taxes": taxes,
+        "projectedSalary": old.get("projectedW2", 140000),
+        "history": old.get("history", []),
+    }
+
+    new_salary = {
+        "activeProfile": "alejandro",
+        "profiles": {"alejandro": profile},
+        "savedMoney": old.get("savedMoney", 0),
+        "pctSavingsToInvest": old.get("pctSavingsToInvest", 1.0),
+        "pctIncomeCanSave": old.get("pctIncomeCanSave", 0.25),
+        "yearsUntilRetirement": old.get("yearsUntilRetirement", 20),
+        "desiredRetirementSalary": old.get("desiredRetirementSalary", 0),
+        "annualInterestRate": old.get("annualInterestRate", 0),
+        "returnRateRetirement": old.get("returnRateRetirement", 0.04),
+    }
+    return new_salary
+
+
+def compute_salary_breakdown(profile):
+    """Compute full tax breakdown for a salary profile."""
+    streams = profile.get("incomeStreams", [])
+    taxes = profile.get("taxes", _default_taxes())
+
+    w2 = sum(s["amount"] for s in streams if s.get("type") == "W2")
+    t1099 = sum(s["amount"] for s in streams if s.get("type") in ("1099", "Other"))
     total = w2 + t1099
-    ira_pct = s.get("iraContributionPct", 0.03)
-    lansing_pct = s.get("lansingTaxPct", 0.01)
-    elansing_pct = s.get("eLansingTaxPct", 0.003)
-    michigan_pct = s.get("michiganTaxPct", 0.0425)
-    federal_pct = s.get("federalTaxPct", 0.12)
-    ss_pct = s.get("ssPct", 0.062)
-    medicare_pct = s.get("medicarePct", 0.0145)
-    se_factor = 0.9235  # self-employment tax factor
+    if total == 0:
+        total = 0.01  # avoid division by zero
+
+    ira_pct = taxes.get("iraContributionPct", 0.03)
+    std_deduction = taxes.get("standardDeduction", 16100)
+    se_factor = 0.9235
+    ss_pct = 0.062
+    medicare_pct = 0.0145
 
     # IRA only on W2
     w2_ira = round(w2 * ira_pct, 2)
-    t1099_ira = 0
-    total_ira = w2_ira
 
-    # Taxable base: salary minus IRA for W2, gross for 1099
-    w2_taxable_base = w2 - w2_ira
-    t1099_taxable_base = t1099
+    # Taxable base for local/state: salary minus IRA for W2, gross for 1099
+    w2_local_base = w2 - w2_ira
+    t1099_local_base = t1099
 
-    # Local & state taxes on taxable base
-    w2_lansing = round(w2_taxable_base * lansing_pct, 2)
-    t1099_lansing = round(t1099_taxable_base * lansing_pct, 2)
-    w2_elansing = round(w2_taxable_base * elansing_pct, 2)
-    t1099_elansing = round(t1099_taxable_base * elansing_pct, 2)
-    w2_michigan = round(w2_taxable_base * michigan_pct, 2)
-    t1099_michigan = round(t1099_taxable_base * michigan_pct, 2)
+    # Build tax rows dynamically from config
+    rows = []
+    w2_deductions = w2_ira
+    t1099_deductions = 0
 
-    # Federal on taxable base
-    w2_federal = round(w2_taxable_base * federal_pct, 2)
-    t1099_federal = round(t1099_taxable_base * federal_pct, 2)
+    # Row: Annual Salary
+    rows.append({"label": "Annual Salary", "total": round(total, 2), "totalMo": round(total/12, 2),
+                 "w2": round(w2, 2), "w2Mo": round(w2/12, 2), "t1099": round(t1099, 2), "t1099Mo": round(t1099/12, 2), "isIncome": True})
 
-    # SS & Medicare: W2 on gross, 1099 self-employed (both halves on 92.35%)
+    # Row: Pre-Tax Deductions (IRA)
+    rows.append({"label": "Pre-Tax Deductions (IRA)", "total": round(w2_ira, 2), "totalMo": round(w2_ira/12, 2),
+                 "w2": round(w2_ira, 2), "w2Mo": round(w2_ira/12, 2), "t1099": 0, "t1099Mo": 0,
+                 "ratePct": ira_pct*100, "rateKey": "iraContributionPct"})
+
+    # Configurable local/state taxes (toggleable)
+    tax_lines = [
+        ("cityResidentTax", w2_local_base, t1099_local_base),
+        ("cityNonResidentTax", w2_local_base, t1099_local_base),
+        ("stateTax", w2_local_base, t1099_local_base),
+    ]
+    w2_local_total = 0
+    t1099_local_total = 0
+    for key, w2_base, t1099_base in tax_lines:
+        cfg = taxes.get(key, {})
+        if not cfg.get("enabled", False):
+            continue
+        rate = cfg.get("rate", 0)
+        name = cfg.get("name", key)
+        w2_amt = round(w2_base * rate, 2)
+        t1099_amt = round(t1099_base * rate, 2)
+        total_amt = round(w2_amt + t1099_amt, 2)
+        w2_local_total += w2_amt
+        t1099_local_total += t1099_amt
+        w2_deductions += w2_amt
+        t1099_deductions += t1099_amt
+        rows.append({"label": name, "total": total_amt, "totalMo": round(total_amt/12, 2),
+                     "w2": w2_amt, "w2Mo": round(w2_amt/12, 2), "t1099": t1099_amt, "t1099Mo": round(t1099_amt/12, 2),
+                     "ratePct": rate*100, "taxKey": key, "toggleable": True})
+
+    # Federal tax — progressive brackets with standard deduction
+    w2_fed_taxable = max(0, w2 - w2_ira - std_deduction)
+    # 1099: deduct half of SE tax from federal taxable income
+    t1099_se_tax = t1099 * se_factor * (ss_pct + medicare_pct) * 2
+    t1099_fed_taxable = max(0, t1099 - round(t1099_se_tax / 2, 2))
+    w2_federal = compute_federal_tax(w2_fed_taxable)
+    t1099_federal = compute_federal_tax(t1099_fed_taxable)
+    total_federal = round(w2_federal + t1099_federal, 2)
+    # Compute effective federal rate for display
+    fed_base = w2_fed_taxable + t1099_fed_taxable
+    eff_fed_pct = round((total_federal / fed_base) * 100, 2) if fed_base > 0 else 0
+    w2_deductions += w2_federal
+    t1099_deductions += t1099_federal
+    rows.append({"label": "Federal Tax", "total": total_federal, "totalMo": round(total_federal/12, 2),
+                 "w2": w2_federal, "w2Mo": round(w2_federal/12, 2), "t1099": t1099_federal, "t1099Mo": round(t1099_federal/12, 2),
+                 "effRate": eff_fed_pct, "isFederal": True})
+
+    # Social Security
     w2_ss = round(w2 * ss_pct, 2)
     t1099_ss = round(t1099 * se_factor * ss_pct * 2, 2)
-    w2_medicare = round(w2 * medicare_pct, 2)
-    t1099_medicare = round(t1099 * se_factor * medicare_pct * 2, 2)
+    total_ss = round(w2_ss + t1099_ss, 2)
+    w2_deductions += w2_ss
+    t1099_deductions += t1099_ss
+    rows.append({"label": "Social Security", "total": total_ss, "totalMo": round(total_ss/12, 2),
+                 "w2": w2_ss, "w2Mo": round(w2_ss/12, 2), "t1099": t1099_ss, "t1099Mo": round(t1099_ss/12, 2),
+                 "fixedRate": round(ss_pct*100, 2)})
+
+    # Medicare
+    w2_med = round(w2 * medicare_pct, 2)
+    t1099_med = round(t1099 * se_factor * medicare_pct * 2, 2)
+    total_med = round(w2_med + t1099_med, 2)
+    w2_deductions += w2_med
+    t1099_deductions += t1099_med
+    rows.append({"label": "Medicare", "total": total_med, "totalMo": round(total_med/12, 2),
+                 "w2": w2_med, "w2Mo": round(w2_med/12, 2), "t1099": t1099_med, "t1099Mo": round(t1099_med/12, 2),
+                 "fixedRate": round(medicare_pct*100, 2)})
 
     # Totals
-    w2_withheld = w2_ira + w2_lansing + w2_elansing + w2_michigan + w2_federal + w2_ss + w2_medicare
-    t1099_withheld = t1099_ira + t1099_lansing + t1099_elansing + t1099_michigan + t1099_federal + t1099_ss + t1099_medicare
-    total_withheld = w2_withheld + t1099_withheld
-
-    w2_takehome = round(w2 - w2_withheld, 2)
-    t1099_takehome = round(t1099 - t1099_withheld, 2)
+    total_withheld = round(w2_deductions + t1099_deductions, 2)
+    w2_takehome = round(w2 - w2_deductions, 2)
+    t1099_takehome = round(t1099 - t1099_deductions, 2)
     total_takehome = round(total - total_withheld, 2)
 
+    rows.append({"label": "Total Withheld", "total": total_withheld, "totalMo": round(total_withheld/12, 2),
+                 "w2": round(w2_deductions, 2), "w2Mo": round(w2_deductions/12, 2),
+                 "t1099": round(t1099_deductions, 2), "t1099Mo": round(t1099_deductions/12, 2), "isSummary": True})
+    rows.append({"label": "Take-Home Pay", "total": total_takehome, "totalMo": round(total_takehome/12, 2),
+                 "w2": w2_takehome, "w2Mo": round(w2_takehome/12, 2),
+                 "t1099": t1099_takehome, "t1099Mo": round(t1099_takehome/12, 2), "isSummary": True, "isPositive": True})
+
+    # Hourly / Eff Tax
+    real_total = w2 + t1099  # use actual total, not the 0.01 guard
+    total_hourly = round(real_total / (52 * 40), 2) if real_total > 0 else 0
     w2_hourly = round(w2 / (52 * 40), 2) if w2 > 0 else 0
     t1099_hourly = round(t1099 / (52 * 40), 2) if t1099 > 0 else 0
-    total_hourly = round(total / (52 * 40), 2) if total > 0 else 0
+    total_eff = round(total_withheld / real_total, 4) if real_total > 0 else 0
+    w2_eff = round(w2_deductions / w2, 4) if w2 > 0 else 0
+    t1099_eff = round(t1099_deductions / t1099, 4) if t1099 > 0 else 0
+    rows.append({"label": "Hourly Rate / Eff. Tax %", "total": total_hourly, "totalMo": total_eff,
+                 "w2": w2_hourly, "w2Mo": w2_eff, "t1099": t1099_hourly, "t1099Mo": t1099_eff, "isRate": True})
 
-    w2_eff_tax = round(w2_withheld / w2, 4) if w2 > 0 else 0
-    t1099_eff_tax = round(t1099_withheld / t1099, 4) if t1099 > 0 else 0
-    total_eff_tax = round(total_withheld / total, 4) if total > 0 else 0
-
+    # Taxable income row (insert after Annual Salary)
     w2_taxable = round(w2 - w2_ira, 2)
     t1099_taxable = round(t1099, 2)
     total_taxable = round(w2_taxable + t1099_taxable, 2)
+    rows.insert(1, {"label": "Taxable Income", "total": total_taxable, "totalMo": round(total_taxable/12, 2),
+                     "w2": w2_taxable, "w2Mo": round(w2_taxable/12, 2), "t1099": t1099_taxable, "t1099Mo": round(t1099_taxable/12, 2)})
+
+    # Employer cost (W2 only)
+    emp_ira = round(w2 * ira_pct, 2)
+    emp_futa = round(0.006 * 7000 + 0.027 * 9500, 2) if w2 > 0 else 0
+    emp_ss = round(w2 * ss_pct, 2)
+    emp_med = round(w2 * medicare_pct, 2)
+    emp_total = round(emp_ira + emp_futa + emp_ss + emp_med, 2)
+    employer = {
+        "rows": [
+            {"label": "IRA Match", "annual": emp_ira, "monthly": round(emp_ira/12, 2)},
+            {"label": "Federal Unemployment (FUTA)", "annual": emp_futa, "monthly": round(emp_futa/12, 2)},
+            {"label": "Social Security (6.2%)", "annual": emp_ss, "monthly": round(emp_ss/12, 2)},
+            {"label": "Medicare (1.45%)", "annual": emp_med, "monthly": round(emp_med/12, 2)},
+        ],
+        "total": emp_total,
+        "totalMonthly": round(emp_total/12, 2),
+        "costToCompany": round(w2 + emp_total, 2),
+        "costToCompanyMonthly": round((w2 + emp_total)/12, 2),
+    }
+
+    # Projected salary (W2 only, same tax config)
+    proj_amount = profile.get("projectedSalary", 0)
+    projected = None
+    if proj_amount > 0:
+        proj_profile = {
+            "incomeStreams": [{"type": "W2", "amount": proj_amount, "label": "Projected"}],
+            "taxes": taxes,
+        }
+        proj_bd = compute_salary_breakdown(proj_profile)
+        projected = {
+            "amount": proj_amount,
+            "rows": proj_bd["rows"],
+            "summary": proj_bd["summary"],
+            "vsCurrent": {
+                "deltaGross": round(proj_amount - real_total, 2),
+                "deltaTakeHome": round(proj_bd["summary"]["takeHomePay"] - total_takehome, 2),
+                "deltaEffRate": round((proj_bd["summary"]["effectiveTaxRate"] - total_eff) * 100, 2),
+            }
+        }
 
     return {
-        "rows": [
-            {"label": "Annual Salary", "total": total, "totalMo": round(total/12, 2),
-             "w2": w2, "w2Mo": round(w2/12, 2), "t1099": t1099, "t1099Mo": round(t1099/12, 2), "editable": True},
-            {"label": "Taxable Income", "total": total_taxable, "totalMo": round(total_taxable/12, 2),
-             "w2": w2_taxable, "w2Mo": round(w2_taxable/12, 2), "t1099": t1099_taxable, "t1099Mo": round(t1099_taxable/12, 2)},
-            {"label": f"Pre-Tax Deduct. (IRA - {ira_pct*100:.0f}%)", "total": total_ira, "totalMo": round(total_ira/12, 2),
-             "w2": w2_ira, "w2Mo": round(w2_ira/12, 2), "t1099": t1099_ira, "t1099Mo": 0, "ratePct": ira_pct*100, "rateKey": "iraContributionPct"},
-            {"label": f"Lansing Resident Tax ({lansing_pct*100:.0f}%)", "total": round(w2_lansing+t1099_lansing, 2), "totalMo": round((w2_lansing+t1099_lansing)/12, 2),
-             "w2": w2_lansing, "w2Mo": round(w2_lansing/12, 2), "t1099": t1099_lansing, "t1099Mo": round(t1099_lansing/12, 2), "ratePct": lansing_pct*100, "rateKey": "lansingTaxPct"},
-            {"label": f"E Lansing Nonresident ({elansing_pct*100:.1f}%)", "total": round(w2_elansing+t1099_elansing, 2), "totalMo": round((w2_elansing+t1099_elansing)/12, 2),
-             "w2": w2_elansing, "w2Mo": round(w2_elansing/12, 2), "t1099": t1099_elansing, "t1099Mo": round(t1099_elansing/12, 2), "ratePct": elansing_pct*100, "rateKey": "eLansingTaxPct"},
-            {"label": f"Michigan State Tax ({michigan_pct*100:.2f}%)", "total": round(w2_michigan+t1099_michigan, 2), "totalMo": round((w2_michigan+t1099_michigan)/12, 2),
-             "w2": w2_michigan, "w2Mo": round(w2_michigan/12, 2), "t1099": t1099_michigan, "t1099Mo": round(t1099_michigan/12, 2), "ratePct": michigan_pct*100, "rateKey": "michiganTaxPct"},
-            {"label": f"Federal Tax ({federal_pct*100:.0f}%)", "total": round(w2_federal+t1099_federal, 2), "totalMo": round((w2_federal+t1099_federal)/12, 2),
-             "w2": w2_federal, "w2Mo": round(w2_federal/12, 2), "t1099": t1099_federal, "t1099Mo": round(t1099_federal/12, 2), "ratePct": federal_pct*100, "rateKey": "federalTaxPct"},
-            {"label": f"Social Security ({ss_pct*100:.1f}%)", "total": round(w2_ss+t1099_ss, 2), "totalMo": round((w2_ss+t1099_ss)/12, 2),
-             "w2": w2_ss, "w2Mo": round(w2_ss/12, 2), "t1099": t1099_ss, "t1099Mo": round(t1099_ss/12, 2)},
-            {"label": f"Medicare ({medicare_pct*100:.2f}%)", "total": round(w2_medicare+t1099_medicare, 2), "totalMo": round((w2_medicare+t1099_medicare)/12, 2),
-             "w2": w2_medicare, "w2Mo": round(w2_medicare/12, 2), "t1099": t1099_medicare, "t1099Mo": round(t1099_medicare/12, 2)},
-            {"label": "Total Withheld", "total": round(total_withheld, 2), "totalMo": round(total_withheld/12, 2),
-             "w2": round(w2_withheld, 2), "w2Mo": round(w2_withheld/12, 2), "t1099": round(t1099_withheld, 2), "t1099Mo": round(t1099_withheld/12, 2), "isSummary": True},
-            {"label": "Take-Home Pay", "total": total_takehome, "totalMo": round(total_takehome/12, 2),
-             "w2": w2_takehome, "w2Mo": round(w2_takehome/12, 2), "t1099": t1099_takehome, "t1099Mo": round(t1099_takehome/12, 2), "isSummary": True, "isPositive": True},
-            {"label": "Hourly Rate / Eff. Tax %", "total": total_hourly, "totalMo": total_eff_tax,
-             "w2": w2_hourly, "w2Mo": w2_eff_tax, "t1099": t1099_hourly, "t1099Mo": t1099_eff_tax, "isRate": True},
-        ],
+        "rows": rows,
         "summary": {
-            "annualGross": total, "w2Salary": w2, "income1099": t1099,
-            "takeHomePay": total_takehome, "totalWithhold": round(total_withheld, 2),
-            "effectiveTaxRate": total_eff_tax, "hourlyRate": total_hourly,
+            "annualGross": round(real_total, 2), "w2Total": round(w2, 2), "t1099Total": round(t1099, 2),
+            "takeHomePay": total_takehome, "totalWithhold": total_withheld,
+            "effectiveTaxRate": total_eff, "hourlyRate": total_hourly,
             "monthlySalary": round(total_takehome/12, 2),
         },
+        "employer": employer,
+        "projected": projected,
     }
+
+
+def _get_salary_data(portfolio):
+    """Get salary data, migrating if needed."""
+    salary = portfolio.get("salary", {})
+    if "profiles" not in salary:
+        salary = migrate_salary_data(salary)
+        portfolio["salary"] = salary
+        save_portfolio(portfolio)
+    return salary
 
 
 @app.route("/api/salary")
 def api_salary():
     portfolio = load_portfolio()
-    salary = portfolio.get("salary", {})
-    breakdown = compute_salary_breakdown(salary)
+    salary = _get_salary_data(portfolio)
+    profile_id = request.args.get("profile", salary.get("activeProfile", "alejandro"))
+    profile = salary.get("profiles", {}).get(profile_id, {})
+    breakdown = compute_salary_breakdown(profile)
+    # Household summary
+    household = {"annualGross": 0, "takeHomePay": 0, "profileCount": 0}
+    for pid, p in salary.get("profiles", {}).items():
+        bd = compute_salary_breakdown(p)
+        household["annualGross"] += bd["summary"]["annualGross"]
+        household["takeHomePay"] += bd["summary"]["takeHomePay"]
+        household["profileCount"] += 1
+    household["annualGross"] = round(household["annualGross"], 2)
+    household["takeHomePay"] = round(household["takeHomePay"], 2)
     return jsonify({
         "salary": salary,
+        "profile": profile,
+        "profileId": profile_id,
         "breakdown": breakdown,
+        "household": household,
         "costOfLiving": portfolio.get("costOfLiving", []),
         "lastUpdated": datetime.now().isoformat(),
     })
+
 
 @app.route("/api/salary/update", methods=["POST"])
 def api_salary_update():
     b = request.get_json()
     portfolio = load_portfolio()
-    salary = portfolio.get("salary", {})
-    editable_keys = ["w2Salary", "income1099", "iraContributionPct", "lansingTaxPct",
-                     "eLansingTaxPct", "michiganTaxPct", "federalTaxPct", "ssPct", "medicarePct",
-                     "year", "savedMoney", "pctSavingsToInvest", "pctIncomeCanSave",
-                     "projectedW2", "projectedMonthly",
-                     "yearsUntilRetirement", "annualInterestRate", "returnRateRetirement",
-                     "desiredRetirementSalary", "otherRetirementIncome"]
-    for key in editable_keys:
+    salary = _get_salary_data(portfolio)
+    profile_id = b.get("profileId", salary.get("activeProfile", "alejandro"))
+    profile = salary.get("profiles", {}).get(profile_id, {})
+
+    # Update income streams
+    if "incomeStreams" in b:
+        profile["incomeStreams"] = b["incomeStreams"]
+    # Update tax config
+    if "taxes" in b:
+        profile["taxes"] = b["taxes"]
+    # Update simple fields
+    for key in ("year", "projectedSalary", "name"):
         if key in b:
-            salary[key] = float(b[key]) if key != "year" else int(b[key])
-    # Recompute derived fields
-    breakdown = compute_salary_breakdown(salary)
-    summ = breakdown["summary"]
-    salary["annualGross"] = summ["annualGross"]
-    salary["takeHomePay"] = summ["takeHomePay"]
-    salary["totalWithhold"] = summ["totalWithhold"]
-    salary["effectiveTaxRate"] = summ["effectiveTaxRate"]
-    salary["hourlyRate"] = summ["hourlyRate"]
-    salary["monthlySalary"] = summ["monthlySalary"]
-    salary["annualSalaryAfterTax"] = summ["takeHomePay"]
+            profile[key] = int(b[key]) if key == "year" else b[key]
+    # Update shared fields
+    for key in ("savedMoney", "pctSavingsToInvest", "pctIncomeCanSave"):
+        if key in b:
+            salary[key] = float(b[key])
+
+    salary["profiles"][profile_id] = profile
     portfolio["salary"] = salary
     save_portfolio(portfolio)
-    return jsonify({"ok": True, "salary": salary, "breakdown": breakdown})
+    breakdown = compute_salary_breakdown(profile)
+    return jsonify({"ok": True, "profile": profile, "breakdown": breakdown})
+
+
+@app.route("/api/salary/profile", methods=["POST"])
+def api_salary_profile_create():
+    b = request.get_json()
+    portfolio = load_portfolio()
+    salary = _get_salary_data(portfolio)
+    name = b.get("name", "New Profile")
+    pid = name.lower().replace(" ", "_")
+    # Avoid collisions
+    base_pid = pid
+    n = 1
+    while pid in salary.get("profiles", {}):
+        pid = f"{base_pid}_{n}"
+        n += 1
+    salary.setdefault("profiles", {})[pid] = {
+        "name": name,
+        "year": datetime.now().year,
+        "incomeStreams": [{"type": "W2", "amount": 0, "label": "Main Job"}],
+        "taxes": _default_taxes(),
+        "projectedSalary": 0,
+        "history": [],
+    }
+    salary["activeProfile"] = pid
+    portfolio["salary"] = salary
+    save_portfolio(portfolio)
+    return jsonify({"ok": True, "profileId": pid, "salary": salary})
+
+
+@app.route("/api/salary/profile/<pid>", methods=["DELETE"])
+def api_salary_profile_delete(pid):
+    portfolio = load_portfolio()
+    salary = _get_salary_data(portfolio)
+    profiles = salary.get("profiles", {})
+    if pid in profiles and len(profiles) > 1:
+        del profiles[pid]
+        if salary.get("activeProfile") == pid:
+            salary["activeProfile"] = next(iter(profiles))
+        portfolio["salary"] = salary
+        save_portfolio(portfolio)
+        return jsonify({"ok": True, "salary": salary})
+    return jsonify({"ok": False, "error": "Cannot delete last profile"}), 400
+
+
+@app.route("/api/salary/history/save", methods=["POST"])
+def api_salary_history_save():
+    b = request.get_json()
+    portfolio = load_portfolio()
+    salary = _get_salary_data(portfolio)
+    profile_id = b.get("profileId", salary.get("activeProfile", "alejandro"))
+    profile = salary.get("profiles", {}).get(profile_id, {})
+    bd = compute_salary_breakdown(profile)
+    summ = bd["summary"]
+    year = profile.get("year", datetime.now().year)
+    history = profile.get("history", [])
+    # Replace if year exists, else append
+    history = [h for h in history if h.get("year") != year]
+    history.append({
+        "year": year,
+        "annualPayroll": summ["annualGross"],
+        "monthlyPayroll": round(summ["annualGross"] / 12, 2),
+        "takeHomePay": summ["takeHomePay"],
+        "effectiveTaxRate": summ["effectiveTaxRate"],
+    })
+    history.sort(key=lambda h: h["year"])
+    profile["history"] = history
+    salary["profiles"][profile_id] = profile
+    portfolio["salary"] = salary
+    save_portfolio(portfolio)
+    return jsonify({"ok": True, "history": history})
+
+
+@app.route("/api/salary/history/<int:year>", methods=["DELETE"])
+def api_salary_history_delete(year):
+    b = request.get_json() or {}
+    portfolio = load_portfolio()
+    salary = _get_salary_data(portfolio)
+    profile_id = b.get("profileId", salary.get("activeProfile", "alejandro"))
+    profile = salary.get("profiles", {}).get(profile_id, {})
+    history = profile.get("history", [])
+    profile["history"] = [h for h in history if h.get("year") != year]
+    salary["profiles"][profile_id] = profile
+    portfolio["salary"] = salary
+    save_portfolio(portfolio)
+    return jsonify({"ok": True, "history": profile["history"]})
 
 @app.route("/api/cost-of-living")
 def api_cost_of_living():
