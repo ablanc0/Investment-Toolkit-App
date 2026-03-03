@@ -3766,6 +3766,19 @@
             const baseTf = parseFloat(document.getElementById('e2-base-tf').value);
             const sensEl = document.getElementById('e2-sensitivity');
             if (sensEl) sensEl.innerHTML = _e2SensitivityMatrix(fcfPS, baseG1, baseG2, discountPct, baseTf);
+
+            // Update projection chart
+            if (_analyzerData) {
+                const chartData = JSON.parse(JSON.stringify(_analyzerData));
+                const e2Copy = chartData.valuation.endeuda2;
+                e2Copy.fcfPerShare = fcfPS;
+                e2Copy.discountRate = discountPct;
+                for (const sc of scenarioKeys) {
+                    e2Copy.scenarios[sc].growth1_5 = parseFloat(document.getElementById(`e2-${sc}-g1`).value);
+                    e2Copy.scenarios[sc].growth6_10 = parseFloat(document.getElementById(`e2-${sc}-g2`).value);
+                }
+                _renderE2Chart(chartData);
+            }
         }
 
         function rebuildFcfTable() {
@@ -4210,31 +4223,35 @@
         }
 
         function _e2ValueBar(iv, price) {
-            const max = Math.max(iv, price) * 1.1;
+            const max = Math.max(iv, price) * 1.15;
             const ivPct = (iv / max * 100).toFixed(1);
             const pricePct = (price / max * 100).toFixed(1);
             const diff = price > 0 ? ((iv - price) / price * 100) : 0;
             const isUnder = diff >= 0;
-            const badgeColor = isUnder ? '#22c55e' : '#ef4444';
+            const solidColor = isUnder ? '#22c55e' : '#ef4444';
+            const stripeColor = isUnder ? '#22c55e' : '#ef4444';
             const badgeText = isUnder ? `Undervalued ${Math.abs(diff).toFixed(0)}%` : `Overvalued ${Math.abs(diff).toFixed(0)}%`;
-            return `<div style="margin-top:8px;">
-                <span style="display:inline-block; background:${badgeColor}; color:#fff; font-size:0.72rem; font-weight:600; padding:2px 8px; border-radius:10px; margin-bottom:6px;">${badgeText}</span>
-                <div style="font-size:0.78rem; color:var(--text-dim); margin-bottom:2px;">Value</div>
-                <div style="position:relative; height:28px; background:var(--card); border-radius:6px; overflow:hidden; margin-bottom:6px;">
-                    <div style="height:100%; width:${ivPct}%; background: linear-gradient(90deg, ${badgeColor}, ${badgeColor}aa); border-radius:6px; display:flex; align-items:center; padding-left:8px;">
-                        <span style="color:#fff; font-size:0.78rem; font-weight:600;">${formatMoney(iv)}</span>
-                    </div>
+            // Striped pattern: solid portion up to min(iv,price), striped for the excess
+            const minPct = (Math.min(iv, price) / max * 100).toFixed(1);
+            const stripeCSS = `repeating-linear-gradient(135deg, ${stripeColor}44, ${stripeColor}44 4px, ${stripeColor}22 4px, ${stripeColor}22 8px)`;
+            return `<div style="margin-top:4px;">
+                <span style="display:inline-block; background:${solidColor}; color:#fff; font-size:0.72rem; font-weight:600; padding:2px 8px; border-radius:10px; margin-bottom:6px;">${badgeText}</span>
+                <div style="font-size:0.72rem; color:var(--text-dim); margin-bottom:2px;">Value</div>
+                <div style="position:relative; height:26px; border-radius:6px; overflow:hidden; margin-bottom:4px; background:${stripeCSS};">
+                    <div style="position:absolute; height:100%; width:${Math.min(parseFloat(ivPct), parseFloat(pricePct))}%; background:${solidColor}; border-radius:6px 0 0 6px;"></div>
+                    ${parseFloat(ivPct) > parseFloat(pricePct) ? `<div style="position:absolute; height:100%; left:${pricePct}%; width:${(parseFloat(ivPct) - parseFloat(pricePct)).toFixed(1)}%; background:${stripeCSS};"></div>` : ''}
+                    <span style="position:absolute; left:8px; top:4px; color:#fff; font-size:0.75rem; font-weight:600; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">${formatMoney(iv)}</span>
                 </div>
-                <div style="font-size:0.78rem; color:var(--text-dim); margin-bottom:2px;">Price</div>
-                <div style="position:relative; height:28px; background:var(--card); border-radius:6px; overflow:hidden;">
-                    <div style="height:100%; width:${pricePct}%; background:var(--border); border-radius:6px; display:flex; align-items:center; padding-left:8px;">
-                        <span style="color:var(--text); font-size:0.78rem; font-weight:600;">${formatMoney(price)}</span>
-                    </div>
+                <div style="font-size:0.72rem; color:var(--text-dim); margin-bottom:2px;">Price</div>
+                <div style="position:relative; height:26px; background:var(--border); border-radius:6px; overflow:hidden;">
+                    <div style="height:100%; width:${pricePct}%; background:var(--border); border-radius:6px;"></div>
+                    <span style="position:absolute; left:8px; top:4px; color:var(--text); font-size:0.75rem; font-weight:600;">${formatMoney(price)}</span>
                 </div>
             </div>`;
         }
 
         function _e2SensitivityMatrix(fcfPS, g1, g2, discountRate, termFactor) {
+            const price = (_analyzerData && _analyzerData.price) || 0;
             const discounts = [-1.5, -1.0, -0.5, 0, 0.5, 1.0, 1.5].map(d => discountRate + d);
             const multiples = [-3, -2, -1, 0, 1, 2, 3].map(m => termFactor + m);
             let html = '<div style="margin-top:12px;"><div style="font-size:0.85rem; font-weight:600; color:var(--text); margin-bottom:8px;">Sensitivity Matrix</div>';
@@ -4247,8 +4264,10 @@
                 for (const m of multiples) {
                     const res = _runEndeuda2Scenario(fcfPS, g1 / 100, g2 / 100, m, dr / 100);
                     const isCenter = Math.abs(dr - discountRate) < 0.01 && Math.abs(m - termFactor) < 0.01;
-                    const cellStyle = isCenter ? 'font-weight:700; border:2px solid var(--accent);' : '';
-                    html += `<td style="text-align:center; ${cellStyle}">${res.iv.toFixed(2)}</td>`;
+                    const abovePrice = res.iv >= price && price > 0;
+                    const bgColor = abovePrice ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.1)';
+                    const centerBorder = isCenter ? 'border:2px solid var(--accent); font-weight:700;' : '';
+                    html += `<td style="text-align:center; background:${bgColor}; ${centerBorder}">${res.iv.toFixed(2)}</td>`;
                 }
                 html += '</tr>';
             }
@@ -4311,6 +4330,12 @@
                         <span style="font-weight:600; color:var(--text);" id="e2-header-implied">${impliedGrowth.toFixed(2)}%</span>
                     </div>
                 </div>
+            </div>`;
+
+            // FCF/PS Projection Chart — all 3 scenarios + implied growth
+            html += `<div class="valuation-card">
+                <div class="valuation-card-title">Estimated Growth vs Implied Growth</div>
+                <canvas id="e2-projection-chart" height="220"></canvas>
             </div>`;
 
             // Cards 2-4: Scenario cards with editable probability + value bar
@@ -4483,10 +4508,63 @@
                 html += `<div id="av-summary" class="analyzer-subview">${renderAnalyzerSummary(d)}</div>`;
 
                 resultsDiv.innerHTML = html;
+                _renderE2Chart(d);
             } catch (e) {
                 resultsDiv.innerHTML = '<p style="color: var(--red); padding: 20px;">Error fetching data. Check console.</p>';
                 console.error('Analyzer error:', e);
             }
+        }
+
+        function _renderE2Chart(d) {
+            const e2 = (d.valuation || {}).endeuda2;
+            if (!e2) return;
+            const canvas = document.getElementById('e2-projection-chart');
+            if (!canvas) return;
+            const fcfPS = e2.fcfPerShare;
+            const price = d.price || 0;
+            const discount = e2.discountRate / 100;
+
+            // Compute implied growth (uniform rate that justifies current price at terminal multiple 15)
+            const impliedG = price > 0 ? Math.pow(price / fcfPS / 15, 1/10) - 1 : 0;
+
+            const labels = ['Now', 'Yr 1', 'Yr 2', 'Yr 3', 'Yr 4', 'Yr 5', 'Yr 6', 'Yr 7', 'Yr 8', 'Yr 9', 'Yr 10'];
+
+            function buildLine(g1, g2) {
+                let v = fcfPS, arr = [v];
+                for (let yr = 1; yr <= 10; yr++) { v *= (1 + (yr <= 5 ? g1 : g2)); arr.push(v); }
+                return arr.map(x => parseFloat(x.toFixed(2)));
+            }
+
+            const base = e2.scenarios.base, best = e2.scenarios.best, worst = e2.scenarios.worst;
+            const baseData = buildLine(base.growth1_5 / 100, base.growth6_10 / 100);
+            const bestData = buildLine(best.growth1_5 / 100, best.growth6_10 / 100);
+            const worstData = buildLine(worst.growth1_5 / 100, worst.growth6_10 / 100);
+            const impliedData = buildLine(impliedG, impliedG);
+
+            if (window._e2Chart) window._e2Chart.destroy();
+            window._e2Chart = new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: 'Base', data: baseData, borderColor: '#6366f1', backgroundColor: '#6366f120', borderWidth: 2, pointRadius: 3, tension: 0.3 },
+                        { label: 'Best', data: bestData, borderColor: '#22c55e', backgroundColor: '#22c55e20', borderWidth: 2, pointRadius: 3, tension: 0.3 },
+                        { label: 'Worst', data: worstData, borderColor: '#ef4444', backgroundColor: '#ef444420', borderWidth: 2, pointRadius: 3, tension: 0.3 },
+                        { label: 'Implied Growth', data: impliedData, borderColor: '#9ca3af', borderDash: [6, 4], borderWidth: 2, pointRadius: 2, tension: 0.3 },
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { labels: { color: '#94a3b8', font: { size: 11 } } },
+                        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: $${ctx.parsed.y.toFixed(2)}` } }
+                    },
+                    scales: {
+                        x: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } },
+                        y: { ticks: { color: '#64748b', callback: v => '$' + v.toFixed(0) }, grid: { color: '#1e293b' } }
+                    }
+                }
+            });
         }
 
         // Rule 4% / FIRE Calculator
