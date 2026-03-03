@@ -1352,6 +1352,356 @@ def api_risk_scenarios_update():
     return jsonify({"ok": True})
 
 
+# ── Stock Analyzer — Valuation Helpers ─────────────────────────────────
+
+RISK_FREE_RATE = 0.0425      # 10Y Treasury
+MARKET_RETURN  = 0.10         # S&P long-term avg
+PERPETUAL_GROWTH = 0.025      # terminal growth
+MARGIN_OF_SAFETY = 0.70
+AAA_YIELD_BASELINE = 4.4      # Graham baseline
+AAA_YIELD_CURRENT  = 5.0      # current AAA yield
+
+SECTOR_AVERAGES = {
+    "Technology":          {"pe": 30, "evEbitda": 20, "pb": 8},
+    "Communication Services": {"pe": 18, "evEbitda": 12, "pb": 3},
+    "Healthcare":          {"pe": 22, "evEbitda": 15, "pb": 4},
+    "Financial Services":  {"pe": 14, "evEbitda": 10, "pb": 1.5},
+    "Consumer Cyclical":   {"pe": 20, "evEbitda": 13, "pb": 4},
+    "Consumer Defensive":  {"pe": 22, "evEbitda": 14, "pb": 5},
+    "Industrials":         {"pe": 20, "evEbitda": 13, "pb": 4},
+    "Energy":              {"pe": 12, "evEbitda": 6,  "pb": 1.8},
+    "Utilities":           {"pe": 18, "evEbitda": 12, "pb": 2},
+    "Real Estate":         {"pe": 35, "evEbitda": 20, "pb": 2},
+    "Basic Materials":     {"pe": 15, "evEbitda": 9,  "pb": 2.5},
+}
+
+
+def _trimmean(values, pct=0.2):
+    """Trimmed mean — drop top/bottom pct of values."""
+    if not values:
+        return 0
+    s = sorted(values)
+    trim = max(1, int(len(s) * pct / 2))
+    trimmed = s[trim:-trim] if len(s) > 2 * trim else s
+    return sum(trimmed) / len(trimmed) if trimmed else 0
+
+
+def compute_dcf(info, income, balance, cashflow):
+    """DCF valuation: WACC → FCF projections → terminal value → IV/share."""
+    try:
+        beta = info.get("beta") or 1.0
+        cost_of_equity = RISK_FREE_RATE + beta * (MARKET_RETURN - RISK_FREE_RATE)
+
+        total_debt = info.get("totalDebt") or 0
+        market_cap = info.get("marketCap") or 0
+        total_capital = total_debt + market_cap
+        if total_capital <= 0:
+            return None
+
+        debt_weight = total_debt / total_capital
+        equity_weight = market_cap / total_capital
+
+        # Tax rate from income statement
+        tax_rate = 0.21
+        years_sorted = sorted(income.keys(), reverse=True) if income else []
+        for yr in years_sorted:
+            pretax = income[yr].get("Pretax Income", 0)
+            tax_prov = income[yr].get("Tax Provision", 0)
+            if pretax and pretax > 0:
+                tax_rate = min(max(tax_prov / pretax, 0), 0.5)
+                break
+
+        # Interest expense → cost of debt
+        interest_expense = 0
+        for yr in years_sorted:
+            ie = abs(income[yr].get("Interest Expense", 0))
+            if ie > 0:
+                interest_expense = ie
+                break
+        interest_rate = (interest_expense / total_debt) if total_debt > 0 else 0.04
+        cost_of_debt = interest_rate * (1 - tax_rate)
+
+        wacc = equity_weight * cost_of_equity + debt_weight * cost_of_debt
+        wacc = max(wacc, 0.05)  # floor at 5%
+
+        # Historical FCF
+        historical_fcf = []
+        cf_years = sorted(cashflow.keys())
+        for yr in cf_years:
+            ocf = cashflow[yr].get("Operating Cash Flow", 0)
+            capex = cashflow[yr].get("Capital Expenditure", 0)  # negative in yfinance
+            fcf = ocf + capex  # adding negative capex = subtracting
+            historical_fcf.append({"year": yr, "fcf": round(fcf)})
+
+        # Fallback if no cashflow data
+        if not historical_fcf:
+            current_fcf = info.get("freeCashflow") or info.get("operatingCashflow", 0)
+            if current_fcf:
+                historical_fcf = [{"year": "TTM", "fcf": round(current_fcf)}]
+
+        if not historical_fcf:
+            return None
+
+        # Growth rates
+        growths = []
+        for i in range(1, len(historical_fcf)):
+            prev = historical_fcf[i-1]["fcf"]
+            curr = historical_fcf[i]["fcf"]
+            if prev and prev > 0 and curr > 0:
+                growths.append((curr - prev) / prev)
+                historical_fcf[i]["growth"] = round((curr - prev) / prev * 100, 1)
+
+        growth_rate = _trimmean(growths) * 0.7 if growths else 0.05
+        growth_rate = max(-0.05, min(growth_rate, 0.25))
+
+        # Project 9 years
+        base_fcf = historical_fcf[-1]["fcf"]
+        if base_fcf <= 0:
+            base_fcf = info.get("freeCashflow") or 0
+        if base_fcf <= 0:
+            return None
+
+        projected = []
+        pv_sum = 0
+        fcf_val = base_fcf
+        for yr in range(1, 10):
+            fcf_val = fcf_val * (1 + growth_rate)
+            discount = (1 + wacc) ** yr
+            pv = fcf_val / discount
+            pv_sum += pv
+            projected.append({
+                "year": yr, "fcf": round(fcf_val), "pvFcf": round(pv)
+            })
+
+        # Terminal value
+        if wacc <= PERPETUAL_GROWTH:
+            return None
+        terminal = fcf_val * (1 + PERPETUAL_GROWTH) / (wacc - PERPETUAL_GROWTH)
+        pv_terminal = terminal / ((1 + wacc) ** 9)
+
+        enterprise_val = pv_sum + pv_terminal
+        total_cash = info.get("totalCash") or 0
+        equity_val = enterprise_val - total_debt + total_cash
+        shares = info.get("sharesOutstanding") or 0
+        if shares <= 0:
+            return None
+
+        iv = equity_val / shares
+        mos_iv = iv * MARGIN_OF_SAFETY
+        price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
+        upside = ((mos_iv - price) / price * 100) if price > 0 else 0
+
+        return {
+            "riskFreeRate": round(RISK_FREE_RATE * 100, 2),
+            "marketReturn": round(MARKET_RETURN * 100, 2),
+            "beta": round(beta, 2),
+            "costOfEquity": round(cost_of_equity * 100, 2),
+            "costOfDebt": round(cost_of_debt * 100, 2),
+            "wacc": round(wacc * 100, 2),
+            "taxRate": round(tax_rate * 100, 1),
+            "debtToCapital": round(debt_weight * 100, 1),
+            "equityToCapital": round(equity_weight * 100, 1),
+            "historicalFcf": historical_fcf,
+            "growthRate": round(growth_rate * 100, 1),
+            "projectedFcf": projected,
+            "terminalValue": round(terminal),
+            "pvTerminal": round(pv_terminal),
+            "enterpriseValue": round(enterprise_val),
+            "equityValue": round(equity_val),
+            "ivPerShare": round(iv, 2),
+            "marginOfSafetyIv": round(mos_iv, 2),
+            "upside": round(upside, 1),
+        }
+    except Exception as e:
+        print(f"[DCF] Error: {e}")
+        return None
+
+
+def compute_graham(info):
+    """Graham Revised Formula: IV = EPS × (8.5 + 2g) × Y / C"""
+    try:
+        eps = info.get("trailingEps") or 0
+        if eps <= 0:
+            return None
+
+        # Growth rate: earningsGrowth is already a decimal (e.g. 0.15 = 15%)
+        g = (info.get("earningsGrowth") or 0.05) * 100
+        if g <= 0:
+            g = 5  # default 5% if negative/zero
+
+        adjusted_multiple = 8.5 + 2 * g
+        bond_adjustment = AAA_YIELD_BASELINE / AAA_YIELD_CURRENT
+        iv = eps * adjusted_multiple * bond_adjustment
+        if iv <= 0:
+            return None
+
+        mos_iv = iv * MARGIN_OF_SAFETY
+        price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
+        upside = ((mos_iv - price) / price * 100) if price > 0 else 0
+
+        return {
+            "eps": round(eps, 2),
+            "growthRate": round(g, 1),
+            "baseMultiple": 8.5,
+            "adjustedMultiple": round(adjusted_multiple, 1),
+            "aaaYieldBaseline": AAA_YIELD_BASELINE,
+            "aaaYieldCurrent": AAA_YIELD_CURRENT,
+            "bondAdjustment": round(bond_adjustment, 4),
+            "ivPerShare": round(iv, 2),
+            "marginOfSafetyIv": round(mos_iv, 2),
+            "upside": round(upside, 1),
+        }
+    except Exception as e:
+        print(f"[Graham] Error: {e}")
+        return None
+
+
+def compute_relative(info):
+    """Relative valuation using sector average multiples."""
+    try:
+        sector = info.get("sector", "")
+        avgs = SECTOR_AVERAGES.get(sector)
+        if not avgs:
+            # Try partial match
+            for k, v in SECTOR_AVERAGES.items():
+                if k.lower() in sector.lower() or sector.lower() in k.lower():
+                    avgs = v
+                    break
+        if not avgs:
+            avgs = {"pe": 20, "evEbitda": 13, "pb": 3}  # market average fallback
+
+        eps = info.get("trailingEps") or 0
+        book_val = info.get("bookValue") or 0
+        price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
+        shares = info.get("sharesOutstanding") or 0
+
+        # EV/EBITDA → implied price
+        ev = info.get("enterpriseValue") or 0
+        ev_ebitda = info.get("enterpriseToEbitda") or 0
+        ebitda = (ev / ev_ebitda) if ev_ebitda and ev_ebitda > 0 else 0
+        ebitda_per_share = (ebitda / shares) if shares > 0 else 0
+
+        metrics = []
+        implied_prices = []
+
+        # P/E implied
+        stock_pe = info.get("trailingPE") or 0
+        pe_implied = avgs["pe"] * eps if eps > 0 else 0
+        metrics.append({
+            "name": "P/E", "stockVal": round(stock_pe, 1),
+            "sectorAvg": avgs["pe"],
+            "impliedPrice": round(pe_implied, 2)
+        })
+        if pe_implied > 0:
+            implied_prices.append(pe_implied)
+
+        # EV/EBITDA implied
+        stock_ev_ebitda = ev_ebitda
+        ev_implied = avgs["evEbitda"] * ebitda_per_share if ebitda_per_share > 0 else 0
+        metrics.append({
+            "name": "EV/EBITDA", "stockVal": round(stock_ev_ebitda, 1),
+            "sectorAvg": avgs["evEbitda"],
+            "impliedPrice": round(ev_implied, 2)
+        })
+        if ev_implied > 0:
+            implied_prices.append(ev_implied)
+
+        # P/B implied
+        stock_pb = info.get("priceToBook") or 0
+        pb_implied = avgs["pb"] * book_val if book_val > 0 else 0
+        metrics.append({
+            "name": "P/B", "stockVal": round(stock_pb, 1),
+            "sectorAvg": avgs["pb"],
+            "impliedPrice": round(pb_implied, 2)
+        })
+        if pb_implied > 0:
+            implied_prices.append(pb_implied)
+
+        if not implied_prices:
+            return None
+
+        iv = sum(implied_prices) / len(implied_prices)
+        mos_iv = iv * MARGIN_OF_SAFETY
+        upside = ((mos_iv - price) / price * 100) if price > 0 else 0
+
+        return {
+            "sector": sector,
+            "metrics": metrics,
+            "ivPerShare": round(iv, 2),
+            "marginOfSafetyIv": round(mos_iv, 2),
+            "upside": round(upside, 1),
+        }
+    except Exception as e:
+        print(f"[Relative] Error: {e}")
+        return None
+
+
+def compute_valuation_summary(dcf, graham, relative, info):
+    """Composite weighted IV based on stock category (Growth/Value/Blend)."""
+    try:
+        pe = info.get("trailingPE") or 0
+        rev_growth = (info.get("revenueGrowth") or 0) * 100
+        div_yield = info.get("dividendYield") or 0
+
+        # Categorize
+        if pe > 25 and rev_growth > 15:
+            category = "Growth"
+            weights = {"dcf": 0.6, "graham": 0.3, "relative": 0.1}
+        elif pe > 0 and pe < 18 and div_yield > 0.01:
+            category = "Value"
+            weights = {"dcf": 0.2, "graham": 0.3, "relative": 0.5}
+        else:
+            category = "Blend"
+            weights = {"dcf": 0.4, "graham": 0.3, "relative": 0.3}
+
+        # Collect valid IVs
+        models = {}
+        if dcf and dcf.get("ivPerShare", 0) > 0:
+            models["dcf"] = dcf["ivPerShare"]
+        if graham and graham.get("ivPerShare", 0) > 0:
+            models["graham"] = graham["ivPerShare"]
+        if relative and relative.get("ivPerShare", 0) > 0:
+            models["relative"] = relative["ivPerShare"]
+
+        if not models:
+            return None
+
+        # Normalize weights for available models
+        total_w = sum(weights[k] for k in models)
+        if total_w <= 0:
+            return None
+        composite = sum(models[k] * weights[k] / total_w for k in models)
+        mos_iv = composite * MARGIN_OF_SAFETY
+
+        price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
+        upside = ((mos_iv - price) / price * 100) if price > 0 else 0
+
+        # Signal
+        if upside > 50:
+            signal = "Strong Buy"
+        elif upside > 20:
+            signal = "Buy"
+        elif upside > -10:
+            signal = "Hold"
+        elif upside > -30:
+            signal = "Expensive"
+        else:
+            signal = "Overrated"
+
+        return {
+            "category": category,
+            "weights": weights,
+            "models": {k: round(v, 2) for k, v in models.items()},
+            "compositeIv": round(composite, 2),
+            "marginOfSafetyIv": round(mos_iv, 2),
+            "upside": round(upside, 1),
+            "signal": signal,
+        }
+    except Exception as e:
+        print(f"[ValuationSummary] Error: {e}")
+        return None
+
+
 # ── Stock Analyzer ──────────────────────────────────────────────────────
 @app.route("/api/stock-analyzer/<ticker>")
 def api_stock_analyzer(ticker):
@@ -1462,6 +1812,18 @@ def api_stock_analyzer(ticker):
             "balance": balance,
             "cashflow": cashflow,
             "lastUpdated": datetime.now().isoformat(),
+        }
+
+        # Valuation models
+        dcf = compute_dcf(info, income, balance, cashflow)
+        graham = compute_graham(info)
+        relative = compute_relative(info)
+        summary = compute_valuation_summary(dcf, graham, relative, info)
+        result["valuation"] = {
+            "dcf": dcf,
+            "graham": graham,
+            "relative": relative,
+            "summary": summary,
         }
 
         cache_set(f"analyzer_{ticker}", result)

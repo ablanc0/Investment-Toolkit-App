@@ -826,6 +826,154 @@
             border: 2px solid #fff;
         }
 
+        /* Analyzer sub-tabs & valuation */
+        .analyzer-subtabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid var(--border);
+            margin: 16px 0;
+        }
+        .analyzer-subtab {
+            padding: 10px 20px;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .analyzer-subtab:hover { color: var(--text); }
+        .analyzer-subtab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+        .analyzer-subview { display: none; }
+        .analyzer-subview.active { display: block; }
+        .valuation-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+        .valuation-card-title {
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: var(--accent);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .iv-result-box {
+            background: var(--card-hover);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-top: 16px;
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+        .iv-result-item {
+            text-align: center;
+        }
+        .iv-result-item .label {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .iv-result-item .value {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--text);
+            margin-top: 2px;
+        }
+        .iv-result-item .value.green { color: #22c55e; }
+        .iv-result-item .value.red { color: #ef4444; }
+        .fcf-table {
+            width: 100%;
+            font-size: 0.82rem;
+            border-collapse: collapse;
+            margin: 8px 0;
+        }
+        .fcf-table th, .fcf-table td {
+            padding: 6px 10px;
+            text-align: right;
+            border-bottom: 1px solid rgba(42,46,66,0.5);
+        }
+        .fcf-table th {
+            color: var(--text-dim);
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+        .fcf-table td:first-child, .fcf-table th:first-child { text-align: left; }
+        .iv-comparison {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .iv-model-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+        .iv-model-card .model-name {
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+        .iv-model-card .model-iv {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+        .iv-model-card .model-upside {
+            font-size: 0.85rem;
+            margin-top: 4px;
+        }
+        .signal-badge {
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .formula-display {
+            background: var(--card-hover);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-family: monospace;
+            font-size: 0.95rem;
+            color: var(--accent);
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        .wacc-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px 24px;
+        }
+        .wacc-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 0.85rem;
+            border-bottom: 1px solid rgba(42,46,66,0.3);
+        }
+        .wacc-item .wlabel { color: var(--text-dim); }
+        .wacc-item .wvalue { font-weight: 600; }
+
         /* Rule 4% Calculator */
         .fire-calculator {
             display: grid;
@@ -3487,6 +3635,444 @@
             return {bg:'#6366f120', fg:'#6366f1'};
         }
 
+        let _analyzerData = null; // stored for client-side recalculation
+
+        function recalcGraham() {
+            if (!_analyzerData || !_analyzerData.valuation || !_analyzerData.valuation.graham) return;
+            const g = _analyzerData.valuation.graham;
+            const eps = g.eps;
+            const growth = parseFloat(document.getElementById('graham-growth').value) || 0;
+            const yieldBase = parseFloat(document.getElementById('graham-yieldBase').value) || 4.4;
+            const yieldCurr = parseFloat(document.getElementById('graham-yieldCurr').value) || 5.0;
+            const mos = parseFloat(document.getElementById('graham-mos').value) || 70;
+
+            const adjMultiple = 8.5 + 2 * growth;
+            const bondAdj = yieldBase / yieldCurr;
+            const iv = eps * adjMultiple * bondAdj;
+            const mosIv = iv * (mos / 100);
+            const price = _analyzerData.price || 0;
+            const upside = price > 0 ? ((mosIv - price) / price * 100) : 0;
+
+            document.getElementById('graham-adjMultiple').textContent = adjMultiple.toFixed(1);
+            document.getElementById('graham-bondAdj').textContent = bondAdj.toFixed(4);
+            document.getElementById('graham-iv').textContent = formatMoney(iv);
+            document.getElementById('graham-mosIv').textContent = formatMoney(mosIv);
+            const uEl = document.getElementById('graham-upside');
+            uEl.textContent = (upside >= 0 ? '+' : '') + upside.toFixed(1) + '%';
+            uEl.className = 'value ' + (upside >= 0 ? 'green' : 'red');
+        }
+
+        function recalcDcf() {
+            if (!_analyzerData || !_analyzerData.valuation || !_analyzerData.valuation.dcf) return;
+            const dcf = _analyzerData.valuation.dcf;
+            const riskFree = parseFloat(document.getElementById('dcf-riskFree').value) / 100 || 0.0425;
+            const mktReturn = parseFloat(document.getElementById('dcf-mktReturn').value) / 100 || 0.10;
+            const growthRate = parseFloat(document.getElementById('dcf-growth').value) / 100;
+            const perpGrowth = parseFloat(document.getElementById('dcf-perpGrowth').value) / 100 || 0.025;
+            const mos = parseFloat(document.getElementById('dcf-mos').value) || 70;
+
+            // Recalc WACC
+            const beta = dcf.beta;
+            const costOfEquity = riskFree + beta * (mktReturn - riskFree);
+            const debtW = dcf.debtToCapital / 100;
+            const eqW = dcf.equityToCapital / 100;
+            const costOfDebt = dcf.costOfDebt / 100; // keep original
+            const wacc = Math.max(eqW * costOfEquity + debtW * costOfDebt, 0.05);
+
+            // Re-project FCF
+            const baseFcf = dcf.historicalFcf[dcf.historicalFcf.length - 1].fcf;
+            let pvSum = 0;
+            let fcfVal = baseFcf;
+            const projected = [];
+            for (let yr = 1; yr <= 9; yr++) {
+                fcfVal = fcfVal * (1 + growthRate);
+                const disc = Math.pow(1 + wacc, yr);
+                const pv = fcfVal / disc;
+                pvSum += pv;
+                projected.push({year: yr, fcf: fcfVal, pvFcf: pv});
+            }
+
+            if (wacc <= perpGrowth) return;
+            const terminal = fcfVal * (1 + perpGrowth) / (wacc - perpGrowth);
+            const pvTerminal = terminal / Math.pow(1 + wacc, 9);
+            const ev = pvSum + pvTerminal;
+
+            // Use original debt/cash from the data
+            const info = _analyzerData;
+            const totalDebt = info.totalDebt || 0;
+            const totalCash = info.totalCash || 0;
+            const shares = info.sharesOutstanding || 0;
+            if (shares <= 0) return;
+
+            const eqVal = ev - totalDebt + totalCash;
+            const iv = eqVal / shares;
+            const mosIv = iv * (mos / 100);
+            const price = _analyzerData.price || 0;
+            const upside = price > 0 ? ((mosIv - price) / price * 100) : 0;
+
+            // Update display
+            document.getElementById('dcf-costOfEquity').textContent = (costOfEquity * 100).toFixed(2) + '%';
+            document.getElementById('dcf-wacc-display').textContent = (wacc * 100).toFixed(2) + '%';
+            document.getElementById('dcf-ev').textContent = fmtBigNum(ev);
+            document.getElementById('dcf-eqVal').textContent = fmtBigNum(eqVal);
+            document.getElementById('dcf-iv').textContent = formatMoney(iv);
+            document.getElementById('dcf-mosIv').textContent = formatMoney(mosIv);
+            const uEl = document.getElementById('dcf-upside');
+            uEl.textContent = (upside >= 0 ? '+' : '') + upside.toFixed(1) + '%';
+            uEl.className = 'value ' + (upside >= 0 ? 'green' : 'red');
+
+            // Update projected FCF table
+            const tbody = document.getElementById('dcf-proj-tbody');
+            if (tbody) {
+                tbody.innerHTML = projected.map(r => `<tr>
+                    <td>Year ${r.year}</td>
+                    <td>${fmtBigNum(r.fcf)}</td>
+                    <td>${fmtBigNum(r.pvFcf)}</td>
+                </tr>`).join('') + `<tr style="font-weight: 700; border-top: 2px solid var(--border);">
+                    <td>Terminal Value</td>
+                    <td>${fmtBigNum(terminal)}</td>
+                    <td>${fmtBigNum(pvTerminal)}</td>
+                </tr>`;
+            }
+        }
+
+        function switchAnalyzerView(viewId) {
+            document.querySelectorAll('.analyzer-subview').forEach(v => v.classList.remove('active'));
+            document.querySelectorAll('.analyzer-subtab').forEach(t => t.classList.remove('active'));
+            const view = document.getElementById('av-' + viewId);
+            const tab = document.querySelector(`.analyzer-subtab[data-view="${viewId}"]`);
+            if (view) view.classList.add('active');
+            if (tab) tab.classList.add('active');
+        }
+
+        function renderAnalyzerHeader(d) {
+            const rc = recColor(d.recommendationKey);
+            const low52 = d.fiftyTwoWeekLow || 0;
+            const high52 = d.fiftyTwoWeekHigh || 0;
+            const pricePos = high52 > low52 ? ((d.price - low52) / (high52 - low52) * 100) : 50;
+            // Summary signal badge if available
+            const v = d.valuation || {};
+            const s = v.summary;
+            let signalHtml = '';
+            if (s && s.signal) {
+                const sc = signalColor(s.signal);
+                signalHtml = `<span class="signal-badge" style="background:${sc.bg}; color:${sc.fg}; font-size:0.75rem; padding:4px 10px; margin-left:8px;">${s.signal}</span>`;
+            }
+            return `
+                <div class="analyzer-header">
+                    <span class="ticker-badge">${d.ticker}</span>
+                    <div>
+                        <h2>${d.name}</h2>
+                        <span style="color: var(--text-dim); font-size: 0.85rem;">${d.sector || ''} ${d.industry ? '· ' + d.industry : ''}</span>
+                    </div>
+                    <div style="margin-left: auto; text-align: right;">
+                        <div style="font-size: 1.6rem; font-weight: 700;">${formatMoney(d.price)}${signalHtml}</div>
+                        ${d.recommendationKey ? `<span class="rec-badge" style="background:${rc.bg}; color:${rc.fg};">${d.recommendationKey.replace('_',' ')}</span>` : ''}
+                    </div>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <div style="display:flex; justify-content:space-between; font-size:0.78rem; color:var(--text-dim); margin-bottom:4px;">
+                        <span>52W Low: ${formatMoney(low52)}</span>
+                        <span>52W High: ${formatMoney(high52)}</span>
+                    </div>
+                    <div class="analyzer-price-range">
+                        <div class="analyzer-price-bar"></div>
+                        <div class="analyzer-price-dot" style="left: ${Math.max(2, Math.min(98, pricePos))}%"></div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:0.78rem; color:var(--text-dim); margin-top:4px;">
+                        <span>50D Avg: ${formatMoney(d.fiftyDayAvg)}</span>
+                        <span>200D Avg: ${formatMoney(d.twoHundredDayAvg)}</span>
+                    </div>
+                </div>`;
+        }
+
+        function signalColor(signal) {
+            const s = (signal || '').toLowerCase();
+            if (s.includes('strong buy')) return {bg:'#4ade8020', fg:'#4ade80'};
+            if (s.includes('buy')) return {bg:'#22d3ee20', fg:'#22d3ee'};
+            if (s.includes('hold')) return {bg:'#f59e0b20', fg:'#f59e0b'};
+            if (s.includes('expensive')) return {bg:'#fb923c20', fg:'#fb923c'};
+            if (s.includes('overrated')) return {bg:'#f8717120', fg:'#f87171'};
+            return {bg:'#6366f120', fg:'#6366f1'};
+        }
+
+        function ivResultBox(items) {
+            return '<div class="iv-result-box">' + items.map(it => {
+                const cls = it.colorClass || '';
+                return `<div class="iv-result-item"><div class="label">${it.label}</div><div class="value ${cls}">${it.value}</div></div>`;
+            }).join('') + '</div>';
+        }
+
+        function renderAnalyzerOverview(d) {
+            return `
+                <div class="analyzer-sections">
+                    <div class="analyzer-section">
+                        <div class="analyzer-section-title">📊 Valuation</div>
+                        ${statRow('Trailing P/E', d.trailingPE)}
+                        ${statRow('Forward P/E', d.forwardPE)}
+                        ${statRow('PEG Ratio', d.pegRatio)}
+                        ${statRow('Price/Book', d.priceToBook, 'x')}
+                        ${statRow('Price/Sales', d.priceToSales, 'x')}
+                        ${statRow('EV/EBITDA', d.evToEbitda, 'x')}
+                        ${statRow('EV/Revenue', d.evToRevenue, 'x')}
+                    </div>
+                    <div class="analyzer-section">
+                        <div class="analyzer-section-title">💰 Dividends</div>
+                        ${statRow('Dividend Yield', d.dividendYield, '%')}
+                        ${statRow('Dividend Rate', d.dividendRate, '$')}
+                        ${statRow('Payout Ratio', d.payoutRatio, '%')}
+                        ${statRow('5Y Avg Yield', d.fiveYearAvgDivYield, '%')}
+                    </div>
+                    <div class="analyzer-section">
+                        <div class="analyzer-section-title">📈 Profitability</div>
+                        ${statRow('Gross Margin', d.grossMargin, '%')}
+                        ${statRow('Operating Margin', d.operatingMargin, '%')}
+                        ${statRow('Profit Margin', d.profitMargin, '%')}
+                        ${statRow('Return on Equity', d.returnOnEquity, '%')}
+                        ${statRow('Return on Assets', d.returnOnAssets, '%')}
+                    </div>
+                    <div class="analyzer-section">
+                        <div class="analyzer-section-title">🏦 Financial Health</div>
+                        ${statRow('Debt/Equity', d.debtToEquity)}
+                        ${statRow('Current Ratio', d.currentRatio, 'x')}
+                        ${statRow('Quick Ratio', d.quickRatio, 'x')}
+                        ${statRow('Total Debt', d.totalDebt, 'big')}
+                        ${statRow('Total Cash', d.totalCash, 'big')}
+                    </div>
+                    <div class="analyzer-section">
+                        <div class="analyzer-section-title">🚀 Growth</div>
+                        ${statRow('Revenue Growth', d.revenueGrowth, '%')}
+                        ${statRow('Earnings Growth', d.earningsGrowth, '%')}
+                        ${statRow('EPS (TTM)', d.earningsPerShare, '$')}
+                        ${statRow('Forward EPS', d.forwardEps, '$')}
+                        ${statRow('Revenue/Share', d.revenuePerShare, '$')}
+                    </div>
+                    <div class="analyzer-section">
+                        <div class="analyzer-section-title">🎯 Analyst Targets</div>
+                        ${statRow('Target Low', d.targetLowPrice, '$')}
+                        ${statRow('Target Mean', d.targetMeanPrice, '$')}
+                        ${statRow('Target High', d.targetHighPrice, '$')}
+                        ${statRow('# of Analysts', d.numberOfAnalysts)}
+                        ${statRow('Recommendation', d.recommendationKey ? d.recommendationKey.replace('_',' ').toUpperCase() : null)}
+                    </div>
+                    <div class="analyzer-section">
+                        <div class="analyzer-section-title">📋 Key Metrics</div>
+                        ${statRow('Market Cap', d.marketCap, 'big')}
+                        ${statRow('Enterprise Value', d.enterpriseValue, 'big')}
+                        ${statRow('Beta', d.beta)}
+                        ${statRow('Book Value', d.bookValue, '$')}
+                        ${statRow('Short Ratio', d.shortRatio)}
+                    </div>
+                    <div class="analyzer-section">
+                        <div class="analyzer-section-title">💵 Cash Flow</div>
+                        ${statRow('Free Cash Flow', d.freeCashflow, 'big')}
+                        ${statRow('Operating CF', d.operatingCashflow, 'big')}
+                        ${statRow('Total Revenue', d.totalRevenue, 'big')}
+                    </div>
+                </div>`;
+        }
+
+        function renderAnalyzerDcf(d) {
+            const dcf = (d.valuation || {}).dcf;
+            if (!dcf) return '<p style="color: var(--text-dim); padding: 20px;">DCF model not available — insufficient financial data.</p>';
+
+            const mosVal = 70;
+            // WACC components with editable inputs
+            let html = `<div class="valuation-card">
+                <div class="valuation-card-title">WACC — Weighted Average Cost of Capital</div>
+                <div class="wacc-grid">
+                    <div class="wacc-item">
+                        <span class="wlabel">Risk-Free Rate %</span>
+                        <input id="dcf-riskFree" type="number" step="0.25" value="${dcf.riskFreeRate}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcf()">
+                    </div>
+                    <div class="wacc-item">
+                        <span class="wlabel">Market Return %</span>
+                        <input id="dcf-mktReturn" type="number" step="0.5" value="${dcf.marketReturn}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcf()">
+                    </div>
+                    <div class="wacc-item"><span class="wlabel">Beta</span><span class="wvalue">${dcf.beta}</span></div>
+                    <div class="wacc-item"><span class="wlabel">Cost of Equity</span><span class="wvalue" id="dcf-costOfEquity">${dcf.costOfEquity}%</span></div>
+                    <div class="wacc-item"><span class="wlabel">Cost of Debt</span><span class="wvalue">${dcf.costOfDebt}%</span></div>
+                    <div class="wacc-item"><span class="wlabel">Tax Rate</span><span class="wvalue">${dcf.taxRate}%</span></div>
+                    <div class="wacc-item"><span class="wlabel">Debt Weight</span><span class="wvalue">${dcf.debtToCapital}%</span></div>
+                    <div class="wacc-item"><span class="wlabel">Equity Weight</span><span class="wvalue">${dcf.equityToCapital}%</span></div>
+                </div>
+                <div style="margin-top: 12px; font-size: 1.1rem; font-weight: 700; color: var(--accent);">WACC: <span id="dcf-wacc-display">${dcf.wacc}%</span></div>
+            </div>`;
+
+            // Historical FCF
+            html += `<div class="valuation-card">
+                <div class="valuation-card-title">Historical Free Cash Flow</div>
+                <table class="fcf-table">
+                    <thead><tr><th>Year</th><th>FCF</th><th>Growth</th></tr></thead>
+                    <tbody>${dcf.historicalFcf.map(r => `<tr>
+                        <td>${r.year}</td>
+                        <td>${fmtBigNum(r.fcf)}</td>
+                        <td style="color: ${(r.growth || 0) >= 0 ? '#22c55e' : '#ef4444'}">${r.growth != null ? r.growth + '%' : '—'}</td>
+                    </tr>`).join('')}</tbody>
+                </table>
+                <div style="margin-top: 8px; font-size: 0.85rem; display: flex; align-items: center; gap: 8px;">
+                    <span style="color: var(--text-dim);">FCF Growth Rate %</span>
+                    <input id="dcf-growth" type="number" step="0.5" value="${dcf.growthRate}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcf()">
+                    <span style="color: var(--text-dim); font-size: 0.78rem;">(default: trimmed mean × 0.7)</span>
+                </div>
+            </div>`;
+
+            // Projected FCF
+            html += `<div class="valuation-card">
+                <div class="valuation-card-title">Projected Free Cash Flow (9 Years)</div>
+                <div style="margin-bottom: 8px; font-size: 0.85rem; display: flex; align-items: center; gap: 8px;">
+                    <span style="color: var(--text-dim);">Perpetual Growth %</span>
+                    <input id="dcf-perpGrowth" type="number" step="0.25" value="2.5" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcf()">
+                    <span style="color: var(--text-dim);">Margin of Safety %</span>
+                    <input id="dcf-mos" type="number" step="5" value="${mosVal}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcf()">
+                </div>
+                <table class="fcf-table">
+                    <thead><tr><th>Year</th><th>FCF</th><th>PV of FCF</th></tr></thead>
+                    <tbody id="dcf-proj-tbody">${dcf.projectedFcf.map(r => `<tr>
+                        <td>Year ${r.year}</td>
+                        <td>${fmtBigNum(r.fcf)}</td>
+                        <td>${fmtBigNum(r.pvFcf)}</td>
+                    </tr>`).join('')}
+                    <tr style="font-weight: 700; border-top: 2px solid var(--border);">
+                        <td>Terminal Value</td>
+                        <td>${fmtBigNum(dcf.terminalValue)}</td>
+                        <td>${fmtBigNum(dcf.pvTerminal)}</td>
+                    </tr></tbody>
+                </table>
+            </div>`;
+
+            // Result
+            const upsideColor = dcf.upside >= 0 ? 'green' : 'red';
+            html += `<div class="iv-result-box">
+                <div class="iv-result-item"><div class="label">Enterprise Value</div><div class="value" id="dcf-ev">${fmtBigNum(dcf.enterpriseValue)}</div></div>
+                <div class="iv-result-item"><div class="label">Equity Value</div><div class="value" id="dcf-eqVal">${fmtBigNum(dcf.equityValue)}</div></div>
+                <div class="iv-result-item"><div class="label">IV / Share</div><div class="value" id="dcf-iv">${formatMoney(dcf.ivPerShare)}</div></div>
+                <div class="iv-result-item"><div class="label">MoS IV</div><div class="value" id="dcf-mosIv">${formatMoney(dcf.marginOfSafetyIv)}</div></div>
+                <div class="iv-result-item"><div class="label">Upside</div><div class="value ${upsideColor}" id="dcf-upside">${(dcf.upside >= 0 ? '+' : '') + dcf.upside}%</div></div>
+            </div>`;
+
+            return html;
+        }
+
+        function renderAnalyzerGraham(d) {
+            const g = (d.valuation || {}).graham;
+            if (!g) return '<p style="color: var(--text-dim); padding: 20px;">Graham model not available — requires positive EPS.</p>';
+
+            const upsideColor = g.upside >= 0 ? 'green' : 'red';
+            const mosVal = 70;
+            return `
+                <div class="valuation-card">
+                    <div class="valuation-card-title">Graham Revised Formula</div>
+                    <div class="formula-display">IV = EPS × (8.5 + 2g) × Y / C</div>
+                    <div class="wacc-grid">
+                        <div class="wacc-item"><span class="wlabel">EPS (TTM)</span><span class="wvalue">${formatMoney(g.eps)}</span></div>
+                        <div class="wacc-item">
+                            <span class="wlabel">Growth Rate (g) %</span>
+                            <input id="graham-growth" type="number" step="0.1" value="${g.growthRate}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcGraham()">
+                        </div>
+                        <div class="wacc-item"><span class="wlabel">Base Multiple</span><span class="wvalue">${g.baseMultiple}</span></div>
+                        <div class="wacc-item"><span class="wlabel">Adjusted Multiple (8.5 + 2g)</span><span class="wvalue" id="graham-adjMultiple">${g.adjustedMultiple}</span></div>
+                        <div class="wacc-item">
+                            <span class="wlabel">AAA Yield Baseline (Y) %</span>
+                            <input id="graham-yieldBase" type="number" step="0.1" value="${g.aaaYieldBaseline}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcGraham()">
+                        </div>
+                        <div class="wacc-item">
+                            <span class="wlabel">AAA Yield Current (C) %</span>
+                            <input id="graham-yieldCurr" type="number" step="0.1" value="${g.aaaYieldCurrent}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcGraham()">
+                        </div>
+                        <div class="wacc-item"><span class="wlabel">Bond Adjustment (Y/C)</span><span class="wvalue" id="graham-bondAdj">${g.bondAdjustment}</span></div>
+                        <div class="wacc-item">
+                            <span class="wlabel">Margin of Safety %</span>
+                            <input id="graham-mos" type="number" step="1" value="${mosVal}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcGraham()">
+                        </div>
+                    </div>
+                </div>
+                <div class="iv-result-box">
+                    <div class="iv-result-item"><div class="label">IV / Share</div><div class="value" id="graham-iv">${formatMoney(g.ivPerShare)}</div></div>
+                    <div class="iv-result-item"><div class="label">MoS IV</div><div class="value" id="graham-mosIv">${formatMoney(g.marginOfSafetyIv)}</div></div>
+                    <div class="iv-result-item"><div class="label">Current Price</div><div class="value">${formatMoney(d.price)}</div></div>
+                    <div class="iv-result-item"><div class="label">Upside</div><div class="value ${upsideColor}" id="graham-upside">${(g.upside >= 0 ? '+' : '') + g.upside}%</div></div>
+                </div>`;
+        }
+
+        function renderAnalyzerRelative(d) {
+            const rel = (d.valuation || {}).relative;
+            if (!rel) return '<p style="color: var(--text-dim); padding: 20px;">Relative valuation not available — insufficient data.</p>';
+
+            const upsideColor = rel.upside >= 0 ? 'green' : 'red';
+            return `
+                <div class="valuation-card">
+                    <div class="valuation-card-title">Relative Valuation — ${rel.sector || 'Market Average'}</div>
+                    <table class="fcf-table">
+                        <thead><tr><th>Metric</th><th>Stock</th><th>Sector Avg</th><th>Implied Price</th></tr></thead>
+                        <tbody>${rel.metrics.map(m => `<tr>
+                            <td>${m.name}</td>
+                            <td>${m.stockVal ? m.stockVal.toFixed(1) + 'x' : '—'}</td>
+                            <td>${m.sectorAvg}x</td>
+                            <td>${m.impliedPrice > 0 ? formatMoney(m.impliedPrice) : '—'}</td>
+                        </tr>`).join('')}</tbody>
+                    </table>
+                </div>
+                ${ivResultBox([
+                    {label: 'Relative IV', value: formatMoney(rel.ivPerShare)},
+                    {label: 'MoS IV (30%)', value: formatMoney(rel.marginOfSafetyIv)},
+                    {label: 'Current Price', value: formatMoney(d.price)},
+                    {label: 'Upside', value: (rel.upside >= 0 ? '+' : '') + rel.upside + '%', colorClass: upsideColor},
+                ])}`;
+        }
+
+        function renderAnalyzerSummary(d) {
+            const v = d.valuation || {};
+            const s = v.summary;
+            if (!s) return '<p style="color: var(--text-dim); padding: 20px;">No valuation models produced valid results.</p>';
+
+            // Model cards
+            const models = [
+                {key: 'dcf', name: 'DCF Model', data: v.dcf},
+                {key: 'graham', name: 'Graham Formula', data: v.graham},
+                {key: 'relative', name: 'Relative Valuation', data: v.relative},
+            ];
+            let cardsHtml = '<div class="iv-comparison">';
+            for (const m of models) {
+                if (!m.data) {
+                    cardsHtml += `<div class="iv-model-card" style="opacity:0.4;">
+                        <div class="model-name">${m.name}</div>
+                        <div class="model-iv" style="color: var(--text-dim);">N/A</div>
+                    </div>`;
+                    continue;
+                }
+                const up = m.data.upside;
+                const upColor = up >= 0 ? '#22c55e' : '#ef4444';
+                const weight = s.weights[m.key] ? (s.weights[m.key] * 100).toFixed(0) + '%' : '—';
+                cardsHtml += `<div class="iv-model-card">
+                    <div class="model-name">${m.name}</div>
+                    <div class="model-iv" style="color: var(--text);">${formatMoney(m.data.ivPerShare)}</div>
+                    <div class="model-upside" style="color: ${upColor};">${up >= 0 ? '+' : ''}${up}% upside</div>
+                    <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 6px;">Weight: ${weight}</div>
+                </div>`;
+            }
+            cardsHtml += '</div>';
+
+            // Signal
+            const sc = signalColor(s.signal);
+            const compUpColor = s.upside >= 0 ? 'green' : 'red';
+
+            return `
+                <div class="valuation-card" style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-size: 0.8rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">
+                        Stock Category: <strong style="color: var(--text);">${s.category}</strong>
+                    </div>
+                    <span class="signal-badge" style="background:${sc.bg}; color:${sc.fg};">${s.signal}</span>
+                </div>
+                ${cardsHtml}
+                ${ivResultBox([
+                    {label: 'Composite IV', value: formatMoney(s.compositeIv)},
+                    {label: 'MoS IV (30%)', value: formatMoney(s.marginOfSafetyIv)},
+                    {label: 'Current Price', value: formatMoney(d.price)},
+                    {label: 'Upside', value: (s.upside >= 0 ? '+' : '') + s.upside + '%', colorClass: compUpColor},
+                ])}`;
+        }
+
         async function analyzeStock() {
             const ticker = document.getElementById('analyzerTicker').value.toUpperCase().trim();
             if (!ticker) return;
@@ -3503,112 +4089,34 @@
                     return;
                 }
 
-                const rc = recColor(d.recommendationKey);
-                const low52 = d.fiftyTwoWeekLow || 0;
-                const high52 = d.fiftyTwoWeekHigh || 0;
-                const pricePos = high52 > low52 ? ((d.price - low52) / (high52 - low52) * 100) : 50;
+                _analyzerData = d;
 
-                resultsDiv.innerHTML = `
-                    <div class="analyzer-header">
-                        <span class="ticker-badge">${d.ticker}</span>
-                        <div>
-                            <h2>${d.name}</h2>
-                            <span style="color: var(--text-dim); font-size: 0.85rem;">${d.sector || ''} ${d.industry ? '· ' + d.industry : ''}</span>
-                        </div>
-                        <div style="margin-left: auto; text-align: right;">
-                            <div style="font-size: 1.6rem; font-weight: 700;">${formatMoney(d.price)}</div>
-                            ${d.recommendationKey ? `<span class="rec-badge" style="background:${rc.bg}; color:${rc.fg};">${d.recommendationKey.replace('_',' ')}</span>` : ''}
-                        </div>
-                    </div>
+                const hasValuation = d.valuation && (d.valuation.dcf || d.valuation.graham || d.valuation.relative);
+                const tabs = [
+                    {id: 'overview', label: 'Overview'},
+                    {id: 'dcf', label: 'DCF Model'},
+                    {id: 'graham', label: 'Graham'},
+                    {id: 'relative', label: 'Relative'},
+                    {id: 'summary', label: 'Summary'},
+                ];
 
-                    <div style="margin-bottom: 20px;">
-                        <div style="display:flex; justify-content:space-between; font-size:0.78rem; color:var(--text-dim); margin-bottom:4px;">
-                            <span>52W Low: ${formatMoney(low52)}</span>
-                            <span>52W High: ${formatMoney(high52)}</span>
-                        </div>
-                        <div class="analyzer-price-range">
-                            <div class="analyzer-price-bar"></div>
-                            <div class="analyzer-price-dot" style="left: ${Math.max(2, Math.min(98, pricePos))}%"></div>
-                        </div>
-                        <div style="display:flex; justify-content:space-between; font-size:0.78rem; color:var(--text-dim); margin-top:4px;">
-                            <span>50D Avg: ${formatMoney(d.fiftyDayAvg)}</span>
-                            <span>200D Avg: ${formatMoney(d.twoHundredDayAvg)}</span>
-                        </div>
-                    </div>
+                let html = renderAnalyzerHeader(d);
 
-                    <div class="analyzer-sections">
-                        <div class="analyzer-section">
-                            <div class="analyzer-section-title">📊 Valuation</div>
-                            ${statRow('Trailing P/E', d.trailingPE)}
-                            ${statRow('Forward P/E', d.forwardPE)}
-                            ${statRow('PEG Ratio', d.pegRatio)}
-                            ${statRow('Price/Book', d.priceToBook, 'x')}
-                            ${statRow('Price/Sales', d.priceToSales, 'x')}
-                            ${statRow('EV/EBITDA', d.evToEbitda, 'x')}
-                            ${statRow('EV/Revenue', d.evToRevenue, 'x')}
-                        </div>
+                // Sub-tabs
+                html += '<div class="analyzer-subtabs">';
+                tabs.forEach((t, i) => {
+                    html += `<button class="analyzer-subtab${i === 0 ? ' active' : ''}" data-view="${t.id}" onclick="switchAnalyzerView('${t.id}')">${t.label}</button>`;
+                });
+                html += '</div>';
 
-                        <div class="analyzer-section">
-                            <div class="analyzer-section-title">💰 Dividends</div>
-                            ${statRow('Dividend Yield', d.dividendYield, '%')}
-                            ${statRow('Dividend Rate', d.dividendRate, '$')}
-                            ${statRow('Payout Ratio', d.payoutRatio, '%')}
-                            ${statRow('5Y Avg Yield', d.fiveYearAvgDivYield, '%')}
-                        </div>
+                // Sub-views
+                html += `<div id="av-overview" class="analyzer-subview active">${renderAnalyzerOverview(d)}</div>`;
+                html += `<div id="av-dcf" class="analyzer-subview">${renderAnalyzerDcf(d)}</div>`;
+                html += `<div id="av-graham" class="analyzer-subview">${renderAnalyzerGraham(d)}</div>`;
+                html += `<div id="av-relative" class="analyzer-subview">${renderAnalyzerRelative(d)}</div>`;
+                html += `<div id="av-summary" class="analyzer-subview">${renderAnalyzerSummary(d)}</div>`;
 
-                        <div class="analyzer-section">
-                            <div class="analyzer-section-title">📈 Profitability</div>
-                            ${statRow('Gross Margin', d.grossMargin, '%')}
-                            ${statRow('Operating Margin', d.operatingMargin, '%')}
-                            ${statRow('Profit Margin', d.profitMargin, '%')}
-                            ${statRow('Return on Equity', d.returnOnEquity, '%')}
-                            ${statRow('Return on Assets', d.returnOnAssets, '%')}
-                        </div>
-
-                        <div class="analyzer-section">
-                            <div class="analyzer-section-title">🏦 Financial Health</div>
-                            ${statRow('Debt/Equity', d.debtToEquity)}
-                            ${statRow('Current Ratio', d.currentRatio, 'x')}
-                            ${statRow('Quick Ratio', d.quickRatio, 'x')}
-                            ${statRow('Total Debt', d.totalDebt, 'big')}
-                            ${statRow('Total Cash', d.totalCash, 'big')}
-                        </div>
-
-                        <div class="analyzer-section">
-                            <div class="analyzer-section-title">🚀 Growth</div>
-                            ${statRow('Revenue Growth', d.revenueGrowth, '%')}
-                            ${statRow('Earnings Growth', d.earningsGrowth, '%')}
-                            ${statRow('EPS (TTM)', d.earningsPerShare, '$')}
-                            ${statRow('Forward EPS', d.forwardEps, '$')}
-                            ${statRow('Revenue/Share', d.revenuePerShare, '$')}
-                        </div>
-
-                        <div class="analyzer-section">
-                            <div class="analyzer-section-title">🎯 Analyst Targets</div>
-                            ${statRow('Target Low', d.targetLowPrice, '$')}
-                            ${statRow('Target Mean', d.targetMeanPrice, '$')}
-                            ${statRow('Target High', d.targetHighPrice, '$')}
-                            ${statRow('# of Analysts', d.numberOfAnalysts)}
-                            ${statRow('Recommendation', d.recommendationKey ? d.recommendationKey.replace('_',' ').toUpperCase() : null)}
-                        </div>
-
-                        <div class="analyzer-section">
-                            <div class="analyzer-section-title">📋 Key Metrics</div>
-                            ${statRow('Market Cap', d.marketCap, 'big')}
-                            ${statRow('Enterprise Value', d.enterpriseValue, 'big')}
-                            ${statRow('Beta', d.beta)}
-                            ${statRow('Book Value', d.bookValue, '$')}
-                            ${statRow('Short Ratio', d.shortRatio)}
-                        </div>
-
-                        <div class="analyzer-section">
-                            <div class="analyzer-section-title">💵 Cash Flow</div>
-                            ${statRow('Free Cash Flow', d.freeCashflow, 'big')}
-                            ${statRow('Operating CF', d.operatingCashflow, 'big')}
-                            ${statRow('Total Revenue', d.totalRevenue, 'big')}
-                        </div>
-                    </div>
-                `;
+                resultsDiv.innerHTML = html;
             } catch (e) {
                 resultsDiv.innerHTML = '<p style="color: var(--red); padding: 20px;">Error fetching data. Check console.</p>';
                 console.error('Analyzer error:', e);
