@@ -1427,9 +1427,9 @@ def _default_taxes():
     return {
         "iraContributionPct": 0.03,
         "standardDeduction": 16100,
-        "cityResidentTax": {"name": "Lansing Resident Tax", "rate": 0.01, "enabled": True},
-        "cityNonResidentTax": {"name": "E Lansing Nonresident Tax", "rate": 0.003, "enabled": True},
-        "stateTax": {"name": "Michigan State Tax", "rate": 0.0425, "enabled": True},
+        "cityResidentTax": {"name": "City Tax (Resident)", "rate": 0.01, "enabled": True},
+        "cityNonResidentTax": {"name": "City Tax (Non-Resident)", "rate": 0.003, "enabled": True},
+        "stateTax": {"name": "State Tax", "rate": 0.0425, "enabled": True},
     }
 
 
@@ -1663,11 +1663,29 @@ def compute_salary_breakdown(profile):
     }
 
 
+_TAX_NAME_MAP = {
+    "Lansing Resident Tax": "City Tax (Resident)",
+    "E Lansing Nonresident Tax": "City Tax (Non-Resident)",
+    "Michigan State Tax": "State Tax",
+}
+
 def _get_salary_data(portfolio):
     """Get salary data, migrating if needed."""
     salary = portfolio.get("salary", {})
     if "profiles" not in salary:
         salary = migrate_salary_data(salary)
+        portfolio["salary"] = salary
+        save_portfolio(portfolio)
+    # Fix legacy tax names
+    changed = False
+    for pid, profile in salary.get("profiles", {}).items():
+        taxes = profile.get("taxes", {})
+        for tkey in ("cityResidentTax", "cityNonResidentTax", "stateTax"):
+            cfg = taxes.get(tkey, {})
+            if cfg.get("name") in _TAX_NAME_MAP:
+                cfg["name"] = _TAX_NAME_MAP[cfg["name"]]
+                changed = True
+    if changed:
         portfolio["salary"] = salary
         save_portfolio(portfolio)
     return salary
