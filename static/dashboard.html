@@ -3682,6 +3682,69 @@
             return {projected, terminal, pvTerminal, ev, eqVal, iv, mosIv, upside};
         }
 
+        function _runEndeuda2Scenario(fcfPS, growth1, growth2, termFactor, discountRate) {
+            const yearByYear = [];
+            let currentFcf = fcfPS, pvSum = 0;
+            for (let yr = 1; yr <= 10; yr++) {
+                const g = yr <= 5 ? growth1 : growth2;
+                currentFcf *= (1 + g);
+                const pv = currentFcf / Math.pow(1 + discountRate, yr);
+                pvSum += pv;
+                yearByYear.push({year: yr, fcfPS: currentFcf, pv: pv});
+            }
+            const terminalValue = currentFcf * termFactor;
+            const pvTerminal = terminalValue / Math.pow(1 + discountRate, 10);
+            const iv = pvSum + pvTerminal;
+            return {yearByYear, terminalValue, pvTerminal, iv};
+        }
+
+        function recalcEndeuda2() {
+            if (!_analyzerData || !_analyzerData.valuation || !_analyzerData.valuation.endeuda2) return;
+            const e2 = _analyzerData.valuation.endeuda2;
+            const fcfPS = parseFloat(document.getElementById('e2-fcfps').value) || e2.fcfPerShare;
+            const discount = (parseFloat(document.getElementById('e2-discount').value) || e2.discountRate) / 100;
+            const mos = parseFloat(document.getElementById('e2-mos').value) || 70;
+            const price = _analyzerData.price || 0;
+
+            const scenarioKeys = ['base', 'best', 'worst'];
+            const probs = {base: 50, best: 25, worst: 25};
+            let compositeIv = 0;
+
+            for (const sc of scenarioKeys) {
+                const g1 = parseFloat(document.getElementById(`e2-${sc}-g1`).value) / 100;
+                const g2 = parseFloat(document.getElementById(`e2-${sc}-g2`).value) / 100;
+                const tf = parseFloat(document.getElementById(`e2-${sc}-tf`).value);
+                const prob = probs[sc] / 100;
+
+                const result = _runEndeuda2Scenario(fcfPS, g1, g2, tf, discount);
+                compositeIv += result.iv * prob;
+
+                const tbody = document.getElementById(`e2-${sc}-tbody`);
+                if (tbody) {
+                    tbody.innerHTML = result.yearByYear.map(r => `<tr>
+                        <td>Year ${r.year}${r.year === 6 ? ' <span style="color:var(--text-dim);font-size:0.72rem;">(Phase 2)</span>' : ''}</td>
+                        <td>$${r.fcfPS.toFixed(2)}</td>
+                        <td>$${r.pv.toFixed(2)}</td>
+                    </tr>`).join('') + `<tr style="font-weight:700; border-top:2px solid var(--border);">
+                        <td>Terminal</td>
+                        <td>$${result.terminalValue.toFixed(2)}</td>
+                        <td>$${result.pvTerminal.toFixed(2)}</td>
+                    </tr>`;
+                }
+                const ivEl = document.getElementById(`e2-${sc}-iv`);
+                if (ivEl) ivEl.textContent = formatMoney(result.iv);
+            }
+
+            const mosIv = compositeIv * (mos / 100);
+            const upside = price > 0 ? ((mosIv - price) / price * 100) : 0;
+
+            document.getElementById('e2-compositeIv').textContent = formatMoney(compositeIv);
+            document.getElementById('e2-mosIv').textContent = formatMoney(mosIv);
+            const uEl = document.getElementById('e2-upside');
+            uEl.textContent = (upside >= 0 ? '+' : '') + upside.toFixed(1) + '%';
+            uEl.className = 'value ' + (upside >= 0 ? 'green' : 'red');
+        }
+
         function rebuildFcfTable() {
             const tbody = document.getElementById('dcf-hist-tbody');
             if (!tbody || !window._dcfFcfLookup) return;
@@ -4123,6 +4186,88 @@
                 ])}`;
         }
 
+        function renderAnalyzerEndeuda2(d) {
+            const e2 = (d.valuation || {}).endeuda2;
+            if (!e2) return '<p style="color: var(--text-dim); padding: 20px;">Endeuda2 model not available — requires positive Free Cash Flow.</p>';
+
+            const mosVal = 70;
+            // Card 1: Global Inputs
+            let html = `<div class="valuation-card">
+                <div class="valuation-card-title">Endeuda2 — Scenario-Based Intrinsic Value</div>
+                <div class="wacc-grid">
+                    <div class="wacc-item">
+                        <span class="wlabel">FCF / Share</span>
+                        <input id="e2-fcfps" type="number" step="0.01" value="${e2.fcfPerShare}" class="form-input" style="width:90px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
+                    </div>
+                    <div class="wacc-item"><span class="wlabel">Current Price</span><span class="wvalue">${formatMoney(d.price)}</span></div>
+                    <div class="wacc-item">
+                        <span class="wlabel">Discount Rate %</span>
+                        <input id="e2-discount" type="number" step="0.25" value="${e2.discountRate}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
+                    </div>
+                    <div class="wacc-item"><span class="wlabel">WACC (computed)</span><span class="wvalue">${e2.wacc}%</span></div>
+                    <div class="wacc-item">
+                        <span class="wlabel">Margin of Safety %</span>
+                        <input id="e2-mos" type="number" step="5" value="${mosVal}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
+                    </div>
+                </div>
+            </div>`;
+
+            // Cards 2-4: Scenario cards
+            const scenarioOrder = [
+                {key: 'base', label: 'Base', color: 'var(--accent)'},
+                {key: 'best', label: 'Best', color: '#22c55e'},
+                {key: 'worst', label: 'Worst', color: '#ef4444'},
+            ];
+
+            for (const sc of scenarioOrder) {
+                const data = e2.scenarios[sc.key];
+                html += `<div class="valuation-card" style="border-left: 3px solid ${sc.color};">
+                    <div class="valuation-card-title">${sc.label} Scenario — Probability: ${data.probability}%</div>
+                    <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:12px;">
+                        <div style="display:flex; align-items:center; gap:6px; font-size:0.85rem;">
+                            <span style="color:var(--text-dim);">Growth 1-5 yrs %</span>
+                            <input id="e2-${sc.key}-g1" type="number" step="0.5" value="${data.growth1_5}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
+                        </div>
+                        <div style="display:flex; align-items:center; gap:6px; font-size:0.85rem;">
+                            <span style="color:var(--text-dim);">Growth 6-10 yrs %</span>
+                            <input id="e2-${sc.key}-g2" type="number" step="0.5" value="${data.growth6_10}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
+                        </div>
+                        <div style="display:flex; align-items:center; gap:6px; font-size:0.85rem;">
+                            <span style="color:var(--text-dim);">Terminal Factor</span>
+                            <input id="e2-${sc.key}-tf" type="number" step="0.5" value="${data.terminalFactor}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
+                        </div>
+                    </div>
+                    <table class="fcf-table">
+                        <thead><tr><th>Year</th><th>FCF/PS</th><th>PV of FCF/PS</th></tr></thead>
+                        <tbody id="e2-${sc.key}-tbody">${data.yearByYear.map(r => `<tr>
+                            <td>Year ${r.year}${r.year === 6 ? ' <span style="color:var(--text-dim);font-size:0.72rem;">(Phase 2)</span>' : ''}</td>
+                            <td>$${r.fcfPS.toFixed(2)}</td>
+                            <td>$${r.pv.toFixed(2)}</td>
+                        </tr>`).join('')}
+                        <tr style="font-weight:700; border-top:2px solid var(--border);">
+                            <td>Terminal</td>
+                            <td>$${data.terminalValue.toFixed(2)}</td>
+                            <td>$${data.pvTerminal.toFixed(2)}</td>
+                        </tr></tbody>
+                    </table>
+                    <div style="margin-top:8px; font-size:0.9rem;">
+                        Scenario IV: <strong id="e2-${sc.key}-iv" style="color:${sc.color};">${formatMoney(data.ivPerShare)}</strong>
+                    </div>
+                </div>`;
+            }
+
+            // Card 5: Composite result
+            const upsideColor = e2.upside >= 0 ? 'green' : 'red';
+            html += `<div class="iv-result-box">
+                <div class="iv-result-item"><div class="label">Composite IV</div><div class="value" id="e2-compositeIv">${formatMoney(e2.compositeIv)}</div></div>
+                <div class="iv-result-item"><div class="label">MoS IV</div><div class="value" id="e2-mosIv">${formatMoney(e2.marginOfSafetyIv)}</div></div>
+                <div class="iv-result-item"><div class="label">Current Price</div><div class="value">${formatMoney(d.price)}</div></div>
+                <div class="iv-result-item"><div class="label">Upside</div><div class="value ${upsideColor}" id="e2-upside">${(e2.upside >= 0 ? '+' : '') + e2.upside}%</div></div>
+            </div>`;
+
+            return html;
+        }
+
         function renderAnalyzerSummary(d) {
             const v = d.valuation || {};
             const s = v.summary;
@@ -4133,6 +4278,7 @@
                 {key: 'dcf', name: 'DCF Model', data: v.dcf},
                 {key: 'graham', name: 'Graham Formula', data: v.graham},
                 {key: 'relative', name: 'Relative Valuation', data: v.relative},
+                {key: 'endeuda2', name: 'Endeuda2 Scenarios', data: v.endeuda2},
             ];
             let cardsHtml = '<div class="iv-comparison">';
             for (const m of models) {
@@ -4199,6 +4345,7 @@
                     {id: 'dcf', label: 'DCF Model'},
                     {id: 'graham', label: 'Graham'},
                     {id: 'relative', label: 'Relative'},
+                    {id: 'endeuda2', label: 'Endeuda2'},
                     {id: 'summary', label: 'Summary'},
                 ];
 
@@ -4216,6 +4363,7 @@
                 html += `<div id="av-dcf" class="analyzer-subview">${renderAnalyzerDcf(d)}</div>`;
                 html += `<div id="av-graham" class="analyzer-subview">${renderAnalyzerGraham(d)}</div>`;
                 html += `<div id="av-relative" class="analyzer-subview">${renderAnalyzerRelative(d)}</div>`;
+                html += `<div id="av-endeuda2" class="analyzer-subview">${renderAnalyzerEndeuda2(d)}</div>`;
                 html += `<div id="av-summary" class="analyzer-subview">${renderAnalyzerSummary(d)}</div>`;
 
                 resultsDiv.innerHTML = html;

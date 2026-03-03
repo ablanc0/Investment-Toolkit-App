@@ -1386,76 +1386,97 @@ def _trimmean(values, pct=0.2):
     return sum(trimmed) / len(trimmed) if trimmed else 0
 
 
-def compute_dcf(info, income, balance, cashflow):
-    """Pure DCF valuation: WACC → single growth rate → Future FCF → discount → IV/share.
+def _compute_wacc(info, income):
+    """Compute WACC from CAPM. Returns (wacc_decimal, details_dict) or (None, None)."""
+    beta = info.get("beta") or 1.0
+    cost_of_equity = RISK_FREE_RATE + beta * (MARKET_RETURN - RISK_FREE_RATE)
 
-    Historical FCF → avg growth → project 9 years forward → Terminal Value → IV.
-    No scenarios, no two-phase growth — those belong to the Endeuda2 method.
+    total_debt = info.get("totalDebt") or 0
+    market_cap = info.get("marketCap") or 0
+    total_capital = total_debt + market_cap
+    if total_capital <= 0:
+        return None, None
+
+    debt_weight = total_debt / total_capital
+    equity_weight = market_cap / total_capital
+
+    tax_rate = 0.21
+    years_sorted = sorted(income.keys(), reverse=True) if income else []
+    for yr in years_sorted:
+        pretax = income[yr].get("Pretax Income", 0)
+        tax_prov = income[yr].get("Tax Provision", 0)
+        if pretax and pretax > 0:
+            tax_rate = min(max(tax_prov / pretax, 0), 0.5)
+            break
+
+    interest_expense = 0
+    for yr in years_sorted:
+        ie = abs(income[yr].get("Interest Expense", 0))
+        if ie > 0:
+            interest_expense = ie
+            break
+    interest_rate = (interest_expense / total_debt) if total_debt > 0 else 0.04
+    cost_of_debt = interest_rate * (1 - tax_rate)
+
+    wacc = equity_weight * cost_of_equity + debt_weight * cost_of_debt
+    wacc = max(wacc, 0.05)
+
+    return wacc, {
+        "beta": beta, "costOfEquity": cost_of_equity,
+        "costOfDebt": cost_of_debt, "taxRate": tax_rate,
+        "debtWeight": debt_weight, "equityWeight": equity_weight,
+        "totalDebt": total_debt,
+    }
+
+
+def _compute_historical_fcf(info, cashflow):
+    """Extract historical FCF and avg growth from cashflow dict.
+    Returns (historical_fcf_list, hist_avg_growth) or ([], 0).
     """
+    historical_fcf = []
+    cf_years = sorted(cashflow.keys())
+    for yr in cf_years:
+        ocf = cashflow[yr].get("Operating Cash Flow", 0)
+        capex = cashflow[yr].get("Capital Expenditure", 0)
+        fcf = ocf + capex
+        historical_fcf.append({"year": yr, "fcf": round(fcf)})
+
+    if not historical_fcf:
+        current_fcf = info.get("freeCashflow") or info.get("operatingCashflow", 0)
+        if current_fcf:
+            historical_fcf = [{"year": "TTM", "fcf": round(current_fcf)}]
+
+    growths = []
+    for i in range(1, len(historical_fcf)):
+        prev = historical_fcf[i-1]["fcf"]
+        curr = historical_fcf[i]["fcf"]
+        if prev and prev > 0 and curr > 0:
+            g = (curr - prev) / prev
+            growths.append(g)
+            historical_fcf[i]["growth"] = round(g * 100, 1)
+
+    hist_avg_growth = _trimmean(growths) if growths else 0.07
+    return historical_fcf, hist_avg_growth
+
+
+def compute_dcf(info, income, balance, cashflow):
+    """Pure DCF valuation: WACC → single growth rate → Future FCF → discount → IV/share."""
     try:
-        beta = info.get("beta") or 1.0
-        cost_of_equity = RISK_FREE_RATE + beta * (MARKET_RETURN - RISK_FREE_RATE)
-
-        total_debt = info.get("totalDebt") or 0
-        market_cap = info.get("marketCap") or 0
-        total_capital = total_debt + market_cap
-        if total_capital <= 0:
+        wacc, wacc_details = _compute_wacc(info, income)
+        if wacc is None:
             return None
 
-        debt_weight = total_debt / total_capital
-        equity_weight = market_cap / total_capital
+        beta = wacc_details["beta"]
+        cost_of_equity = wacc_details["costOfEquity"]
+        cost_of_debt = wacc_details["costOfDebt"]
+        tax_rate = wacc_details["taxRate"]
+        debt_weight = wacc_details["debtWeight"]
+        equity_weight = wacc_details["equityWeight"]
+        total_debt = wacc_details["totalDebt"]
 
-        # Tax rate from income statement
-        tax_rate = 0.21
-        years_sorted = sorted(income.keys(), reverse=True) if income else []
-        for yr in years_sorted:
-            pretax = income[yr].get("Pretax Income", 0)
-            tax_prov = income[yr].get("Tax Provision", 0)
-            if pretax and pretax > 0:
-                tax_rate = min(max(tax_prov / pretax, 0), 0.5)
-                break
-
-        # Interest expense → cost of debt
-        interest_expense = 0
-        for yr in years_sorted:
-            ie = abs(income[yr].get("Interest Expense", 0))
-            if ie > 0:
-                interest_expense = ie
-                break
-        interest_rate = (interest_expense / total_debt) if total_debt > 0 else 0.04
-        cost_of_debt = interest_rate * (1 - tax_rate)
-
-        wacc = equity_weight * cost_of_equity + debt_weight * cost_of_debt
-        wacc = max(wacc, 0.05)  # floor at 5%
-
-        # Historical FCF
-        historical_fcf = []
-        cf_years = sorted(cashflow.keys())
-        for yr in cf_years:
-            ocf = cashflow[yr].get("Operating Cash Flow", 0)
-            capex = cashflow[yr].get("Capital Expenditure", 0)  # negative in yfinance
-            fcf = ocf + capex  # adding negative capex = subtracting
-            historical_fcf.append({"year": yr, "fcf": round(fcf)})
-
-        # Fallback if no cashflow data
-        if not historical_fcf:
-            current_fcf = info.get("freeCashflow") or info.get("operatingCashflow", 0)
-            if current_fcf:
-                historical_fcf = [{"year": "TTM", "fcf": round(current_fcf)}]
-
+        historical_fcf, hist_avg_growth = _compute_historical_fcf(info, cashflow)
         if not historical_fcf:
             return None
-
-        # Growth rates
-        growths = []
-        for i in range(1, len(historical_fcf)):
-            prev = historical_fcf[i-1]["fcf"]
-            curr = historical_fcf[i]["fcf"]
-            if prev and prev > 0 and curr > 0:
-                growths.append((curr - prev) / prev)
-                historical_fcf[i]["growth"] = round((curr - prev) / prev * 100, 1)
-
-        hist_avg_growth = _trimmean(growths) if growths else 0.07
 
         # Single growth rate for projection (conservative: avg × 0.7)
         growth_rate = hist_avg_growth * 0.7
@@ -1520,6 +1541,119 @@ def compute_dcf(info, income, balance, cashflow):
         }
     except Exception as e:
         print(f"[DCF] Error: {e}")
+        return None
+
+
+def _run_endeuda2_scenario(fcf_ps, growth1, growth2, terminal_factor, discount_rate):
+    """Run one Endeuda2 scenario: two-phase growth (yr 1-5 + 6-10) + terminal multiple."""
+    year_by_year = []
+    current_fcf = fcf_ps
+    pv_sum = 0
+
+    for yr in range(1, 11):
+        g = growth1 if yr <= 5 else growth2
+        current_fcf = current_fcf * (1 + g)
+        pv = current_fcf / ((1 + discount_rate) ** yr)
+        pv_sum += pv
+        year_by_year.append({"year": yr, "fcfPS": round(current_fcf, 4), "pv": round(pv, 4)})
+
+    terminal_value = current_fcf * terminal_factor
+    pv_terminal = terminal_value / ((1 + discount_rate) ** 10)
+    iv = pv_sum + pv_terminal
+
+    return {
+        "yearByYear": year_by_year,
+        "terminalValue": round(terminal_value, 2),
+        "pvTerminal": round(pv_terminal, 2),
+        "ivPerShare": round(iv, 2),
+    }
+
+
+def compute_endeuda2(info, income, balance, cashflow):
+    """Endeuda2 scenario-based two-phase growth valuation using FCF per share.
+
+    Three weighted scenarios (Base 50%, Best 25%, Worst 25%),
+    each with two-phase growth (years 1-5, years 6-10) and terminal multiple.
+    """
+    try:
+        fcf = info.get("freeCashflow") or 0
+        shares = info.get("sharesOutstanding") or 0
+        if fcf <= 0 or shares <= 0:
+            return None
+        fcf_ps = fcf / shares
+        price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
+
+        # WACC as default discount rate
+        wacc, _ = _compute_wacc(info, income)
+        if wacc is None:
+            wacc = 0.10
+        discount_rate = wacc
+
+        # Historical growth for defaults
+        _, hist_avg_growth = _compute_historical_fcf(info, cashflow)
+
+        # Default scenario parameters
+        # When growth is negative, swap best/worst factors so Best = least negative
+        if hist_avg_growth >= 0:
+            best_factor, worst_factor = 1.0, 0.3
+        else:
+            best_factor, worst_factor = 0.3, 1.0
+
+        base_g1 = max(-0.05, min(hist_avg_growth * 0.7, 0.35))
+        best_g1 = max(-0.05, min(hist_avg_growth * best_factor, 0.35))
+        worst_g1 = max(-0.05, min(hist_avg_growth * worst_factor, 0.35))
+
+        scenario_defs = {
+            "base": {
+                "growth1": base_g1, "growth2": base_g1 * 0.6,
+                "terminalFactor": 15, "probability": 50,
+            },
+            "best": {
+                "growth1": best_g1, "growth2": best_g1 * 0.8,
+                "terminalFactor": 20, "probability": 25,
+            },
+            "worst": {
+                "growth1": worst_g1, "growth2": worst_g1 * 0.5,
+                "terminalFactor": 10, "probability": 25,
+            },
+        }
+
+        # Cap growth2 values
+        for sd in scenario_defs.values():
+            sd["growth2"] = max(-0.05, min(sd["growth2"], 0.25))
+
+        scenarios = {}
+        composite_iv = 0
+        for name, sd in scenario_defs.items():
+            result = _run_endeuda2_scenario(
+                fcf_ps, sd["growth1"], sd["growth2"],
+                sd["terminalFactor"], discount_rate
+            )
+            scenarios[name] = {
+                "growth1_5": round(sd["growth1"] * 100, 1),
+                "growth6_10": round(sd["growth2"] * 100, 1),
+                "terminalFactor": sd["terminalFactor"],
+                "probability": sd["probability"],
+                **result,
+            }
+            composite_iv += result["ivPerShare"] * (sd["probability"] / 100)
+
+        mos_iv = composite_iv * MARGIN_OF_SAFETY
+        upside = ((mos_iv - price) / price * 100) if price > 0 else 0
+
+        return {
+            "fcfPerShare": round(fcf_ps, 2),
+            "price": round(price, 2),
+            "discountRate": round(discount_rate * 100, 2),
+            "wacc": round(wacc * 100, 2),
+            "scenarios": scenarios,
+            "compositeIv": round(composite_iv, 2),
+            "marginOfSafetyIv": round(mos_iv, 2),
+            "ivPerShare": round(composite_iv, 2),
+            "upside": round(upside, 1),
+        }
+    except Exception as e:
+        print(f"[Endeuda2] Error: {e}")
         return None
 
 
@@ -1642,7 +1776,7 @@ def compute_relative(info):
         return None
 
 
-def compute_valuation_summary(dcf, graham, relative, info):
+def compute_valuation_summary(dcf, graham, relative, endeuda2, info):
     """Composite weighted IV based on stock category (Growth/Value/Blend)."""
     try:
         pe = info.get("trailingPE") or 0
@@ -1652,13 +1786,13 @@ def compute_valuation_summary(dcf, graham, relative, info):
         # Categorize
         if pe > 25 and rev_growth > 15:
             category = "Growth"
-            weights = {"dcf": 0.6, "graham": 0.3, "relative": 0.1}
+            weights = {"dcf": 0.35, "graham": 0.15, "relative": 0.10, "endeuda2": 0.40}
         elif pe > 0 and pe < 18 and div_yield > 0.01:
             category = "Value"
-            weights = {"dcf": 0.2, "graham": 0.3, "relative": 0.5}
+            weights = {"dcf": 0.15, "graham": 0.25, "relative": 0.30, "endeuda2": 0.30}
         else:
             category = "Blend"
-            weights = {"dcf": 0.4, "graham": 0.3, "relative": 0.3}
+            weights = {"dcf": 0.25, "graham": 0.20, "relative": 0.20, "endeuda2": 0.35}
 
         # Collect valid IVs
         models = {}
@@ -1668,6 +1802,8 @@ def compute_valuation_summary(dcf, graham, relative, info):
             models["graham"] = graham["ivPerShare"]
         if relative and relative.get("ivPerShare", 0) > 0:
             models["relative"] = relative["ivPerShare"]
+        if endeuda2 and endeuda2.get("ivPerShare", 0) > 0:
+            models["endeuda2"] = endeuda2["ivPerShare"]
 
         if not models:
             return None
@@ -1824,11 +1960,13 @@ def api_stock_analyzer(ticker):
         dcf = compute_dcf(info, income, balance, cashflow)
         graham = compute_graham(info)
         relative = compute_relative(info)
-        summary = compute_valuation_summary(dcf, graham, relative, info)
+        endeuda2 = compute_endeuda2(info, income, balance, cashflow)
+        summary = compute_valuation_summary(dcf, graham, relative, endeuda2, info)
         result["valuation"] = {
             "dcf": dcf,
             "graham": graham,
             "relative": relative,
+            "endeuda2": endeuda2,
             "summary": summary,
         }
 
