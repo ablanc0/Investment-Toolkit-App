@@ -3683,6 +3683,14 @@
                 document.getElementById('graham-basePE').value = 7;
                 document.getElementById('graham-cg').value = 1;
             }
+            const btnCons = document.getElementById('graham-mode-conservative');
+            const btnOrig = document.getElementById('graham-mode-original');
+            if (btnCons && btnOrig) {
+                const active = 'font-size:0.7rem; padding:2px 8px; border-radius:4px; background:var(--accent); color:#fff;';
+                const inactive = 'font-size:0.7rem; padding:2px 8px; border-radius:4px; background:transparent; color:var(--text-dim);';
+                btnCons.style.cssText = mode === 'conservative' ? active : inactive;
+                btnOrig.style.cssText = mode === 'original' ? active : inactive;
+            }
             recalcGraham();
         }
 
@@ -4228,9 +4236,9 @@
                 <div class="valuation-card">
                     <div class="valuation-card-title" style="display:flex; justify-content:space-between; align-items:center;">
                         Graham Revised Formula
-                        <div style="display:flex; gap:6px;">
-                            <button class="btn btn-sm" style="font-size:0.7rem; padding:2px 8px; opacity:0.7;" onclick="grahamPreset('conservative')" title="Base P/E=7, Cg=1">Conservative</button>
-                            <button class="btn btn-sm" style="font-size:0.7rem; padding:2px 8px; opacity:0.7;" onclick="grahamPreset('original')" title="Base P/E=8.5, Cg=2">Original</button>
+                        <div style="display:inline-flex; gap:2px; background:var(--bg); border-radius:6px; padding:2px;">
+                            <button id="graham-mode-conservative" class="btn btn-sm" style="font-size:0.7rem; padding:2px 8px; border-radius:4px; background:var(--accent); color:#fff;" onclick="grahamPreset('conservative')" title="Base P/E=7, Cg=1">Conservative</button>
+                            <button id="graham-mode-original" class="btn btn-sm" style="font-size:0.7rem; padding:2px 8px; border-radius:4px; background:transparent; color:var(--text-dim);" onclick="grahamPreset('original')" title="Base P/E=8.5, Cg=2">Original</button>
                         </div>
                     </div>
                     <div class="formula-display" id="graham-formula">IV = EPS × (${g.basePE} + ${g.cg}g) × ${g.aaaYieldBaseline} / ${g.aaaYieldCurrent}</div>
