@@ -1446,17 +1446,33 @@ def _fmp_to_info(fmp, yf_info):
 
     # Start with yfinance as base, then override financial fields from FMP
     info = dict(yf_info)
+    # Derived ratios from FMP data (for Relative valuation)
+    ebitda = inc0.get("ebitda", 0) or 0
+    ev_val = ev0.get("enterpriseValue", 0) or 0
+    equity = bal0.get("totalStockholdersEquity", 0) or 0
+    eps = inc0.get("epsDiluted", 0) or 0
+    price = yf_info.get("currentPrice") or yf_info.get("regularMarketPrice", 0)
+    book_per_share = (equity / shares) if shares > 0 else 0
+    ev_ebitda = (ev_val / ebitda) if ebitda > 0 else 0
+    pe = (price / eps) if eps > 0 else 0
+    pb = (price / book_per_share) if book_per_share > 0 else 0
+
     info.update({
-        # FMP financial data (uniform source for DCF + Graham)
+        # FMP financial data (uniform source for DCF + Graham + Relative)
         "totalDebt": bal0.get("totalDebt", 0),
         "totalCash": bal0.get("cashAndCashEquivalents", 0),
         "freeCashflow": cf0.get("freeCashFlow", 0),
         "operatingCashflow": cf0.get("operatingCashFlow", 0),
-        "trailingEps": inc0.get("epsDiluted", 0),
+        "trailingEps": eps,
         "totalRevenue": inc0.get("revenue", 0),
         "sharesOutstanding": shares,
-        "enterpriseValue": ev0.get("enterpriseValue", 0),
+        "enterpriseValue": ev_val,
         "earningsGrowth": gr0.get("epsgrowth", 0),  # FMP: decimal (e.g. 0.15 = 15%)
+        # Derived ratios from FMP (override yfinance for source consistency)
+        "bookValue": round(book_per_share, 2),
+        "enterpriseToEbitda": round(ev_ebitda, 2),
+        "trailingPE": round(pe, 2),
+        "priceToBook": round(pb, 2),
     })
     return info
 
@@ -1841,18 +1857,22 @@ def compute_graham(info, aaa_yield_live=None, aaa_date=None):
 
 
 def compute_relative(info):
-    """Relative valuation using sector average multiples."""
+    """Relative valuation using sector average multiples.
+
+    All financial inputs (EPS, book value, EV, EBITDA, shares) come from FMP
+    via the unified info dict. Sector averages are hardcoded defaults
+    (editable in the frontend).
+    """
     try:
         sector = info.get("sector", "")
         avgs = SECTOR_AVERAGES.get(sector)
         if not avgs:
-            # Try partial match
             for k, v in SECTOR_AVERAGES.items():
                 if k.lower() in sector.lower() or sector.lower() in k.lower():
                     avgs = v
                     break
         if not avgs:
-            avgs = {"pe": 20, "evEbitda": 13, "pb": 3}  # market average fallback
+            avgs = {"pe": 20, "evEbitda": 13, "pb": 3}
 
         eps = info.get("trailingEps") or 0
         book_val = info.get("bookValue") or 0
@@ -1910,7 +1930,11 @@ def compute_relative(info):
 
         return {
             "sector": sector,
+            "sectorDefaults": dict(avgs),
             "metrics": metrics,
+            "eps": round(eps, 2),
+            "bookValue": round(book_val, 2),
+            "ebitdaPerShare": round(ebitda_per_share, 2),
             "ivPerShare": round(iv, 2),
             "marginOfSafetyIv": round(mos_iv, 2),
             "upside": round(upside, 1),
@@ -2064,9 +2088,10 @@ def api_stock_analyzer(ticker):
                 "source": "Yahoo Finance",
             },
             "dataSources": {
-                "financials": "FMP (income, cashflow, balance sheet, enterprise values, earnings growth)",
-                "profile": "Yahoo Finance (price, beta, ratios, analyst targets)",
+                "financials": "FMP (income, cashflow, balance sheet, enterprise values, earnings growth, EBITDA)",
+                "profile": "Yahoo Finance (price, beta, analyst targets)",
                 "bonds": "FRED (AAA corporate bond yield)",
+                "ratios": "FMP-derived (P/E, P/B, EV/EBITDA, book value per share)",
             },
             "lastUpdated": datetime.now().isoformat(),
         }

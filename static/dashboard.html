@@ -4274,26 +4274,92 @@
             const rel = (d.valuation || {}).relative;
             if (!rel) return '<p style="color: var(--text-dim); padding: 20px;">Relative valuation not available — insufficient data.</p>';
 
-            const upsideColor = rel.upside >= 0 ? 'green' : 'red';
+            const defs = rel.sectorDefaults || {pe: 20, evEbitda: 13, pb: 3};
             return `
                 <div class="valuation-card">
-                    <div class="valuation-card-title">Relative Valuation — ${rel.sector || 'Market Average'}</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <div class="valuation-card-title" style="margin-bottom:0;">Relative Valuation — ${rel.sector || 'Market Average'}</div>
+                    </div>
                     <table class="fcf-table">
                         <thead><tr><th>Metric</th><th>Stock</th><th>Sector Avg</th><th>Implied Price</th></tr></thead>
-                        <tbody>${rel.metrics.map(m => `<tr>
-                            <td>${m.name}</td>
-                            <td>${m.stockVal ? m.stockVal.toFixed(1) + 'x' : '—'}</td>
-                            <td>${m.sectorAvg}x</td>
-                            <td>${m.impliedPrice > 0 ? formatMoney(m.impliedPrice) : '—'}</td>
-                        </tr>`).join('')}</tbody>
+                        <tbody>
+                            <tr>
+                                <td>P/E</td>
+                                <td>${rel.metrics[0].stockVal ? rel.metrics[0].stockVal.toFixed(1) + 'x' : '—'}</td>
+                                <td><input id="rel-pe" type="number" step="0.5" value="${defs.pe}" class="form-input" style="width:64px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcRelative()">x</td>
+                                <td id="rel-pe-implied">${rel.metrics[0].impliedPrice > 0 ? formatMoney(rel.metrics[0].impliedPrice) : '—'}</td>
+                            </tr>
+                            <tr>
+                                <td>EV/EBITDA</td>
+                                <td>${rel.metrics[1].stockVal ? rel.metrics[1].stockVal.toFixed(1) + 'x' : '—'}</td>
+                                <td><input id="rel-evEbitda" type="number" step="0.5" value="${defs.evEbitda}" class="form-input" style="width:64px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcRelative()">x</td>
+                                <td id="rel-ev-implied">${rel.metrics[1].impliedPrice > 0 ? formatMoney(rel.metrics[1].impliedPrice) : '—'}</td>
+                            </tr>
+                            <tr>
+                                <td>P/B</td>
+                                <td>${rel.metrics[2].stockVal ? rel.metrics[2].stockVal.toFixed(1) + 'x' : '—'}</td>
+                                <td><input id="rel-pb" type="number" step="0.5" value="${defs.pb}" class="form-input" style="width:64px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcRelative()">x</td>
+                                <td id="rel-pb-implied">${rel.metrics[2].impliedPrice > 0 ? formatMoney(rel.metrics[2].impliedPrice) : '—'}</td>
+                            </tr>
+                        </tbody>
                     </table>
                 </div>
-                ${ivResultBox([
-                    {label: 'Relative IV', value: formatMoney(rel.ivPerShare)},
-                    {label: 'MoS IV (30%)', value: formatMoney(rel.marginOfSafetyIv)},
-                    {label: 'Current Price', value: formatMoney(d.price)},
-                    {label: 'Upside', value: (rel.upside >= 0 ? '+' : '') + rel.upside + '%', colorClass: upsideColor},
-                ])}`;
+                <div class="valuation-card">
+                    <div class="wacc-grid">
+                        <div class="wacc-item"><span class="wlabel">Margin of Safety %</span>
+                            <input id="rel-mos" type="number" step="5" value="30" class="form-input" style="width:64px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcRelative()">
+                        </div>
+                    </div>
+                </div>
+                <div id="rel-result-box"></div>
+                <div style="font-size:0.72rem; color:var(--text-dim); margin-top:8px; padding:0 4px;">Data: EPS, book value & EV/EBITDA from FMP · Sector averages are editable defaults</div>`;
+        }
+
+        function recalcRelative() {
+            if (!_analyzerData) return;
+            const rel = (_analyzerData.valuation || {}).relative;
+            if (!rel) return;
+            const price = _analyzerData.price || 0;
+            const eps = rel.eps || 0;
+            const bookVal = rel.bookValue || 0;
+            const ebitdaPS = rel.ebitdaPerShare || 0;
+
+            const avgPE = parseFloat(document.getElementById('rel-pe').value) || 0;
+            const avgEV = parseFloat(document.getElementById('rel-evEbitda').value) || 0;
+            const avgPB = parseFloat(document.getElementById('rel-pb').value) || 0;
+            const mosPct = parseFloat(document.getElementById('rel-mos').value) || 30;
+
+            const peImpl = eps > 0 ? avgPE * eps : 0;
+            const evImpl = ebitdaPS > 0 ? avgEV * ebitdaPS : 0;
+            const pbImpl = bookVal > 0 ? avgPB * bookVal : 0;
+
+            document.getElementById('rel-pe-implied').textContent = peImpl > 0 ? formatMoney(peImpl) : '—';
+            document.getElementById('rel-ev-implied').textContent = evImpl > 0 ? formatMoney(evImpl) : '—';
+            document.getElementById('rel-pb-implied').textContent = pbImpl > 0 ? formatMoney(pbImpl) : '—';
+
+            const implied = [peImpl, evImpl, pbImpl].filter(v => v > 0);
+            if (implied.length === 0) return;
+            const iv = implied.reduce((a, b) => a + b, 0) / implied.length;
+            const mosIv = iv * (1 - mosPct / 100);
+            const upside = price > 0 ? ((mosIv - price) / price * 100) : 0;
+            const upsideColor = upside >= 0 ? 'green' : 'red';
+
+            document.getElementById('rel-result-box').innerHTML = ivResultBox([
+                {label: 'Relative IV', value: formatMoney(iv)},
+                {label: `MoS IV (${mosPct}%)`, value: formatMoney(mosIv)},
+                {label: 'Current Price', value: formatMoney(price)},
+                {label: 'Upside', value: (upside >= 0 ? '+' : '') + upside.toFixed(1) + '%', colorClass: upsideColor},
+            ]);
+
+            // Update signal in header
+            const signalEl = document.getElementById('signal-relative');
+            if (signalEl) {
+                const signal = upside > 50 ? 'Strong Buy' : upside > 20 ? 'Buy' : upside > -10 ? 'Hold' : upside > -30 ? 'Expensive' : 'Overrated';
+                const signalColors = {'Strong Buy':'#4ade80','Buy':'#22d3ee','Hold':'#a78bfa','Expensive':'#f59e0b','Overrated':'#f87171'};
+                signalEl.textContent = signal;
+                signalEl.style.background = (signalColors[signal] || '#64748b') + '22';
+                signalEl.style.color = signalColors[signal] || '#64748b';
+            }
         }
 
         function _e2ValueBar(iv, price) {
@@ -4582,6 +4648,7 @@
                 html += `<div id="av-summary" class="analyzer-subview">${renderAnalyzerSummary(d)}</div>`;
 
                 resultsDiv.innerHTML = html;
+                recalcRelative();
                 _renderE2Chart(d);
             } catch (e) {
                 resultsDiv.innerHTML = '<p style="color: var(--red); padding: 20px;">Error fetching data. Check console.</p>';
