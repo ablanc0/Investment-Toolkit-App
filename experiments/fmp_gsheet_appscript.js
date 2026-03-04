@@ -2,7 +2,7 @@
  * FMP Stock Analyzer — Google Apps Script
  *
  * Fetches financial data from FMP API and populates the Stock Analyzer sheet.
- * 5 API calls per refresh, 5 years of data.
+ * 6 API calls per refresh, 5 years of data + company profile.
  *
  * Setup:
  *   1. In your Google Sheet: Extensions → Apps Script
@@ -15,7 +15,7 @@
  *   2. Click FMP Tools → Refresh Stock Data
  *   3. Wait ~10 seconds — all data will populate
  *
- * API: 5 calls per refresh × 250/day free tier = ~50 refreshes/day
+ * API: 6 calls per refresh × 250/day free tier = ~41 refreshes/day
  */
 
 // ─── Configuration ──────────────────────────────────────────────────────────
@@ -42,7 +42,8 @@ function refreshStockData() {
 
   ss.toast("Fetching data for " + ticker + "…", "FMP", -1);
 
-  // ── Fetch 5 endpoints (5 API calls) ──
+  // ── Fetch 6 endpoints (6 API calls) ──
+  var profile  = fmpFetch("profile", ticker);
   var income   = fmpFetch("income-statement", ticker);
   var cashflow = fmpFetch("cash-flow-statement", ticker);
   var balance  = fmpFetch("balance-sheet-statement", ticker);
@@ -53,6 +54,21 @@ function refreshStockData() {
     SpreadsheetApp.getUi().alert("No data found for " + ticker);
     return;
   }
+
+  // ── Company Profile → directly to display cells ──
+  var prof = profile.length ? profile[0] : {};
+  sh.getRange("C2").setValue(prof.companyName || "");   // Company Name
+  sh.getRange("E2").setValue(prof.sector || "");        // Sector
+  sh.getRange("H4").setValue(prof.beta || "");          // Beta
+
+  // ── Redirect K18 WACC: was =AC95 (old FMP profile), now computed from CAPM ──
+  // WACC = Equity Weight × Cost of Equity + Debt Weight × Cost of Debt
+  sh.getRange("K18").setFormula("=H16*H10+I16*I10");
+
+  // ── Clear old broken FMP add-on formulas ──
+  ["A94", "A98", "A106", "A114"].forEach(function(cell) {
+    sh.getRange(cell).setValue("");
+  });
 
   // Sort most-recent first
   [income, cashflow, balance, metrics, ratios].forEach(function(arr) {
@@ -161,28 +177,20 @@ function refreshStockData() {
     sh.getRange(w[0], 24, 1, n).setValues([w[1]]);
   });
 
-  // ── Fill individual cells used by DCF calculator ──
-
-  // AL115-AL119: FCF history (most recent → oldest), AL = column 38
+  // ── FCF history formulas: AL115-119 reference data table row 25 (reversed) ──
+  // AL115=AB25 (newest), AL116=AA25, AL117=Z25, AL118=Y25, AL119=X25 (oldest)
+  var fcfCols = ["AB25", "AA25", "Z25", "Y25", "X25"];
   for (var j = 0; j < n; j++) {
-    sh.getRange(115 + j, 38).setValue(cashflow[j] ? cashflow[j].freeCashFlow : "");
+    sh.getRange(115 + j, 38).setFormula("=" + fcfCols[j]);
   }
 
-  // N3-N7: Year labels for FCF history (most recent → oldest), N = column 14
+  // N3-N7: Year labels referencing data table row 22 (reversed)
+  var yearCols = ["AB22", "AA22", "Z22", "Y22", "X22"];
   for (var j = 0; j < n; j++) {
-    sh.getRange(3 + j, 14).setValue(parseInt(cashflow[j].date.substring(0, 4)));
+    sh.getRange(3 + j, 14).setFormula("=" + yearCols[j]);
   }
 
-  // Latest year values for DCF inputs
-  sh.getRange(99, 25).setValue(income[0].operatingIncome);         // Y99:  EBIT
-  sh.getRange(99, 35).setValue(income[0].weightedAverageShsOut);   // AI99: Shares
-  sh.getRange(107, 9).setValue(balance[0].cashAndCashEquivalents); // I107: Cash
-  sh.getRange(107, 51).setValue(balance[0].totalDebt);             // AY107: Total Debt
-  sh.getRange(123, 28).setValue(                                   // AB123: Interest Coverage
-    ratios[0] ? ratios[0].interestCoverageRatio : ""
-  );
-
-  ss.toast(ticker + " — " + n + " years loaded (5 API calls)", "FMP ✓", 5);
+  ss.toast(ticker + " — " + n + " years loaded (6 API calls)", "FMP ✓", 5);
 }
 
 // ─── API helper ─────────────────────────────────────────────────────────────
