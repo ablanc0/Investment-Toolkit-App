@@ -1931,6 +1931,12 @@
             setupTabNavigation();
             setupRefreshButton();
             fetchAllData();
+            // Auto-load last analyzed ticker from saved data (no API calls)
+            const lastTicker = localStorage.getItem('analyzerLastTicker');
+            if (lastTicker) {
+                const input = document.getElementById('analyzerTicker');
+                if (input) { input.value = lastTicker; analyzeStock(false); }
+            }
         });
 
         // Two-Level Navigation
@@ -4285,9 +4291,9 @@
                 peerHtml = `<div class="valuation-card">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                         <div class="valuation-card-title" style="margin-bottom:0;">Peer Comparison</div>
-                        <div style="display:flex; gap:8px;">
-                            <button class="btn btn-sm" onclick="relApplyPeerAvg('avg')" style="font-size:0.72rem; padding:3px 10px;">Use Avg</button>
-                            <button class="btn btn-sm" onclick="relApplyPeerAvg('median')" style="font-size:0.72rem; padding:3px 10px;">Use Median</button>
+                        <div style="display:flex; gap:4px; background:var(--bg); border-radius:6px; padding:2px;">
+                            <button id="rel-mode-median" class="btn btn-sm" onclick="relApplyPeerAvg('median')" style="font-size:0.72rem; padding:3px 10px; background:var(--accent); color:#fff; border-radius:4px;">Median</button>
+                            <button id="rel-mode-avg" class="btn btn-sm" onclick="relApplyPeerAvg('avg')" style="font-size:0.72rem; padding:3px 10px; background:transparent; color:var(--text-dim); border-radius:4px;">Average</button>
                         </div>
                     </div>
                     <div style="overflow-x:auto;"><table class="fcf-table" style="font-size:0.82rem;">
@@ -4304,10 +4310,10 @@
                         </tbody>
                         <tfoot>
                             <tr style="font-weight:600; border-top:2px solid var(--border);">
-                                <td></td><td colspan="2" id="rel-peer-summary">Avg (${pc.peers.length} peers)</td>
-                                <td style="text-align:right;" id="rel-peer-avg-pe">${pc.averages.pe ? pc.averages.pe.toFixed(1) + 'x' : '—'}</td>
-                                <td style="text-align:right;" id="rel-peer-avg-ev">${pc.averages.evEbitda ? pc.averages.evEbitda.toFixed(1) + 'x' : '—'}</td>
-                                <td style="text-align:right;" id="rel-peer-avg-pb">${pc.averages.pb ? pc.averages.pb.toFixed(1) + 'x' : '—'}</td>
+                                <td></td><td colspan="2" id="rel-peer-summary">Median (${pc.peers.length} peers)</td>
+                                <td style="text-align:right;" id="rel-peer-avg-pe">${pc.medians.pe ? pc.medians.pe.toFixed(1) + 'x' : '—'}</td>
+                                <td style="text-align:right;" id="rel-peer-avg-ev">${pc.medians.evEbitda ? pc.medians.evEbitda.toFixed(1) + 'x' : '—'}</td>
+                                <td style="text-align:right;" id="rel-peer-avg-pb">${pc.medians.pb ? pc.medians.pb.toFixed(1) + 'x' : '—'}</td>
                             </tr>
                         </tfoot>
                     </table></div>
@@ -4363,26 +4369,10 @@
         }
 
         function relUpdatePeerAvg() {
-            if (!_analyzerData) return;
-            const rel = (_analyzerData.valuation || {}).relative;
-            const pc = rel && rel.peerComparison;
-            if (!pc || !pc.peers) return;
-
-            const checkboxes = document.querySelectorAll('.rel-peer-cb');
-            const selected = [];
-            checkboxes.forEach(cb => { if (cb.checked) selected.push(pc.peers[parseInt(cb.dataset.idx)]); });
-
-            const avg = (key) => {
-                const vals = selected.filter(p => p[key] != null && p[key] > 0).map(p => p[key]);
-                return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-            };
-
-            const pe = avg('pe'), ev = avg('evEbitda'), pb = avg('pb');
-            const fmt = v => v != null ? v.toFixed(1) + 'x' : '—';
-            document.getElementById('rel-peer-avg-pe').textContent = fmt(pe);
-            document.getElementById('rel-peer-avg-ev').textContent = fmt(ev);
-            document.getElementById('rel-peer-avg-pb').textContent = fmt(pb);
-            document.getElementById('rel-peer-summary').textContent = `Avg (${selected.length} peers)`;
+            // Re-apply current mode when checkboxes change
+            const btnMedian = document.getElementById('rel-mode-median');
+            const isMedian = btnMedian && btnMedian.style.background.includes('var(--accent)');
+            relApplyPeerAvg(isMedian ? 'median' : 'avg');
         }
 
         function relApplyPeerAvg(mode) {
@@ -4410,6 +4400,25 @@
             if (pe != null) document.getElementById('rel-pe').value = pe.toFixed(1);
             if (ev != null) document.getElementById('rel-evEbitda').value = ev.toFixed(1);
             if (pb != null) document.getElementById('rel-pb').value = pb.toFixed(1);
+
+            // Toggle button styles
+            const btnMedian = document.getElementById('rel-mode-median');
+            const btnAvg = document.getElementById('rel-mode-avg');
+            if (btnMedian && btnAvg) {
+                const active = 'background:var(--accent); color:#fff;';
+                const inactive = 'background:transparent; color:var(--text-dim);';
+                btnMedian.style.cssText = 'font-size:0.72rem; padding:3px 10px; border-radius:4px;' + (mode === 'median' ? active : inactive);
+                btnAvg.style.cssText = 'font-size:0.72rem; padding:3px 10px; border-radius:4px;' + (mode === 'avg' ? active : inactive);
+            }
+
+            // Update footer label
+            const label = mode === 'median' ? 'Median' : 'Avg';
+            const fmt = v => v != null ? v.toFixed(1) + 'x' : '—';
+            document.getElementById('rel-peer-summary').textContent = `${label} (${selected.length} peers)`;
+            document.getElementById('rel-peer-avg-pe').textContent = fmt(pe);
+            document.getElementById('rel-peer-avg-ev').textContent = fmt(ev);
+            document.getElementById('rel-peer-avg-pb').textContent = fmt(pb);
+
             recalcRelative();
         }
 
@@ -4700,15 +4709,16 @@
                 ])}`;
         }
 
-        async function analyzeStock() {
+        async function analyzeStock(refresh = true) {
             const ticker = document.getElementById('analyzerTicker').value.toUpperCase().trim();
             if (!ticker) return;
 
             const resultsDiv = document.getElementById('analyzerResults');
-            resultsDiv.innerHTML = '<p style="color: var(--text-dim); padding: 20px;">🔍 Analyzing ' + ticker + '…</p>';
+            resultsDiv.innerHTML = '<p style="color: var(--text-dim); padding: 20px;">🔍 ' + (refresh ? 'Analyzing' : 'Loading') + ' ' + ticker + '…</p>';
 
             try {
-                const resp = await fetch(`/api/stock-analyzer/${ticker}`);
+                const url = `/api/stock-analyzer/${ticker}` + (refresh ? '?refresh=true' : '');
+                const resp = await fetch(url);
                 const d = await resp.json();
 
                 if (!resp.ok) {
@@ -4717,6 +4727,7 @@
                 }
 
                 _analyzerData = d;
+                localStorage.setItem('analyzerLastTicker', ticker);
 
                 const hasValuation = d.valuation && (d.valuation.dcf || d.valuation.graham || d.valuation.relative);
                 const tabs = [

@@ -2096,13 +2096,42 @@ def compute_valuation_summary(dcf, graham, relative, endeuda2, info):
 
 
 # ── Stock Analyzer ──────────────────────────────────────────────────────
+ANALYZER_FILE = DATA_DIR / "analyzer.json"
+
+
+def _load_analyzer_store():
+    """Load persisted analyzer results from disk."""
+    try:
+        if ANALYZER_FILE.exists():
+            return json.loads(ANALYZER_FILE.read_text())
+    except Exception as e:
+        print(f"[Analyzer] Failed to load {ANALYZER_FILE}: {e}")
+    return {}
+
+
+def _save_analyzer_store(store):
+    """Persist analyzer results to disk."""
+    try:
+        ANALYZER_FILE.write_text(json.dumps(store, indent=2, default=str))
+    except Exception as e:
+        print(f"[Analyzer] Failed to save {ANALYZER_FILE}: {e}")
+
+
 @app.route("/api/stock-analyzer/<ticker>")
 def api_stock_analyzer(ticker):
-    """Deep analysis: FMP for financials/ratios, yfinance for supplementary fields."""
+    """Deep analysis: FMP for financials/ratios, yfinance for supplementary fields.
+
+    Returns saved data from analyzer.json by default.
+    Pass ?refresh=true to fetch fresh data from APIs and save.
+    """
     ticker = ticker.upper().strip()
-    cached = cache_get(f"analyzer_{ticker}")
-    if cached:
-        return jsonify(cached)
+    refresh = request.args.get("refresh", "").lower() in ("true", "1", "yes")
+
+    # Return saved data if not refreshing
+    if not refresh:
+        store = _load_analyzer_store()
+        if ticker in store:
+            return jsonify(store[ticker])
 
     try:
         # yfinance: profile, ratios, supplementary fields
@@ -2221,6 +2250,10 @@ def api_stock_analyzer(ticker):
             "summary": summary,
         }
 
+        # Persist to file and memory cache
+        store = _load_analyzer_store()
+        store[ticker] = result
+        _save_analyzer_store(store)
         cache_set(f"analyzer_{ticker}", result)
         return jsonify(result)
 
