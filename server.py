@@ -1360,7 +1360,7 @@ MARKET_RETURN  = 0.099        # S&P long-term avg
 PERPETUAL_GROWTH = 0.025      # terminal growth
 MARGIN_OF_SAFETY = 0.70
 AAA_YIELD_BASELINE = 4.4      # Graham baseline
-AAA_YIELD_CURRENT  = 5.3      # current AAA yield (FRED AAA)
+AAA_YIELD_CURRENT  = 5.3      # fallback; overridden by live FRED data
 GRAHAM_BASE_PE     = 7.0      # P/E for no-growth company (Graham original: 8.5)
 GRAHAM_CG          = 1.0      # growth multiplier (Graham original: 2.0)
 GRAHAM_GROWTH_CAP  = 20.0     # max earnings growth % to avoid inflated IVs
@@ -1400,15 +1400,32 @@ def _fmp_get(endpoint, **params):
         return None
 
 
+def _fetch_fred_aaa_yield():
+    """Fetch latest AAA corporate bond yield from FRED (no API key needed).
+    Returns (value, date_str) e.g. (5.30, '2026-02-01').
+    """
+    try:
+        url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=AAA&cosd=2025-01-01"
+        r = http_requests.get(url, timeout=10)
+        lines = r.text.strip().split("\n")
+        if len(lines) >= 2:
+            parts = lines[-1].split(",")
+            return float(parts[1]), parts[0]
+    except Exception as e:
+        print(f"[FRED] Failed to fetch AAA yield: {e}")
+    return AAA_YIELD_CURRENT, None  # fallback to constant
+
+
 def _fetch_fmp_stock_data(ticker):
-    """Fetch FMP financial data for valuation models (4 API calls).
-    Profile/ratios/growth come from yfinance to save FMP quota.
+    """Fetch FMP financial data for valuation models (5 API calls).
+    Profile/ratios come from yfinance to save FMP quota.
     """
     return {
         "income": _fmp_get("income-statement", symbol=ticker, period="annual"),
         "cashflow": _fmp_get("cash-flow-statement", symbol=ticker, period="annual"),
         "balance": _fmp_get("balance-sheet-statement", symbol=ticker, period="annual"),
         "ev": _fmp_get("enterprise-values", symbol=ticker, period="annual"),
+        "growth": _fmp_get("financial-growth", symbol=ticker, period="annual"),
     }
 
 
@@ -1423,13 +1440,14 @@ def _fmp_to_info(fmp, yf_info):
     cf0 = fmp["cashflow"][0] if fmp.get("cashflow") else {}
     bal0 = fmp["balance"][0] if fmp.get("balance") else {}
     ev0 = fmp["ev"][0] if fmp.get("ev") else {}
+    gr0 = fmp["growth"][0] if fmp.get("growth") else {}
 
     shares = ev0.get("numberOfShares") or inc0.get("weightedAverageShsOut") or 0
 
     # Start with yfinance as base, then override financial fields from FMP
     info = dict(yf_info)
     info.update({
-        # FMP financial data (uniform source for DCF)
+        # FMP financial data (uniform source for DCF + Graham)
         "totalDebt": bal0.get("totalDebt", 0),
         "totalCash": bal0.get("cashAndCashEquivalents", 0),
         "freeCashflow": cf0.get("freeCashFlow", 0),
@@ -1438,6 +1456,7 @@ def _fmp_to_info(fmp, yf_info):
         "totalRevenue": inc0.get("revenue", 0),
         "sharesOutstanding": shares,
         "enterpriseValue": ev0.get("enterpriseValue", 0),
+        "earningsGrowth": gr0.get("epsgrowth", 0),  # FMP: decimal (e.g. 0.15 = 15%)
     })
     return info
 
@@ -1777,24 +1796,25 @@ def compute_endeuda2(info, income, balance, cashflow):
         return None
 
 
-def compute_graham(info):
+def compute_graham(info, aaa_yield_live=None, aaa_date=None):
     """Graham Revised Formula: IV = EPS × (basePE + Cg × g) × Y / C"""
     try:
         eps = info.get("trailingEps") or 0
         if eps <= 0:
-            return None
+            return {"negativeEps": True, "eps": round(eps, 2)}
 
-        # Growth rate: earningsGrowth is decimal (e.g. 0.15 = 15%), cap to avoid inflated IVs
+        # Growth rate: earningsGrowth from FMP (decimal, e.g. 0.15 = 15%), cap to avoid inflated IVs
         raw_g = (info.get("earningsGrowth") or 0) * 100
         g = max(0, min(raw_g, GRAHAM_GROWTH_CAP)) if raw_g > 0 else 5.0
 
         base_pe = GRAHAM_BASE_PE
         cg = GRAHAM_CG
+        aaa_current = aaa_yield_live or AAA_YIELD_CURRENT
         adjusted_multiple = base_pe + cg * g
-        bond_adjustment = AAA_YIELD_BASELINE / AAA_YIELD_CURRENT
+        bond_adjustment = AAA_YIELD_BASELINE / aaa_current
         iv = eps * adjusted_multiple * bond_adjustment
         if iv <= 0:
-            return None
+            return {"negativeEps": True, "eps": round(eps, 2)}
 
         mos_iv = iv * MARGIN_OF_SAFETY
         price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
@@ -1807,7 +1827,8 @@ def compute_graham(info):
             "cg": cg,
             "adjustedMultiple": round(adjusted_multiple, 1),
             "aaaYieldBaseline": AAA_YIELD_BASELINE,
-            "aaaYieldCurrent": AAA_YIELD_CURRENT,
+            "aaaYieldCurrent": round(aaa_current, 2),
+            "aaaYieldDate": aaa_date,
             "bondAdjustment": round(bond_adjustment, 4),
             "ivPerShare": round(iv, 2),
             "marginOfSafetyIv": round(mos_iv, 2),
@@ -2043,15 +2064,19 @@ def api_stock_analyzer(ticker):
                 "source": "Yahoo Finance",
             },
             "dataSources": {
-                "financials": "FMP (income, cashflow, balance sheet, enterprise values)",
+                "financials": "FMP (income, cashflow, balance sheet, enterprise values, earnings growth)",
                 "profile": "Yahoo Finance (price, beta, ratios, analyst targets)",
+                "bonds": "FRED (AAA corporate bond yield)",
             },
             "lastUpdated": datetime.now().isoformat(),
         }
 
+        # Fetch live AAA yield from FRED for Graham model
+        aaa_yield_live, aaa_date = _fetch_fred_aaa_yield()
+
         # Valuation models
         dcf = compute_dcf(info, income, balance, cashflow)
-        graham = compute_graham(info)
+        graham = compute_graham(info, aaa_yield_live=aaa_yield_live, aaa_date=aaa_date)
         relative = compute_relative(info)
         endeuda2 = compute_endeuda2(info, income, balance, cashflow)
         summary = compute_valuation_summary(dcf, graham, relative, endeuda2, info)

@@ -3669,6 +3669,17 @@
             if (sigEl) { sigEl.textContent = sig; sigEl.style.color = sigColors[sig] || '#888'; }
         }
 
+        function grahamPreset(mode) {
+            if (mode === 'original') {
+                document.getElementById('graham-basePE').value = 8.5;
+                document.getElementById('graham-cg').value = 2;
+            } else {
+                document.getElementById('graham-basePE').value = 7;
+                document.getElementById('graham-cg').value = 1;
+            }
+            recalcGraham();
+        }
+
         function _runDcf(baseFcf, growthRate, wacc, perpGrowth, totalDebt, totalCash, shares, mos, price) {
             let pvSum = 0, fcfVal = baseFcf;
             const projected = [];
@@ -4189,15 +4200,33 @@
 
         function renderAnalyzerGraham(d) {
             const g = (d.valuation || {}).graham;
-            if (!g) return '<p style="color: var(--text-dim); padding: 20px;">Graham model not available — requires positive EPS.</p>';
+            if (!g) return '<p style="color: var(--text-dim); padding: 20px;">Graham model not available — no data.</p>';
+
+            // Negative EPS warning
+            if (g.negativeEps) {
+                return `<div class="valuation-card">
+                    <div class="valuation-card-title">Graham Revised Formula</div>
+                    <div style="padding:20px; text-align:center;">
+                        <div style="font-size:1.2rem; color:#f59e0b; margin-bottom:8px;">&#9888; Negative EPS: ${formatMoney(g.eps)}</div>
+                        <div style="color:var(--text-dim);">Graham formula requires positive earnings. This model is not applicable for companies with negative EPS.</div>
+                    </div>
+                </div>`;
+            }
 
             const upsideColor = g.upside >= 0 ? 'green' : 'red';
             const signalColors = {'Strong Buy':'#4ade80','Buy':'#22d3ee','Hold':'#a78bfa','Expensive':'#f59e0b','Overrated':'#f87171'};
             const sigColor = signalColors[g.signal] || '#888';
             const inputStyle = 'class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;"';
+            const aaaDateLabel = g.aaaYieldDate ? ` (${g.aaaYieldDate.substring(0,7)})` : ' (live)';
             return `
                 <div class="valuation-card">
-                    <div class="valuation-card-title">Graham Revised Formula</div>
+                    <div class="valuation-card-title" style="display:flex; justify-content:space-between; align-items:center;">
+                        Graham Revised Formula
+                        <div style="display:flex; gap:6px;">
+                            <button class="btn btn-sm" style="font-size:0.7rem; padding:2px 8px; opacity:0.7;" onclick="grahamPreset('conservative')" title="Base P/E=7, Cg=1">Conservative</button>
+                            <button class="btn btn-sm" style="font-size:0.7rem; padding:2px 8px; opacity:0.7;" onclick="grahamPreset('original')" title="Base P/E=8.5, Cg=2">Original</button>
+                        </div>
+                    </div>
                     <div class="formula-display" id="graham-formula">IV = EPS × (${g.basePE} + ${g.cg}g) × ${g.aaaYieldBaseline} / ${g.aaaYieldCurrent}</div>
                     <div class="wacc-grid">
                         <div class="wacc-item"><span class="wlabel">EPS (TTM)</span><span class="wvalue">${formatMoney(g.eps)}</span></div>
@@ -4237,7 +4266,7 @@
                     <div class="iv-result-item"><div class="label">Signal</div><div class="value" id="graham-signal" style="color:${sigColor}; font-weight:700;">${g.signal}</div></div>
                 </div>
                 <div style="color:var(--text-dim); font-size:0.75rem; margin-top:8px; padding:0 12px;">
-                    Data: EPS from FMP (income statement) · Earnings growth from Yahoo Finance (capped at 20%)
+                    Data: EPS &amp; earnings growth from FMP · AAA yield from FRED${aaaDateLabel}
                 </div>`;
         }
 
