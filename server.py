@@ -6,12 +6,14 @@ Pulls live market data from Yahoo Finance via yfinance.
 import json
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import requests as http_requests
 from pathlib import Path
 from datetime import datetime, timedelta
 from flask import Flask, jsonify, request, send_from_directory
 
 import yfinance as yf
+from finvizfinance.quote import finvizfinance
 
 # ── Config ──────────────────────────────────────────────────────────────
 import os
@@ -1446,17 +1448,33 @@ def _fmp_to_info(fmp, yf_info):
 
     # Start with yfinance as base, then override financial fields from FMP
     info = dict(yf_info)
+    # Derived ratios from FMP data (for Relative valuation)
+    ebitda = inc0.get("ebitda", 0) or 0
+    ev_val = ev0.get("enterpriseValue", 0) or 0
+    equity = bal0.get("totalStockholdersEquity", 0) or 0
+    eps = inc0.get("epsDiluted", 0) or 0
+    price = yf_info.get("currentPrice") or yf_info.get("regularMarketPrice", 0)
+    book_per_share = (equity / shares) if shares > 0 else 0
+    ev_ebitda = (ev_val / ebitda) if ebitda > 0 else 0
+    pe = (price / eps) if eps > 0 else 0
+    pb = (price / book_per_share) if book_per_share > 0 else 0
+
     info.update({
-        # FMP financial data (uniform source for DCF + Graham)
+        # FMP financial data (uniform source for DCF + Graham + Relative)
         "totalDebt": bal0.get("totalDebt", 0),
         "totalCash": bal0.get("cashAndCashEquivalents", 0),
         "freeCashflow": cf0.get("freeCashFlow", 0),
         "operatingCashflow": cf0.get("operatingCashFlow", 0),
-        "trailingEps": inc0.get("epsDiluted", 0),
+        "trailingEps": eps,
         "totalRevenue": inc0.get("revenue", 0),
         "sharesOutstanding": shares,
-        "enterpriseValue": ev0.get("enterpriseValue", 0),
+        "enterpriseValue": ev_val,
         "earningsGrowth": gr0.get("epsgrowth", 0),  # FMP: decimal (e.g. 0.15 = 15%)
+        # Derived ratios from FMP (override yfinance for source consistency)
+        "bookValue": round(book_per_share, 2),
+        "enterpriseToEbitda": round(ev_ebitda, 2),
+        "trailingPE": round(pe, 2),
+        "priceToBook": round(pb, 2),
     })
     return info
 
@@ -1496,6 +1514,98 @@ def _fmp_to_financials(fmp):
         }
 
     return income, cashflow, balance
+
+
+# ── Finviz Peer Comparison ──────────────────────────────────────────────
+
+def _finviz_fundamentals(ticker):
+    """Fetch fundamentals for a single ticker from Finviz. Returns dict or None."""
+    try:
+        stock = finvizfinance(ticker)
+        f = stock.ticker_fundament()
+        pe_raw = f.get("P/E", "-")
+        ev_raw = f.get("EV/EBITDA", "-")
+        pb_raw = f.get("P/B", "-")
+        return {
+            "ticker": ticker,
+            "name": f.get("Company", ticker),
+            "price": _parse_finviz_num(f.get("Price", 0)),
+            "mktCap": f.get("Market Cap", "-"),
+            "pe": _parse_finviz_num(pe_raw),
+            "forwardPE": _parse_finviz_num(f.get("Forward P/E", "-")),
+            "evEbitda": _parse_finviz_num(ev_raw),
+            "pb": _parse_finviz_num(pb_raw),
+            "eps": _parse_finviz_num(f.get("EPS (ttm)", 0)),
+            "sector": f.get("Sector", ""),
+            "industry": f.get("Industry", ""),
+        }
+    except Exception as e:
+        print(f"[Finviz] Error fetching {ticker}: {e}")
+        return None
+
+
+def _parse_finviz_num(val):
+    """Parse Finviz value to float. Returns None for '-' or invalid."""
+    if val is None or val == "-" or val == "":
+        return None
+    try:
+        return float(str(val).replace(",", "").replace("%", ""))
+    except (ValueError, TypeError):
+        return None
+
+
+def _fetch_peer_comparison(ticker):
+    """Fetch peer list and fundamentals from Finviz (free, no API key).
+
+    Returns dict with peer list and computed averages, or None on failure.
+    Uses ThreadPoolExecutor for parallel peer fetching (~1-2s total).
+    """
+    try:
+        stock = finvizfinance(ticker)
+        peer_tickers = stock.ticker_peer()
+        if not peer_tickers:
+            return None
+
+        # Limit to 8 peers max, fetch in parallel
+        peer_tickers = peer_tickers[:8]
+        peers = []
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            results = list(executor.map(_finviz_fundamentals, peer_tickers))
+        peers = [p for p in results if p is not None]
+
+        if not peers:
+            return None
+
+        # Compute averages and medians from peers with valid data
+        def _avg(key):
+            vals = [p[key] for p in peers if p.get(key) is not None and p[key] > 0]
+            return round(sum(vals) / len(vals), 2) if vals else None
+
+        def _median(key):
+            vals = sorted([p[key] for p in peers if p.get(key) is not None and p[key] > 0])
+            if not vals:
+                return None
+            n = len(vals)
+            mid = n // 2
+            return round((vals[mid - 1] + vals[mid]) / 2, 2) if n % 2 == 0 else round(vals[mid], 2)
+
+        return {
+            "peers": peers,
+            "averages": {
+                "pe": _avg("pe"),
+                "evEbitda": _avg("evEbitda"),
+                "pb": _avg("pb"),
+            },
+            "medians": {
+                "pe": _median("pe"),
+                "evEbitda": _median("evEbitda"),
+                "pb": _median("pb"),
+            },
+            "source": "Finviz",
+        }
+    except Exception as e:
+        print(f"[Finviz] Peer comparison failed for {ticker}: {e}")
+        return None
 
 
 def _upside_signal(upside):
@@ -1841,18 +1951,22 @@ def compute_graham(info, aaa_yield_live=None, aaa_date=None):
 
 
 def compute_relative(info):
-    """Relative valuation using sector average multiples."""
+    """Relative valuation using sector average multiples.
+
+    All financial inputs (EPS, book value, EV, EBITDA, shares) come from FMP
+    via the unified info dict. Sector averages are hardcoded defaults
+    (editable in the frontend).
+    """
     try:
         sector = info.get("sector", "")
         avgs = SECTOR_AVERAGES.get(sector)
         if not avgs:
-            # Try partial match
             for k, v in SECTOR_AVERAGES.items():
                 if k.lower() in sector.lower() or sector.lower() in k.lower():
                     avgs = v
                     break
         if not avgs:
-            avgs = {"pe": 20, "evEbitda": 13, "pb": 3}  # market average fallback
+            avgs = {"pe": 20, "evEbitda": 13, "pb": 3}
 
         eps = info.get("trailingEps") or 0
         book_val = info.get("bookValue") or 0
@@ -1910,7 +2024,11 @@ def compute_relative(info):
 
         return {
             "sector": sector,
+            "sectorDefaults": dict(avgs),
             "metrics": metrics,
+            "eps": round(eps, 2),
+            "bookValue": round(book_val, 2),
+            "ebitdaPerShare": round(ebitda_per_share, 2),
             "ivPerShare": round(iv, 2),
             "marginOfSafetyIv": round(mos_iv, 2),
             "upside": round(upside, 1),
@@ -1978,13 +2096,42 @@ def compute_valuation_summary(dcf, graham, relative, endeuda2, info):
 
 
 # ── Stock Analyzer ──────────────────────────────────────────────────────
+ANALYZER_FILE = DATA_DIR / "analyzer.json"
+
+
+def _load_analyzer_store():
+    """Load persisted analyzer results from disk."""
+    try:
+        if ANALYZER_FILE.exists():
+            return json.loads(ANALYZER_FILE.read_text())
+    except Exception as e:
+        print(f"[Analyzer] Failed to load {ANALYZER_FILE}: {e}")
+    return {}
+
+
+def _save_analyzer_store(store):
+    """Persist analyzer results to disk."""
+    try:
+        ANALYZER_FILE.write_text(json.dumps(store, indent=2, default=str))
+    except Exception as e:
+        print(f"[Analyzer] Failed to save {ANALYZER_FILE}: {e}")
+
+
 @app.route("/api/stock-analyzer/<ticker>")
 def api_stock_analyzer(ticker):
-    """Deep analysis: FMP for financials/ratios, yfinance for supplementary fields."""
+    """Deep analysis: FMP for financials/ratios, yfinance for supplementary fields.
+
+    Returns saved data from analyzer.json by default.
+    Pass ?refresh=true to fetch fresh data from APIs and save.
+    """
     ticker = ticker.upper().strip()
-    cached = cache_get(f"analyzer_{ticker}")
-    if cached:
-        return jsonify(cached)
+    refresh = request.args.get("refresh", "").lower() in ("true", "1", "yes")
+
+    # Return saved data if not refreshing
+    if not refresh:
+        store = _load_analyzer_store()
+        if ticker in store:
+            return jsonify(store[ticker])
 
     try:
         # yfinance: profile, ratios, supplementary fields
@@ -2064,9 +2211,11 @@ def api_stock_analyzer(ticker):
                 "source": "Yahoo Finance",
             },
             "dataSources": {
-                "financials": "FMP (income, cashflow, balance sheet, enterprise values, earnings growth)",
-                "profile": "Yahoo Finance (price, beta, ratios, analyst targets)",
+                "financials": "FMP (income, cashflow, balance sheet, enterprise values, earnings growth, EBITDA)",
+                "profile": "Yahoo Finance (price, beta, analyst targets)",
                 "bonds": "FRED (AAA corporate bond yield)",
+                "ratios": "FMP-derived (P/E, P/B, EV/EBITDA, book value per share)",
+                "peers": "Finviz (peer companies, sector multiples)",
             },
             "lastUpdated": datetime.now().isoformat(),
         }
@@ -2074,12 +2223,25 @@ def api_stock_analyzer(ticker):
         # Fetch live AAA yield from FRED for Graham model
         aaa_yield_live, aaa_date = _fetch_fred_aaa_yield()
 
-        # Valuation models
+        # Fetch Finviz peer comparison in background thread
+        peer_result = [None]
+        def _bg_peers():
+            peer_result[0] = _fetch_peer_comparison(ticker)
+        peer_thread = threading.Thread(target=_bg_peers)
+        peer_thread.start()
+
+        # Valuation models (run while peers fetch in background)
         dcf = compute_dcf(info, income, balance, cashflow)
         graham = compute_graham(info, aaa_yield_live=aaa_yield_live, aaa_date=aaa_date)
         relative = compute_relative(info)
         endeuda2 = compute_endeuda2(info, income, balance, cashflow)
         summary = compute_valuation_summary(dcf, graham, relative, endeuda2, info)
+
+        # Wait for peers (max 10s)
+        peer_thread.join(timeout=10)
+        if relative and peer_result[0]:
+            relative["peerComparison"] = peer_result[0]
+
         result["valuation"] = {
             "dcf": dcf,
             "graham": graham,
@@ -2088,6 +2250,10 @@ def api_stock_analyzer(ticker):
             "summary": summary,
         }
 
+        # Persist to file and memory cache
+        store = _load_analyzer_store()
+        store[ticker] = result
+        _save_analyzer_store(store)
         cache_set(f"analyzer_{ticker}", result)
         return jsonify(result)
 

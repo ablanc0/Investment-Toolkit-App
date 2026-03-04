@@ -1931,6 +1931,12 @@
             setupTabNavigation();
             setupRefreshButton();
             fetchAllData();
+            // Auto-load last analyzed ticker from saved data (no API calls)
+            const lastTicker = localStorage.getItem('analyzerLastTicker');
+            if (lastTicker) {
+                const input = document.getElementById('analyzerTicker');
+                if (input) { input.value = lastTicker; analyzeStock(false); }
+            }
         });
 
         // Two-Level Navigation
@@ -3677,6 +3683,14 @@
                 document.getElementById('graham-basePE').value = 7;
                 document.getElementById('graham-cg').value = 1;
             }
+            const btnCons = document.getElementById('graham-mode-conservative');
+            const btnOrig = document.getElementById('graham-mode-original');
+            if (btnCons && btnOrig) {
+                const active = 'font-size:0.7rem; padding:2px 8px; border-radius:4px; background:var(--accent); color:#fff;';
+                const inactive = 'font-size:0.7rem; padding:2px 8px; border-radius:4px; background:transparent; color:var(--text-dim);';
+                btnCons.style.cssText = mode === 'conservative' ? active : inactive;
+                btnOrig.style.cssText = mode === 'original' ? active : inactive;
+            }
             recalcGraham();
         }
 
@@ -4222,9 +4236,9 @@
                 <div class="valuation-card">
                     <div class="valuation-card-title" style="display:flex; justify-content:space-between; align-items:center;">
                         Graham Revised Formula
-                        <div style="display:flex; gap:6px;">
-                            <button class="btn btn-sm" style="font-size:0.7rem; padding:2px 8px; opacity:0.7;" onclick="grahamPreset('conservative')" title="Base P/E=7, Cg=1">Conservative</button>
-                            <button class="btn btn-sm" style="font-size:0.7rem; padding:2px 8px; opacity:0.7;" onclick="grahamPreset('original')" title="Base P/E=8.5, Cg=2">Original</button>
+                        <div style="display:inline-flex; gap:2px; background:var(--bg); border-radius:6px; padding:2px;">
+                            <button id="graham-mode-conservative" class="btn btn-sm" style="font-size:0.7rem; padding:2px 8px; border-radius:4px; background:var(--accent); color:#fff;" onclick="grahamPreset('conservative')" title="Base P/E=7, Cg=1">Conservative</button>
+                            <button id="graham-mode-original" class="btn btn-sm" style="font-size:0.7rem; padding:2px 8px; border-radius:4px; background:transparent; color:var(--text-dim);" onclick="grahamPreset('original')" title="Base P/E=8.5, Cg=2">Original</button>
                         </div>
                     </div>
                     <div class="formula-display" id="graham-formula">IV = EPS × (${g.basePE} + ${g.cg}g) × ${g.aaaYieldBaseline} / ${g.aaaYieldCurrent}</div>
@@ -4274,26 +4288,193 @@
             const rel = (d.valuation || {}).relative;
             if (!rel) return '<p style="color: var(--text-dim); padding: 20px;">Relative valuation not available — insufficient data.</p>';
 
-            const upsideColor = rel.upside >= 0 ? 'green' : 'red';
+            const defs = rel.sectorDefaults || {pe: 20, evEbitda: 13, pb: 3};
+            const pc = rel.peerComparison;
+            const hasPeers = pc && pc.peers && pc.peers.length > 0;
+
+            // Peer comparison table
+            let peerHtml = '';
+            if (hasPeers) {
+                const fmt = v => v != null ? v.toFixed(1) + 'x' : '—';
+                peerHtml = `<div class="valuation-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <div class="valuation-card-title" style="margin-bottom:0;">Peer Comparison</div>
+                        <div style="display:flex; gap:4px; background:var(--bg); border-radius:6px; padding:2px;">
+                            <button id="rel-mode-median" class="btn btn-sm" onclick="relApplyPeerAvg('median')" style="font-size:0.72rem; padding:3px 10px; background:var(--accent); color:#fff; border-radius:4px;">Median</button>
+                            <button id="rel-mode-avg" class="btn btn-sm" onclick="relApplyPeerAvg('avg')" style="font-size:0.72rem; padding:3px 10px; background:transparent; color:var(--text-dim); border-radius:4px;">Average</button>
+                        </div>
+                    </div>
+                    <div style="overflow-x:auto;"><table class="fcf-table" style="font-size:0.82rem;">
+                        <thead><tr><th style="width:24px;"></th><th>Ticker</th><th>Company</th><th style="text-align:right;">P/E</th><th style="text-align:right;">EV/EBITDA</th><th style="text-align:right;">P/B</th></tr></thead>
+                        <tbody>
+                            ${pc.peers.map((p, i) => `<tr>
+                                <td><input type="checkbox" class="rel-peer-cb" data-idx="${i}" checked onchange="relUpdatePeerAvg()"></td>
+                                <td style="font-weight:600; color:var(--accent);">${p.ticker}</td>
+                                <td style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${p.name || ''}</td>
+                                <td style="text-align:right;">${fmt(p.pe)}</td>
+                                <td style="text-align:right;">${fmt(p.evEbitda)}</td>
+                                <td style="text-align:right;">${fmt(p.pb)}</td>
+                            </tr>`).join('')}
+                        </tbody>
+                        <tfoot>
+                            <tr style="font-weight:600; border-top:2px solid var(--border);">
+                                <td></td><td colspan="2" id="rel-peer-summary">Median (${pc.peers.length} peers)</td>
+                                <td style="text-align:right;" id="rel-peer-avg-pe">${pc.medians.pe ? pc.medians.pe.toFixed(1) + 'x' : '—'}</td>
+                                <td style="text-align:right;" id="rel-peer-avg-ev">${pc.medians.evEbitda ? pc.medians.evEbitda.toFixed(1) + 'x' : '—'}</td>
+                                <td style="text-align:right;" id="rel-peer-avg-pb">${pc.medians.pb ? pc.medians.pb.toFixed(1) + 'x' : '—'}</td>
+                            </tr>
+                        </tfoot>
+                    </table></div>
+                    <div style="font-size:0.72rem; color:var(--text-dim); margin-top:6px;">Source: Finviz · Check/uncheck peers to adjust averages</div>
+                </div>`;
+            }
+
+            // Use peer medians if available, else sector defaults
+            const initPE = (hasPeers && pc.medians.pe) ? pc.medians.pe : defs.pe;
+            const initEV = (hasPeers && pc.medians.evEbitda) ? pc.medians.evEbitda : defs.evEbitda;
+            const initPB = (hasPeers && pc.medians.pb) ? pc.medians.pb : defs.pb;
+
             return `
+                ${peerHtml}
                 <div class="valuation-card">
-                    <div class="valuation-card-title">Relative Valuation — ${rel.sector || 'Market Average'}</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <div class="valuation-card-title" style="margin-bottom:0;">Implied Fair Value — ${rel.sector || 'Market Average'}</div>
+                        ${!hasPeers ? '<span style="font-size:0.72rem; color:var(--text-dim);">Sector defaults (no peer data)</span>' : ''}
+                    </div>
                     <table class="fcf-table">
-                        <thead><tr><th>Metric</th><th>Stock</th><th>Sector Avg</th><th>Implied Price</th></tr></thead>
-                        <tbody>${rel.metrics.map(m => `<tr>
-                            <td>${m.name}</td>
-                            <td>${m.stockVal ? m.stockVal.toFixed(1) + 'x' : '—'}</td>
-                            <td>${m.sectorAvg}x</td>
-                            <td>${m.impliedPrice > 0 ? formatMoney(m.impliedPrice) : '—'}</td>
-                        </tr>`).join('')}</tbody>
+                        <thead><tr><th>Metric</th><th>Stock</th><th>Peer Avg</th><th>Implied Price</th></tr></thead>
+                        <tbody>
+                            <tr>
+                                <td>P/E</td>
+                                <td>${rel.metrics[0].stockVal ? rel.metrics[0].stockVal.toFixed(1) + 'x' : '—'}</td>
+                                <td><input id="rel-pe" type="number" step="0.5" value="${initPE}" class="form-input" style="width:64px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcRelative()">x</td>
+                                <td id="rel-pe-implied">—</td>
+                            </tr>
+                            <tr>
+                                <td>EV/EBITDA</td>
+                                <td>${rel.metrics[1].stockVal ? rel.metrics[1].stockVal.toFixed(1) + 'x' : '—'}</td>
+                                <td><input id="rel-evEbitda" type="number" step="0.5" value="${initEV}" class="form-input" style="width:64px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcRelative()">x</td>
+                                <td id="rel-ev-implied">—</td>
+                            </tr>
+                            <tr>
+                                <td>P/B</td>
+                                <td>${rel.metrics[2].stockVal ? rel.metrics[2].stockVal.toFixed(1) + 'x' : '—'}</td>
+                                <td><input id="rel-pb" type="number" step="0.5" value="${initPB}" class="form-input" style="width:64px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcRelative()">x</td>
+                                <td id="rel-pb-implied">—</td>
+                            </tr>
+                        </tbody>
                     </table>
                 </div>
-                ${ivResultBox([
-                    {label: 'Relative IV', value: formatMoney(rel.ivPerShare)},
-                    {label: 'MoS IV (30%)', value: formatMoney(rel.marginOfSafetyIv)},
-                    {label: 'Current Price', value: formatMoney(d.price)},
-                    {label: 'Upside', value: (rel.upside >= 0 ? '+' : '') + rel.upside + '%', colorClass: upsideColor},
-                ])}`;
+                <div class="valuation-card">
+                    <div class="wacc-grid">
+                        <div class="wacc-item"><span class="wlabel">Margin of Safety %</span>
+                            <input id="rel-mos" type="number" step="5" value="30" class="form-input" style="width:64px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcRelative()">
+                        </div>
+                    </div>
+                </div>
+                <div id="rel-result-box"></div>
+                <div style="font-size:0.72rem; color:var(--text-dim); margin-top:8px; padding:0 4px;">Data: EPS, book value & EBITDA from FMP · Peer multiples from Finviz</div>`;
+        }
+
+        function relUpdatePeerAvg() {
+            // Re-apply current mode when checkboxes change
+            const btnMedian = document.getElementById('rel-mode-median');
+            const isMedian = btnMedian && btnMedian.style.background.includes('var(--accent)');
+            relApplyPeerAvg(isMedian ? 'median' : 'avg');
+        }
+
+        function relApplyPeerAvg(mode) {
+            if (!_analyzerData) return;
+            const rel = (_analyzerData.valuation || {}).relative;
+            const pc = rel && rel.peerComparison;
+            if (!pc || !pc.peers) return;
+
+            const checkboxes = document.querySelectorAll('.rel-peer-cb');
+            const selected = [];
+            checkboxes.forEach(cb => { if (cb.checked) selected.push(pc.peers[parseInt(cb.dataset.idx)]); });
+            if (selected.length === 0) return;
+
+            const calc = (key) => {
+                const vals = selected.filter(p => p[key] != null && p[key] > 0).map(p => p[key]).sort((a, b) => a - b);
+                if (vals.length === 0) return null;
+                if (mode === 'median') {
+                    const mid = Math.floor(vals.length / 2);
+                    return vals.length % 2 === 0 ? (vals[mid - 1] + vals[mid]) / 2 : vals[mid];
+                }
+                return vals.reduce((a, b) => a + b, 0) / vals.length;
+            };
+
+            const pe = calc('pe'), ev = calc('evEbitda'), pb = calc('pb');
+            if (pe != null) document.getElementById('rel-pe').value = pe.toFixed(1);
+            if (ev != null) document.getElementById('rel-evEbitda').value = ev.toFixed(1);
+            if (pb != null) document.getElementById('rel-pb').value = pb.toFixed(1);
+
+            // Toggle button styles
+            const btnMedian = document.getElementById('rel-mode-median');
+            const btnAvg = document.getElementById('rel-mode-avg');
+            if (btnMedian && btnAvg) {
+                const active = 'background:var(--accent); color:#fff;';
+                const inactive = 'background:transparent; color:var(--text-dim);';
+                btnMedian.style.cssText = 'font-size:0.72rem; padding:3px 10px; border-radius:4px;' + (mode === 'median' ? active : inactive);
+                btnAvg.style.cssText = 'font-size:0.72rem; padding:3px 10px; border-radius:4px;' + (mode === 'avg' ? active : inactive);
+            }
+
+            // Update footer label
+            const label = mode === 'median' ? 'Median' : 'Avg';
+            const fmt = v => v != null ? v.toFixed(1) + 'x' : '—';
+            document.getElementById('rel-peer-summary').textContent = `${label} (${selected.length} peers)`;
+            document.getElementById('rel-peer-avg-pe').textContent = fmt(pe);
+            document.getElementById('rel-peer-avg-ev').textContent = fmt(ev);
+            document.getElementById('rel-peer-avg-pb').textContent = fmt(pb);
+
+            recalcRelative();
+        }
+
+        function recalcRelative() {
+            if (!_analyzerData) return;
+            const rel = (_analyzerData.valuation || {}).relative;
+            if (!rel) return;
+            const price = _analyzerData.price || 0;
+            const eps = rel.eps || 0;
+            const bookVal = rel.bookValue || 0;
+            const ebitdaPS = rel.ebitdaPerShare || 0;
+
+            const avgPE = parseFloat(document.getElementById('rel-pe').value) || 0;
+            const avgEV = parseFloat(document.getElementById('rel-evEbitda').value) || 0;
+            const avgPB = parseFloat(document.getElementById('rel-pb').value) || 0;
+            const mosPct = parseFloat(document.getElementById('rel-mos').value) || 30;
+
+            const peImpl = eps > 0 ? avgPE * eps : 0;
+            const evImpl = ebitdaPS > 0 ? avgEV * ebitdaPS : 0;
+            const pbImpl = bookVal > 0 ? avgPB * bookVal : 0;
+
+            document.getElementById('rel-pe-implied').textContent = peImpl > 0 ? formatMoney(peImpl) : '—';
+            document.getElementById('rel-ev-implied').textContent = evImpl > 0 ? formatMoney(evImpl) : '—';
+            document.getElementById('rel-pb-implied').textContent = pbImpl > 0 ? formatMoney(pbImpl) : '—';
+
+            const implied = [peImpl, evImpl, pbImpl].filter(v => v > 0);
+            if (implied.length === 0) return;
+            const iv = implied.reduce((a, b) => a + b, 0) / implied.length;
+            const mosIv = iv * (1 - mosPct / 100);
+            const upside = price > 0 ? ((mosIv - price) / price * 100) : 0;
+            const upsideColor = upside >= 0 ? 'green' : 'red';
+
+            document.getElementById('rel-result-box').innerHTML = ivResultBox([
+                {label: 'Relative IV', value: formatMoney(iv)},
+                {label: `MoS IV (${mosPct}%)`, value: formatMoney(mosIv)},
+                {label: 'Current Price', value: formatMoney(price)},
+                {label: 'Upside', value: (upside >= 0 ? '+' : '') + upside.toFixed(1) + '%', colorClass: upsideColor},
+            ]);
+
+            // Update signal in header
+            const signalEl = document.getElementById('signal-relative');
+            if (signalEl) {
+                const signal = upside > 50 ? 'Strong Buy' : upside > 20 ? 'Buy' : upside > -10 ? 'Hold' : upside > -30 ? 'Expensive' : 'Overrated';
+                const signalColors = {'Strong Buy':'#4ade80','Buy':'#22d3ee','Hold':'#a78bfa','Expensive':'#f59e0b','Overrated':'#f87171'};
+                signalEl.textContent = signal;
+                signalEl.style.background = (signalColors[signal] || '#64748b') + '22';
+                signalEl.style.color = signalColors[signal] || '#64748b';
+            }
         }
 
         function _e2ValueBar(iv, price) {
@@ -4536,15 +4717,16 @@
                 ])}`;
         }
 
-        async function analyzeStock() {
+        async function analyzeStock(refresh = true) {
             const ticker = document.getElementById('analyzerTicker').value.toUpperCase().trim();
             if (!ticker) return;
 
             const resultsDiv = document.getElementById('analyzerResults');
-            resultsDiv.innerHTML = '<p style="color: var(--text-dim); padding: 20px;">🔍 Analyzing ' + ticker + '…</p>';
+            resultsDiv.innerHTML = '<p style="color: var(--text-dim); padding: 20px;">🔍 ' + (refresh ? 'Analyzing' : 'Loading') + ' ' + ticker + '…</p>';
 
             try {
-                const resp = await fetch(`/api/stock-analyzer/${ticker}`);
+                const url = `/api/stock-analyzer/${ticker}` + (refresh ? '?refresh=true' : '');
+                const resp = await fetch(url);
                 const d = await resp.json();
 
                 if (!resp.ok) {
@@ -4553,6 +4735,7 @@
                 }
 
                 _analyzerData = d;
+                localStorage.setItem('analyzerLastTicker', ticker);
 
                 const hasValuation = d.valuation && (d.valuation.dcf || d.valuation.graham || d.valuation.relative);
                 const tabs = [
@@ -4582,6 +4765,7 @@
                 html += `<div id="av-summary" class="analyzer-subview">${renderAnalyzerSummary(d)}</div>`;
 
                 resultsDiv.innerHTML = html;
+                recalcRelative();
                 _renderE2Chart(d);
             } catch (e) {
                 resultsDiv.innerHTML = '<p style="color: var(--red); padding: 20px;">Error fetching data. Check console.</p>';
