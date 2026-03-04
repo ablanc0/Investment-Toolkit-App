@@ -6,6 +6,7 @@ Pulls live market data from Yahoo Finance via yfinance.
 import json
 import time
 import threading
+import requests as http_requests
 from pathlib import Path
 from datetime import datetime, timedelta
 from flask import Flask, jsonify, request, send_from_directory
@@ -1375,6 +1376,105 @@ SECTOR_AVERAGES = {
     "Basic Materials":     {"pe": 15, "evEbitda": 9,  "pb": 2.5},
 }
 
+# ── FMP API ────────────────────────────────────────────────────────────
+
+FMP_API_KEY = "Yt3XCJh6dH3GNabskOSVMpQqKBzbSh70"
+FMP_BASE = "https://financialmodelingprep.com/stable"
+
+
+def _fmp_get(endpoint, **params):
+    """Call FMP stable API. Returns parsed JSON or None on error."""
+    params["apikey"] = FMP_API_KEY
+    try:
+        r = http_requests.get(f"{FMP_BASE}/{endpoint}", params=params, timeout=15)
+        data = r.json()
+        if isinstance(data, dict) and "Error Message" in data:
+            print(f"[FMP] Error on {endpoint}: {data['Error Message'][:80]}")
+            return None
+        return data
+    except Exception as e:
+        print(f"[FMP] Request failed for {endpoint}: {e}")
+        return None
+
+
+def _fetch_fmp_stock_data(ticker):
+    """Fetch FMP financial data for valuation models (4 API calls).
+    Profile/ratios/growth come from yfinance to save FMP quota.
+    """
+    return {
+        "income": _fmp_get("income-statement", symbol=ticker, period="annual"),
+        "cashflow": _fmp_get("cash-flow-statement", symbol=ticker, period="annual"),
+        "balance": _fmp_get("balance-sheet-statement", symbol=ticker, period="annual"),
+        "ev": _fmp_get("enterprise-values", symbol=ticker, period="annual"),
+    }
+
+
+def _fmp_to_info(fmp, yf_info):
+    """Build unified info dict: FMP for financials, yfinance for profile/ratios.
+
+    FMP provides 5 years of financial statements (vs yfinance 4) and
+    is the uniform source for DCF inputs. yfinance fills profile fields,
+    ratios, and supplementary data not available on FMP free tier.
+    """
+    inc0 = fmp["income"][0] if fmp.get("income") else {}
+    cf0 = fmp["cashflow"][0] if fmp.get("cashflow") else {}
+    bal0 = fmp["balance"][0] if fmp.get("balance") else {}
+    ev0 = fmp["ev"][0] if fmp.get("ev") else {}
+
+    shares = ev0.get("numberOfShares") or inc0.get("weightedAverageShsOut") or 0
+
+    # Start with yfinance as base, then override financial fields from FMP
+    info = dict(yf_info)
+    info.update({
+        # FMP financial data (uniform source for DCF)
+        "totalDebt": bal0.get("totalDebt", 0),
+        "totalCash": bal0.get("cashAndCashEquivalents", 0),
+        "freeCashflow": cf0.get("freeCashFlow", 0),
+        "operatingCashflow": cf0.get("operatingCashFlow", 0),
+        "trailingEps": inc0.get("epsDiluted", 0),
+        "totalRevenue": inc0.get("revenue", 0),
+        "sharesOutstanding": shares,
+        "enterpriseValue": ev0.get("enterpriseValue", 0),
+    })
+    return info
+
+
+def _fmp_to_financials(fmp):
+    """Translate FMP financial statements → yfinance-format dicts keyed by year."""
+    income = {}
+    for row in (fmp.get("income") or []):
+        year = row.get("date", "")[:4]
+        if not year:
+            continue
+        income[year] = {
+            "Pretax Income": row.get("incomeBeforeTax", 0),
+            "Tax Provision": row.get("incomeTaxExpense", 0),
+            "Interest Expense": row.get("interestExpense", 0),
+        }
+
+    cashflow = {}
+    for row in (fmp.get("cashflow") or []):
+        year = row.get("date", "")[:4]
+        if not year:
+            continue
+        cashflow[year] = {
+            "Operating Cash Flow": row.get("operatingCashFlow", 0),
+            "Capital Expenditure": row.get("capitalExpenditure", 0),
+        }
+
+    balance = {}
+    for row in (fmp.get("balance") or []):
+        year = row.get("date", "")[:4]
+        if not year:
+            continue
+        balance[year] = {
+            "Total Debt": row.get("totalDebt", 0),
+            "Cash And Cash Equivalents": row.get("cashAndCashEquivalents", 0),
+            "Stockholders Equity": row.get("totalStockholdersEquity", 0),
+        }
+
+    return income, cashflow, balance
+
 
 def _trimmean(values, pct=0.2):
     """Trimmed mean — drop top/bottom pct of values."""
@@ -1847,57 +1947,26 @@ def compute_valuation_summary(dcf, graham, relative, endeuda2, info):
 # ── Stock Analyzer ──────────────────────────────────────────────────────
 @app.route("/api/stock-analyzer/<ticker>")
 def api_stock_analyzer(ticker):
-    """Deep analysis of a single stock using yfinance."""
+    """Deep analysis: FMP for financials/ratios, yfinance for supplementary fields."""
     ticker = ticker.upper().strip()
     cached = cache_get(f"analyzer_{ticker}")
     if cached:
         return jsonify(cached)
 
     try:
-        t = yf.Ticker(ticker)
-        info = t.info or {}
-
-        # Financials
-        income = {}
+        # yfinance: profile, ratios, supplementary fields
         try:
-            inc_stmt = t.income_stmt
-            if inc_stmt is not None and not inc_stmt.empty:
-                for col in inc_stmt.columns[:4]:
-                    year = str(col.year) if hasattr(col, 'year') else str(col)[:4]
-                    income[year] = {}
-                    for row in inc_stmt.index:
-                        val = inc_stmt.loc[row, col]
-                        income[year][row] = float(val) if val == val else 0
+            yf_info = yf.Ticker(ticker).info or {}
         except Exception:
-            pass
+            yf_info = {}
+        if not yf_info.get("currentPrice") and not yf_info.get("regularMarketPrice"):
+            return jsonify({"error": f"Ticker '{ticker}' not found"}), 404
 
-        balance = {}
-        try:
-            bal_sheet = t.balance_sheet
-            if bal_sheet is not None and not bal_sheet.empty:
-                for col in bal_sheet.columns[:4]:
-                    year = str(col.year) if hasattr(col, 'year') else str(col)[:4]
-                    balance[year] = {}
-                    for row in bal_sheet.index:
-                        val = bal_sheet.loc[row, col]
-                        balance[year][row] = float(val) if val == val else 0
-        except Exception:
-            pass
+        # FMP: core financial data (4 API calls — uniform source for DCF)
+        fmp = _fetch_fmp_stock_data(ticker)
+        info = _fmp_to_info(fmp, yf_info)
+        income, cashflow, balance = _fmp_to_financials(fmp)
 
-        cashflow = {}
-        try:
-            cf_stmt = t.cashflow
-            if cf_stmt is not None and not cf_stmt.empty:
-                for col in cf_stmt.columns[:4]:
-                    year = str(col.year) if hasattr(col, 'year') else str(col)[:4]
-                    cashflow[year] = {}
-                    for row in cf_stmt.index:
-                        val = cf_stmt.loc[row, col]
-                        cashflow[year][row] = float(val) if val == val else 0
-        except Exception:
-            pass
-
-        # Key ratios
         price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
         result = {
             "ticker": ticker,
@@ -1953,6 +2022,10 @@ def api_stock_analyzer(ticker):
             "income": income,
             "balance": balance,
             "cashflow": cashflow,
+            "dataSources": {
+                "financials": "FMP",
+                "profile": "Yahoo Finance",
+            },
             "lastUpdated": datetime.now().isoformat(),
         }
 
