@@ -1360,7 +1360,10 @@ MARKET_RETURN  = 0.099        # S&P long-term avg
 PERPETUAL_GROWTH = 0.025      # terminal growth
 MARGIN_OF_SAFETY = 0.70
 AAA_YIELD_BASELINE = 4.4      # Graham baseline
-AAA_YIELD_CURRENT  = 5.0      # current AAA yield
+AAA_YIELD_CURRENT  = 5.3      # current AAA yield (FRED AAA)
+GRAHAM_BASE_PE     = 7.0      # P/E for no-growth company (Graham original: 8.5)
+GRAHAM_CG          = 1.0      # growth multiplier (Graham original: 2.0)
+GRAHAM_GROWTH_CAP  = 20.0     # max earnings growth % to avoid inflated IVs
 
 SECTOR_AVERAGES = {
     "Technology":          {"pe": 30, "evEbitda": 20, "pb": 8},
@@ -1775,18 +1778,19 @@ def compute_endeuda2(info, income, balance, cashflow):
 
 
 def compute_graham(info):
-    """Graham Revised Formula: IV = EPS × (8.5 + 2g) × Y / C"""
+    """Graham Revised Formula: IV = EPS × (basePE + Cg × g) × Y / C"""
     try:
         eps = info.get("trailingEps") or 0
         if eps <= 0:
             return None
 
-        # Growth rate: earningsGrowth is already a decimal (e.g. 0.15 = 15%)
-        g = (info.get("earningsGrowth") or 0.05) * 100
-        if g <= 0:
-            g = 5  # default 5% if negative/zero
+        # Growth rate: earningsGrowth is decimal (e.g. 0.15 = 15%), cap to avoid inflated IVs
+        raw_g = (info.get("earningsGrowth") or 0) * 100
+        g = max(0, min(raw_g, GRAHAM_GROWTH_CAP)) if raw_g > 0 else 5.0
 
-        adjusted_multiple = 8.5 + 2 * g
+        base_pe = GRAHAM_BASE_PE
+        cg = GRAHAM_CG
+        adjusted_multiple = base_pe + cg * g
         bond_adjustment = AAA_YIELD_BASELINE / AAA_YIELD_CURRENT
         iv = eps * adjusted_multiple * bond_adjustment
         if iv <= 0:
@@ -1799,7 +1803,8 @@ def compute_graham(info):
         return {
             "eps": round(eps, 2),
             "growthRate": round(g, 1),
-            "baseMultiple": 8.5,
+            "basePE": base_pe,
+            "cg": cg,
             "adjustedMultiple": round(adjusted_multiple, 1),
             "aaaYieldBaseline": AAA_YIELD_BASELINE,
             "aaaYieldCurrent": AAA_YIELD_CURRENT,

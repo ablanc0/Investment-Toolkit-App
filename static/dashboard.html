@@ -3641,12 +3641,14 @@
             if (!_analyzerData || !_analyzerData.valuation || !_analyzerData.valuation.graham) return;
             const g = _analyzerData.valuation.graham;
             const eps = g.eps;
+            const basePE = parseFloat(document.getElementById('graham-basePE').value) || 7;
+            const cg = parseFloat(document.getElementById('graham-cg').value) || 1;
             const growth = parseFloat(document.getElementById('graham-growth').value) || 0;
             const yieldBase = parseFloat(document.getElementById('graham-yieldBase').value) || 4.4;
-            const yieldCurr = parseFloat(document.getElementById('graham-yieldCurr').value) || 5.0;
+            const yieldCurr = parseFloat(document.getElementById('graham-yieldCurr').value) || 5.3;
             const mos = parseFloat(document.getElementById('graham-mos').value) || 70;
 
-            const adjMultiple = 8.5 + 2 * growth;
+            const adjMultiple = basePE + cg * growth;
             const bondAdj = yieldBase / yieldCurr;
             const iv = eps * adjMultiple * bondAdj;
             const mosIv = iv * (mos / 100);
@@ -3654,12 +3656,17 @@
             const upside = price > 0 ? ((mosIv - price) / price * 100) : 0;
 
             document.getElementById('graham-adjMultiple').textContent = adjMultiple.toFixed(1);
+            document.getElementById('graham-formula').textContent = `IV = EPS × (${basePE} + ${cg}g) × ${yieldBase} / ${yieldCurr}`;
             document.getElementById('graham-bondAdj').textContent = bondAdj.toFixed(4);
             document.getElementById('graham-iv').textContent = formatMoney(iv);
             document.getElementById('graham-mosIv').textContent = formatMoney(mosIv);
             const uEl = document.getElementById('graham-upside');
             uEl.textContent = (upside >= 0 ? '+' : '') + upside.toFixed(1) + '%';
             uEl.className = 'value ' + (upside >= 0 ? 'green' : 'red');
+            const sig = upside > 50 ? 'Strong Buy' : upside > 20 ? 'Buy' : upside > -10 ? 'Hold' : upside > -30 ? 'Expensive' : 'Overrated';
+            const sigColors = {'Strong Buy':'#4ade80','Buy':'#22d3ee','Hold':'#a78bfa','Expensive':'#f59e0b','Overrated':'#f87171'};
+            const sigEl = document.getElementById('graham-signal');
+            if (sigEl) { sigEl.textContent = sig; sigEl.style.color = sigColors[sig] || '#888'; }
         }
 
         function _runDcf(baseFcf, growthRate, wacc, perpGrowth, totalDebt, totalCash, shares, mos, price) {
@@ -4185,31 +4192,40 @@
             if (!g) return '<p style="color: var(--text-dim); padding: 20px;">Graham model not available — requires positive EPS.</p>';
 
             const upsideColor = g.upside >= 0 ? 'green' : 'red';
-            const mosVal = 70;
+            const signalColors = {'Strong Buy':'#4ade80','Buy':'#22d3ee','Hold':'#a78bfa','Expensive':'#f59e0b','Overrated':'#f87171'};
+            const sigColor = signalColors[g.signal] || '#888';
+            const inputStyle = 'class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;"';
             return `
                 <div class="valuation-card">
                     <div class="valuation-card-title">Graham Revised Formula</div>
-                    <div class="formula-display">IV = EPS × (8.5 + 2g) × Y / C</div>
+                    <div class="formula-display" id="graham-formula">IV = EPS × (${g.basePE} + ${g.cg}g) × ${g.aaaYieldBaseline} / ${g.aaaYieldCurrent}</div>
                     <div class="wacc-grid">
                         <div class="wacc-item"><span class="wlabel">EPS (TTM)</span><span class="wvalue">${formatMoney(g.eps)}</span></div>
                         <div class="wacc-item">
-                            <span class="wlabel">Growth Rate (g) %</span>
-                            <input id="graham-growth" type="number" step="0.1" value="${g.growthRate}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcGraham()">
+                            <span class="wlabel">Earnings Growth (g) %</span>
+                            <input id="graham-growth" type="number" step="0.1" value="${g.growthRate}" ${inputStyle} onchange="recalcGraham()">
                         </div>
-                        <div class="wacc-item"><span class="wlabel">Base Multiple</span><span class="wvalue">${g.baseMultiple}</span></div>
-                        <div class="wacc-item"><span class="wlabel">Adjusted Multiple (8.5 + 2g)</span><span class="wvalue" id="graham-adjMultiple">${g.adjustedMultiple}</span></div>
+                        <div class="wacc-item">
+                            <span class="wlabel">Base P/E (no growth)</span>
+                            <input id="graham-basePE" type="number" step="0.5" value="${g.basePE}" ${inputStyle} onchange="recalcGraham()">
+                        </div>
+                        <div class="wacc-item">
+                            <span class="wlabel">Cg (growth multiplier)</span>
+                            <input id="graham-cg" type="number" step="0.1" value="${g.cg}" ${inputStyle} onchange="recalcGraham()">
+                        </div>
+                        <div class="wacc-item"><span class="wlabel">Adjusted Multiple (${g.basePE} + ${g.cg}g)</span><span class="wvalue" id="graham-adjMultiple">${g.adjustedMultiple}</span></div>
                         <div class="wacc-item">
                             <span class="wlabel">AAA Yield Baseline (Y) %</span>
-                            <input id="graham-yieldBase" type="number" step="0.1" value="${g.aaaYieldBaseline}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcGraham()">
+                            <input id="graham-yieldBase" type="number" step="0.1" value="${g.aaaYieldBaseline}" ${inputStyle} onchange="recalcGraham()">
                         </div>
                         <div class="wacc-item">
                             <span class="wlabel">AAA Yield Current (C) %</span>
-                            <input id="graham-yieldCurr" type="number" step="0.1" value="${g.aaaYieldCurrent}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcGraham()">
+                            <input id="graham-yieldCurr" type="number" step="0.1" value="${g.aaaYieldCurrent}" ${inputStyle} onchange="recalcGraham()">
                         </div>
                         <div class="wacc-item"><span class="wlabel">Bond Adjustment (Y/C)</span><span class="wvalue" id="graham-bondAdj">${g.bondAdjustment}</span></div>
                         <div class="wacc-item">
                             <span class="wlabel">Margin of Safety %</span>
-                            <input id="graham-mos" type="number" step="1" value="${mosVal}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcGraham()">
+                            <input id="graham-mos" type="number" step="1" value="70" ${inputStyle} onchange="recalcGraham()">
                         </div>
                     </div>
                 </div>
@@ -4218,6 +4234,10 @@
                     <div class="iv-result-item"><div class="label">MoS IV</div><div class="value" id="graham-mosIv">${formatMoney(g.marginOfSafetyIv)}</div></div>
                     <div class="iv-result-item"><div class="label">Current Price</div><div class="value">${formatMoney(d.price)}</div></div>
                     <div class="iv-result-item"><div class="label">Upside</div><div class="value ${upsideColor}" id="graham-upside">${(g.upside >= 0 ? '+' : '') + g.upside}%</div></div>
+                    <div class="iv-result-item"><div class="label">Signal</div><div class="value" id="graham-signal" style="color:${sigColor}; font-weight:700;">${g.signal}</div></div>
+                </div>
+                <div style="color:var(--text-dim); font-size:0.75rem; margin-top:8px; padding:0 12px;">
+                    Data: EPS from FMP (income statement) · Earnings growth from Yahoo Finance (capped at 20%)
                 </div>`;
         }
 
