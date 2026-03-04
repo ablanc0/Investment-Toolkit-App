@@ -1356,7 +1356,7 @@ def api_risk_scenarios_update():
 # ── Stock Analyzer — Valuation Helpers ─────────────────────────────────
 
 RISK_FREE_RATE = 0.0425      # 10Y Treasury
-MARKET_RETURN  = 0.10         # S&P long-term avg
+MARKET_RETURN  = 0.099        # S&P long-term avg
 PERPETUAL_GROWTH = 0.025      # terminal growth
 MARGIN_OF_SAFETY = 0.70
 AAA_YIELD_BASELINE = 4.4      # Graham baseline
@@ -1492,12 +1492,14 @@ def _compute_wacc(info, income):
     cost_of_equity = RISK_FREE_RATE + beta * (MARKET_RETURN - RISK_FREE_RATE)
 
     total_debt = info.get("totalDebt") or 0
+    total_cash = info.get("totalCash") or 0
+    net_debt = max(total_debt - total_cash, 0)
     market_cap = info.get("marketCap") or 0
-    total_capital = total_debt + market_cap
+    total_capital = net_debt + market_cap
     if total_capital <= 0:
         return None, None
 
-    debt_weight = total_debt / total_capital
+    debt_weight = net_debt / total_capital
     equity_weight = market_cap / total_capital
 
     tax_rate = 0.21
@@ -1525,7 +1527,7 @@ def _compute_wacc(info, income):
         "beta": beta, "costOfEquity": cost_of_equity,
         "costOfDebt": cost_of_debt, "taxRate": tax_rate,
         "debtWeight": debt_weight, "equityWeight": equity_weight,
-        "totalDebt": total_debt,
+        "totalDebt": total_debt, "netDebt": net_debt,
     }
 
 
