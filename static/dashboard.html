@@ -3754,7 +3754,7 @@
             return {projected, terminal, pvTerminal, ev, eqVal, iv, mosIv, upside};
         }
 
-        function _runEndeuda2Scenario(fcfPS, growth1, growth2, termFactor, discountRate) {
+        function _runDcfScenario(fcfPS, growth1, growth2, termFactor, discountRate) {
             const yearByYear = [];
             let currentFcf = fcfPS, pvSum = 0;
             for (let yr = 1; yr <= 10; yr++) {
@@ -3770,9 +3770,9 @@
             return {yearByYear, terminalValue, pvTerminal, iv};
         }
 
-        function recalcEndeuda2() {
-            if (!_analyzerData || !_analyzerData.valuation || !_analyzerData.valuation.endeuda2) return;
-            const e2 = _analyzerData.valuation.endeuda2;
+        function recalcDcfScenarios() {
+            if (!_analyzerData || !_analyzerData.valuation || !_analyzerData.valuation.dcfScenarios) return;
+            const e2 = _analyzerData.valuation.dcfScenarios;
             const fcfPS = parseFloat(document.getElementById('e2-fcfps').value) || e2.fcfPerShare;
             const discountPct = parseFloat(document.getElementById('e2-discount').value) || e2.discountRate;
             const discount = discountPct / 100;
@@ -3788,7 +3788,7 @@
                 const tf = parseFloat(document.getElementById(`e2-${sc}-tf`).value);
                 const prob = parseFloat(document.getElementById(`e2-${sc}-prob`).value) / 100;
 
-                const result = _runEndeuda2Scenario(fcfPS, g1, g2, tf, discount);
+                const result = _runDcfScenario(fcfPS, g1, g2, tf, discount);
                 compositeIv += result.iv * prob;
 
                 const tbody = document.getElementById(`e2-${sc}-tbody`);
@@ -3822,7 +3822,7 @@
             const bUp = document.getElementById('e2-banner-upside');
             if (bUp) { bUp.textContent = (upside >= 0 ? '+' : '') + upside.toFixed(1) + '%'; bUp.style.color = upside >= 0 ? '#22c55e' : '#ef4444'; }
             const sig = upside > 50 ? 'Strong Buy' : upside > 20 ? 'Buy' : upside > -10 ? 'Hold' : upside > -30 ? 'Expensive' : 'Overrated';
-            const bannerSig = document.querySelector('#av-endeuda2 .model-result-signal span:last-child');
+            const bannerSig = document.querySelector('#av-dcfScenarios .model-result-signal span:last-child');
             if (bannerSig) { const sc2 = signalColor(sig); bannerSig.textContent = sig; bannerSig.style.background = sc2.bg; bannerSig.style.color = sc2.fg; }
             // Update implied growth
             const hImpl = document.getElementById('e2-header-implied');
@@ -3838,7 +3838,7 @@
             // Update projection chart
             if (_analyzerData) {
                 const chartData = JSON.parse(JSON.stringify(_analyzerData));
-                const e2Copy = chartData.valuation.endeuda2;
+                const e2Copy = chartData.valuation.dcfScenarios;
                 e2Copy.fcfPerShare = fcfPS;
                 e2Copy.discountRate = discountPct;
                 for (const sc of scenarioKeys) {
@@ -4568,7 +4568,7 @@
             for (const dr of discounts) {
                 html += `<tr><td style="font-weight:600; text-align:center;">${(dr).toFixed(1)}%</td>`;
                 for (const m of multiples) {
-                    const res = _runEndeuda2Scenario(fcfPS, g1 / 100, g2 / 100, m, dr / 100);
+                    const res = _runDcfScenario(fcfPS, g1 / 100, g2 / 100, m, dr / 100);
                     const isCenter = Math.abs(dr - discountRate) < 0.01 && Math.abs(m - termFactor) < 0.01;
                     const abovePrice = res.iv >= price && price > 0;
                     const bgColor = abovePrice ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.1)';
@@ -4581,8 +4581,8 @@
             return html;
         }
 
-        function renderAnalyzerEndeuda2(d) {
-            const e2 = (d.valuation || {}).endeuda2;
+        function renderAnalyzerDcfScenarios(d) {
+            const e2 = (d.valuation || {}).dcfScenarios;
             if (!e2) return '<p style="color: var(--text-dim); padding: 20px;">DCF Scenarios model not available — requires positive Free Cash Flow.</p>';
 
             const mosVal = 70;
@@ -4606,16 +4606,16 @@
                 <div class="wacc-grid">
                     <div class="wacc-item">
                         <span class="wlabel">FCF / Share</span>
-                        <input id="e2-fcfps" type="number" step="0.01" value="${e2.fcfPerShare}" class="form-input" style="width:90px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
+                        <input id="e2-fcfps" type="number" step="0.01" value="${e2.fcfPerShare}" class="form-input" style="width:90px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcfScenarios()">
                     </div>
                     <div class="wacc-item">
                         <span class="wlabel">Discount Rate %</span>
-                        <input id="e2-discount" type="number" step="0.25" value="${e2.discountRate}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
+                        <input id="e2-discount" type="number" step="0.25" value="${e2.discountRate}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcfScenarios()">
                     </div>
                     <div class="wacc-item"><span class="wlabel">WACC (computed)</span><span class="wvalue">${e2.wacc}%</span></div>
                     <div class="wacc-item">
                         <span class="wlabel">Margin of Safety %</span>
-                        <input id="e2-mos" type="number" step="5" value="${mosVal}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
+                        <input id="e2-mos" type="number" step="5" value="${mosVal}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcfScenarios()">
                     </div>
                     <div class="wacc-item"><span class="wlabel">Implied Growth</span><span class="wvalue" id="e2-header-implied">${impliedGrowth.toFixed(2)}%</span></div>
                 </div>
@@ -4646,21 +4646,21 @@
                             <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:8px;">
                                 <div style="display:flex; align-items:center; gap:6px; font-size:0.85rem;">
                                     <span style="color:var(--text-dim);">Growth 1-5 yrs %</span>
-                                    <input id="e2-${sc.key}-g1" type="number" step="0.5" value="${data.growth1_5}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
+                                    <input id="e2-${sc.key}-g1" type="number" step="0.5" value="${data.growth1_5}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcfScenarios()">
                                 </div>
                                 <div style="display:flex; align-items:center; gap:6px; font-size:0.85rem;">
                                     <span style="color:var(--text-dim);">Growth 6-10 yrs %</span>
-                                    <input id="e2-${sc.key}-g2" type="number" step="0.5" value="${data.growth6_10}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
+                                    <input id="e2-${sc.key}-g2" type="number" step="0.5" value="${data.growth6_10}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcfScenarios()">
                                 </div>
                             </div>
                             <div style="display:flex; gap:16px; flex-wrap:wrap;">
                                 <div style="display:flex; align-items:center; gap:6px; font-size:0.85rem;">
                                     <span style="color:var(--text-dim);">Terminal Factor</span>
-                                    <input id="e2-${sc.key}-tf" type="number" step="0.5" value="${data.terminalFactor}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
+                                    <input id="e2-${sc.key}-tf" type="number" step="0.5" value="${data.terminalFactor}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcfScenarios()">
                                 </div>
                                 <div style="display:flex; align-items:center; gap:6px; font-size:0.85rem;">
                                     <span style="color:var(--text-dim);">Probability %</span>
-                                    <input id="e2-${sc.key}-prob" type="number" step="5" value="${data.probability}" class="form-input" style="width:60px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
+                                    <input id="e2-${sc.key}-prob" type="number" step="5" value="${data.probability}" class="form-input" style="width:60px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcfScenarios()">
                                 </div>
                             </div>
                         </div>
@@ -4709,7 +4709,7 @@
                 {key: 'dcf', name: 'DCF Model', data: v.dcf},
                 {key: 'graham', name: 'Graham Formula', data: v.graham},
                 {key: 'relative', name: 'Relative Valuation', data: v.relative},
-                {key: 'endeuda2', name: 'DCF Scenarios', data: v.endeuda2},
+                {key: 'dcfScenarios', name: 'DCF Scenarios', data: v.dcfScenarios},
             ];
             let cardsHtml = '<div class="iv-comparison">';
             for (const m of models) {
@@ -4778,7 +4778,7 @@
                     {id: 'dcf', label: 'DCF Model'},
                     {id: 'graham', label: 'Graham'},
                     {id: 'relative', label: 'Relative'},
-                    {id: 'endeuda2', label: 'DCF Scenarios'},
+                    {id: 'dcfScenarios', label: 'DCF Scenarios'},
                     {id: 'summary', label: 'Summary'},
                 ];
 
@@ -4796,7 +4796,7 @@
                 html += `<div id="av-dcf" class="analyzer-subview">${renderAnalyzerDcf(d)}</div>`;
                 html += `<div id="av-graham" class="analyzer-subview">${renderAnalyzerGraham(d)}</div>`;
                 html += `<div id="av-relative" class="analyzer-subview">${renderAnalyzerRelative(d)}</div>`;
-                html += `<div id="av-endeuda2" class="analyzer-subview">${renderAnalyzerEndeuda2(d)}</div>`;
+                html += `<div id="av-dcfScenarios" class="analyzer-subview">${renderAnalyzerDcfScenarios(d)}</div>`;
                 html += `<div id="av-summary" class="analyzer-subview">${renderAnalyzerSummary(d)}</div>`;
 
                 resultsDiv.innerHTML = html;
@@ -4809,7 +4809,7 @@
         }
 
         function _renderE2Chart(d) {
-            const e2 = (d.valuation || {}).endeuda2;
+            const e2 = (d.valuation || {}).dcfScenarios;
             if (!e2) return;
             const canvas = document.getElementById('e2-projection-chart');
             if (!canvas) return;
