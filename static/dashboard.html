@@ -933,6 +933,7 @@
             color: var(--text);
             margin-top: 2px;
         }
+        .e2-collapsed { display: none; }
         .fcf-table {
             width: 100%;
             font-size: 0.82rem;
@@ -3794,11 +3795,11 @@
                 const tbody = document.getElementById(`e2-${sc}-tbody`);
                 if (tbody) {
                     tbody.innerHTML = result.yearByYear.map(r => `<tr>
-                        <td>Year ${r.year}${r.year === 6 ? ' <span style="color:var(--text-dim);font-size:0.72rem;">(Phase 2)</span>' : ''}</td>
+                        <td>${r.year}${r.year === 6 ? ' <span style="color:var(--text-dim);font-size:0.65rem;">(P2)</span>' : ''}</td>
                         <td>$${r.fcfPS.toFixed(2)}</td>
                         <td>$${r.pv.toFixed(2)}</td>
                     </tr>`).join('') + `<tr style="font-weight:700; border-top:2px solid var(--border);">
-                        <td>Terminal</td>
+                        <td>Term</td>
                         <td>$${result.terminalValue.toFixed(2)}</td>
                         <td>$${result.pvTerminal.toFixed(2)}</td>
                     </tr>`;
@@ -4621,66 +4622,72 @@
                 </div>
             </div>`;
 
-            // FCF/PS Projection Chart — all 3 scenarios + implied growth
-            html += `<div class="valuation-card">
-                <div class="valuation-card-title">Estimated Growth vs Implied Growth</div>
-                <canvas id="e2-projection-chart" height="220"></canvas>
-            </div>`;
-
-            // Cards 2-4: Scenario cards with editable probability + value bar
+            // Compact scenario comparison table
             const scenarioOrder = [
                 {key: 'base', label: 'Base', color: 'var(--accent)'},
                 {key: 'best', label: 'Best', color: '#22c55e'},
                 {key: 'worst', label: 'Worst', color: '#ef4444'},
             ];
-
-            for (const sc of scenarioOrder) {
-                const data = e2.scenarios[sc.key];
-                html += `<div class="valuation-card" style="border-left: 3px solid ${sc.color};">
-                    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px;">
-                        <div class="valuation-card-title" style="margin-bottom:0;">${sc.label} Scenario</div>
-                        <span style="font-size:1.3rem; font-weight:700; color:var(--text);" id="e2-${sc.key}-iv">${formatMoney(data.ivPerShare)}</span>
-                    </div>
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
-                        <div>
-                            <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:8px;">
-                                <div style="display:flex; align-items:center; gap:6px; font-size:0.85rem;">
-                                    <span style="color:var(--text-dim);">Growth 1-5 yrs %</span>
-                                    <input id="e2-${sc.key}-g1" type="number" step="0.5" value="${data.growth1_5}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcfScenarios()">
-                                </div>
-                                <div style="display:flex; align-items:center; gap:6px; font-size:0.85rem;">
-                                    <span style="color:var(--text-dim);">Growth 6-10 yrs %</span>
-                                    <input id="e2-${sc.key}-g2" type="number" step="0.5" value="${data.growth6_10}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcfScenarios()">
-                                </div>
-                            </div>
-                            <div style="display:flex; gap:16px; flex-wrap:wrap;">
-                                <div style="display:flex; align-items:center; gap:6px; font-size:0.85rem;">
-                                    <span style="color:var(--text-dim);">Terminal Factor</span>
-                                    <input id="e2-${sc.key}-tf" type="number" step="0.5" value="${data.terminalFactor}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcfScenarios()">
-                                </div>
-                                <div style="display:flex; align-items:center; gap:6px; font-size:0.85rem;">
-                                    <span style="color:var(--text-dim);">Probability %</span>
-                                    <input id="e2-${sc.key}-prob" type="number" step="5" value="${data.probability}" class="form-input" style="width:60px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcfScenarios()">
-                                </div>
-                            </div>
-                        </div>
-                        <div id="e2-${sc.key}-bar">${_e2ValueBar(data.ivPerShare, price)}</div>
-                    </div>
-                    <table class="fcf-table">
-                        <thead><tr><th>Year</th><th>FCF/PS</th><th>PV of FCF/PS</th></tr></thead>
-                        <tbody id="e2-${sc.key}-tbody">${data.yearByYear.map(r => `<tr>
-                            <td>Year ${r.year}${r.year === 6 ? ' <span style="color:var(--text-dim);font-size:0.72rem;">(Phase 2)</span>' : ''}</td>
-                            <td>$${r.fcfPS.toFixed(2)}</td>
-                            <td>$${r.pv.toFixed(2)}</td>
-                        </tr>`).join('')}
+            html += `<div class="valuation-card">
+                <div class="valuation-card-title">Scenario Comparison</div>
+                <table class="fcf-table" style="font-size:0.85rem;">
+                    <thead><tr>
+                        <th></th>
+                        ${scenarioOrder.map(s => `<th style="text-align:center; color:${s.color};">${s.label}</th>`).join('')}
+                    </tr></thead>
+                    <tbody>
+                        <tr><td style="color:var(--text-dim);">Growth 1-5 yrs %</td>${scenarioOrder.map(s => `<td style="text-align:center;"><input id="e2-${s.key}-g1" type="number" step="0.5" value="${e2.scenarios[s.key].growth1_5}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcfScenarios()"></td>`).join('')}</tr>
+                        <tr><td style="color:var(--text-dim);">Growth 6-10 yrs %</td>${scenarioOrder.map(s => `<td style="text-align:center;"><input id="e2-${s.key}-g2" type="number" step="0.5" value="${e2.scenarios[s.key].growth6_10}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcfScenarios()"></td>`).join('')}</tr>
+                        <tr><td style="color:var(--text-dim);">Terminal Multiple</td>${scenarioOrder.map(s => `<td style="text-align:center;"><input id="e2-${s.key}-tf" type="number" step="0.5" value="${e2.scenarios[s.key].terminalFactor}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcfScenarios()"></td>`).join('')}</tr>
+                        <tr><td style="color:var(--text-dim);">Probability %</td>${scenarioOrder.map(s => `<td style="text-align:center;"><input id="e2-${s.key}-prob" type="number" step="5" value="${e2.scenarios[s.key].probability}" class="form-input" style="width:60px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcDcfScenarios()"></td>`).join('')}</tr>
                         <tr style="font-weight:700; border-top:2px solid var(--border);">
-                            <td>Terminal</td>
-                            <td>$${data.terminalValue.toFixed(2)}</td>
-                            <td>$${data.pvTerminal.toFixed(2)}</td>
-                        </tr></tbody>
-                    </table>
-                </div>`;
-            }
+                            <td>IV / Share</td>
+                            ${scenarioOrder.map(s => `<td style="text-align:center; font-size:1rem;" id="e2-${s.key}-iv">${formatMoney(e2.scenarios[s.key].ivPerShare)}</td>`).join('')}
+                        </tr>
+                    </tbody>
+                </table>
+                <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-top:12px;">
+                    ${scenarioOrder.map(s => `<div id="e2-${s.key}-bar">${_e2ValueBar(e2.scenarios[s.key].ivPerShare, price)}</div>`).join('')}
+                </div>
+            </div>`;
+
+            // FCF/PS Projection Chart — all 3 scenarios + implied growth
+            html += `<div class="valuation-card">
+                <div class="valuation-card-title">Estimated Growth vs Implied Growth</div>
+                <canvas id="e2-projection-chart" height="180"></canvas>
+            </div>`;
+
+            // Collapsible year-by-year detail
+            html += `<div class="valuation-card" style="padding-bottom:0;">
+                <div onclick="const d=this.parentElement.querySelector('.e2-detail'); d.classList.toggle('e2-collapsed'); this.querySelector('.e2-toggle').textContent = d.classList.contains('e2-collapsed') ? '▶' : '▼';"
+                     style="cursor:pointer; display:flex; justify-content:space-between; align-items:center; padding-bottom:12px;">
+                    <div class="valuation-card-title" style="margin-bottom:0;">Year-by-Year Detail</div>
+                    <span class="e2-toggle" style="color:var(--text-dim); font-size:0.8rem;">▶</span>
+                </div>
+                <div class="e2-detail e2-collapsed">
+                    <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; padding-bottom:16px;">
+                    ${scenarioOrder.map(s => {
+                        const data = e2.scenarios[s.key];
+                        return `<div>
+                            <div style="font-size:0.8rem; font-weight:600; color:${s.color}; margin-bottom:6px;">${s.label}</div>
+                            <table class="fcf-table" style="font-size:0.78rem;">
+                                <thead><tr><th>Year</th><th>FCF/PS</th><th>PV</th></tr></thead>
+                                <tbody id="e2-${s.key}-tbody">${data.yearByYear.map(r => `<tr>
+                                    <td>${r.year}${r.year === 6 ? ' <span style="color:var(--text-dim);font-size:0.65rem;">(P2)</span>' : ''}</td>
+                                    <td>$${r.fcfPS.toFixed(2)}</td>
+                                    <td>$${r.pv.toFixed(2)}</td>
+                                </tr>`).join('')}
+                                <tr style="font-weight:700; border-top:2px solid var(--border);">
+                                    <td>Term</td>
+                                    <td>$${data.terminalValue.toFixed(2)}</td>
+                                    <td>$${data.pvTerminal.toFixed(2)}</td>
+                                </tr></tbody>
+                            </table>
+                        </div>`;
+                    }).join('')}
+                    </div>
+                </div>
+            </div>`;
 
             // Sensitivity matrix for Base scenario
             const baseData = e2.scenarios.base;
