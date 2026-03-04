@@ -1401,17 +1401,19 @@ def _fmp_get(endpoint, **params):
 
 
 def _fetch_fred_aaa_yield():
-    """Fetch latest AAA corporate bond yield from FRED (no API key needed)."""
+    """Fetch latest AAA corporate bond yield from FRED (no API key needed).
+    Returns (value, date_str) e.g. (5.30, '2026-02-01').
+    """
     try:
         url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=AAA&cosd=2025-01-01"
         r = http_requests.get(url, timeout=10)
         lines = r.text.strip().split("\n")
         if len(lines) >= 2:
-            last_val = lines[-1].split(",")[1]
-            return float(last_val)
+            parts = lines[-1].split(",")
+            return float(parts[1]), parts[0]
     except Exception as e:
         print(f"[FRED] Failed to fetch AAA yield: {e}")
-    return AAA_YIELD_CURRENT  # fallback to constant
+    return AAA_YIELD_CURRENT, None  # fallback to constant
 
 
 def _fetch_fmp_stock_data(ticker):
@@ -1794,12 +1796,12 @@ def compute_endeuda2(info, income, balance, cashflow):
         return None
 
 
-def compute_graham(info, aaa_yield_live=None):
+def compute_graham(info, aaa_yield_live=None, aaa_date=None):
     """Graham Revised Formula: IV = EPS × (basePE + Cg × g) × Y / C"""
     try:
         eps = info.get("trailingEps") or 0
         if eps <= 0:
-            return None
+            return {"negativeEps": True, "eps": round(eps, 2)}
 
         # Growth rate: earningsGrowth from FMP (decimal, e.g. 0.15 = 15%), cap to avoid inflated IVs
         raw_g = (info.get("earningsGrowth") or 0) * 100
@@ -1812,7 +1814,7 @@ def compute_graham(info, aaa_yield_live=None):
         bond_adjustment = AAA_YIELD_BASELINE / aaa_current
         iv = eps * adjusted_multiple * bond_adjustment
         if iv <= 0:
-            return None
+            return {"negativeEps": True, "eps": round(eps, 2)}
 
         mos_iv = iv * MARGIN_OF_SAFETY
         price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
@@ -1826,6 +1828,7 @@ def compute_graham(info, aaa_yield_live=None):
             "adjustedMultiple": round(adjusted_multiple, 1),
             "aaaYieldBaseline": AAA_YIELD_BASELINE,
             "aaaYieldCurrent": round(aaa_current, 2),
+            "aaaYieldDate": aaa_date,
             "bondAdjustment": round(bond_adjustment, 4),
             "ivPerShare": round(iv, 2),
             "marginOfSafetyIv": round(mos_iv, 2),
@@ -2069,11 +2072,11 @@ def api_stock_analyzer(ticker):
         }
 
         # Fetch live AAA yield from FRED for Graham model
-        aaa_yield_live = _fetch_fred_aaa_yield()
+        aaa_yield_live, aaa_date = _fetch_fred_aaa_yield()
 
         # Valuation models
         dcf = compute_dcf(info, income, balance, cashflow)
-        graham = compute_graham(info, aaa_yield_live=aaa_yield_live)
+        graham = compute_graham(info, aaa_yield_live=aaa_yield_live, aaa_date=aaa_date)
         relative = compute_relative(info)
         endeuda2 = compute_endeuda2(info, income, balance, cashflow)
         summary = compute_valuation_summary(dcf, graham, relative, endeuda2, info)
