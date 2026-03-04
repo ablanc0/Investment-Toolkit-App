@@ -2388,12 +2388,47 @@ def api_stock_analyzer(ticker):
                 data_source = "SEC EDGAR"
                 print(f"[Analyzer] {ticker}: SEC EDGAR ({len(income)} yr income, {len(cashflow)} yr cashflow)")
         if not data_source:
-            # Fallback: FMP (5 API calls)
-            print(f"[Analyzer] {ticker}: EDGAR unavailable, falling back to FMP")
+            # Fallback 1: FMP (5 API calls)
+            print(f"[Analyzer] {ticker}: EDGAR unavailable, trying FMP")
             fmp = _fetch_fmp_stock_data(ticker)
             info = _fmp_to_info(fmp, yf_info)
             income, cashflow, balance = _fmp_to_financials(fmp)
             data_source = "FMP"
+        if data_source == "FMP" and not income and not cashflow:
+            # Fallback 2: yfinance (foreign ADRs not covered by EDGAR or FMP)
+            print(f"[Analyzer] {ticker}: FMP empty, falling back to yfinance")
+            info = dict(yf_info)
+            t = yf.Ticker(ticker)
+            income, cashflow, balance = {}, {}, {}
+            try:
+                cf = t.cashflow
+                if cf is not None and not cf.empty:
+                    for col in cf.columns:
+                        yr = str(col.year) if hasattr(col, 'year') else str(col)[:4]
+                        ocf = cf.at["Operating Cash Flow", col] if "Operating Cash Flow" in cf.index else 0
+                        capex = cf.at["Capital Expenditure", col] if "Capital Expenditure" in cf.index else 0
+                        cashflow[yr] = {
+                            "Operating Cash Flow": int(ocf) if ocf == ocf else 0,
+                            "Capital Expenditure": int(capex) if capex == capex else 0,
+                        }
+            except Exception as e:
+                print(f"[Analyzer] yfinance cashflow error: {e}")
+            try:
+                inc = t.income_stmt
+                if inc is not None and not inc.empty:
+                    for col in inc.columns:
+                        yr = str(col.year) if hasattr(col, 'year') else str(col)[:4]
+                        pretax = inc.at["Pretax Income", col] if "Pretax Income" in inc.index else 0
+                        tax = inc.at["Tax Provision", col] if "Tax Provision" in inc.index else 0
+                        interest = inc.at["Interest Expense", col] if "Interest Expense" in inc.index else 0
+                        income[yr] = {
+                            "Pretax Income": int(pretax) if pretax == pretax else 0,
+                            "Tax Provision": int(tax) if tax == tax else 0,
+                            "Interest Expense": int(interest) if interest == interest else 0,
+                        }
+            except Exception as e:
+                print(f"[Analyzer] yfinance income error: {e}")
+            data_source = "Yahoo Finance"
 
         price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
         result = {
@@ -2459,9 +2494,11 @@ def api_stock_analyzer(ticker):
                 "source": "Yahoo Finance",
             },
             "dataSources": {
-                "financials": f"{data_source} (10-K filings: income, cashflow, balance sheet)"
-                    if data_source == "SEC EDGAR"
-                    else "FMP (income, cashflow, balance sheet, enterprise values)",
+                "financials": {
+                    "SEC EDGAR": "SEC EDGAR (10-K XBRL filings)",
+                    "FMP": "FMP (financial statements API)",
+                    "Yahoo Finance": "Yahoo Finance (financial statements)",
+                }.get(data_source, data_source),
                 "profile": "Yahoo Finance (price, beta, analyst targets)",
                 "bonds": "FRED (AAA corporate bond yield)",
                 "ratios": f"{data_source}-derived (P/E, P/B, EV/EBITDA, book value/share)",
