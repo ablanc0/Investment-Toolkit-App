@@ -4137,6 +4137,13 @@
             const fcfLookup = {};
             apiYears.forEach(r => fcfLookup[r.year] = r.fcf);
 
+            const fcfYearCount = dcf.historicalFcf ? dcf.historicalFcf.length : 0;
+            const fcfSource = (d.dataSources || {}).financials || 'Unknown';
+            const fcfNotice = fcfYearCount < 10
+                ? `<div style="margin-top:6px; padding:6px 10px; background:rgba(245,158,11,0.1); border-left:3px solid #f59e0b; border-radius:4px; font-size:0.78rem; color:#f59e0b;">
+                    &#9888; Only ${fcfYearCount} year${fcfYearCount !== 1 ? 's' : ''} available from <strong>${fcfSource}</strong>. Empty cells are editable — fill in manually for better accuracy.
+                   </div>`
+                : '';
             html += `<div class="valuation-card">
                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
                     <div class="valuation-card-title" style="margin-bottom:0;">Historical Free Cash Flow</div>
@@ -4144,10 +4151,11 @@
                         <span style="color: var(--text-dim);">Period:</span>
                         <select id="dcf-fcf-period" class="form-input" style="padding:2px 8px; font-size:0.82rem;" onchange="rebuildFcfTable()">
                             <option value="5">5 Years</option>
-                            <option value="10">10 Years</option>
+                            <option value="10" ${fcfYearCount > 5 ? 'selected' : ''}>10 Years</option>
                         </select>
                     </div>
                 </div>
+                ${fcfNotice}
                 <table class="fcf-table">
                     <thead><tr><th>Year</th><th>FCF ($)</th><th>Growth</th></tr></thead>
                     <tbody id="dcf-hist-tbody"></tbody>
@@ -4205,8 +4213,9 @@
             // Data sources
             const ds = d.dataSources || {};
             html += `<div style="margin-top:8px; font-size:0.75rem; color:var(--text-dim); display:flex; gap:12px; flex-wrap:wrap;">
-                <span>Financials: <strong style="color:var(--text);">${ds.financials || 'FMP'}</strong></span>
+                <span>Financials: <strong style="color:var(--text);">${ds.financials || 'FMP'}</strong> (${fcfYearCount} yr)</span>
                 <span>Profile: <strong style="color:var(--text);">${ds.profile || 'Yahoo Finance'}</strong></span>
+                <span>Bonds: <strong style="color:var(--text);">${ds.bonds || 'FRED'}</strong></span>
             </div>`;
 
             return html;
