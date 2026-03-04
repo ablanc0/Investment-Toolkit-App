@@ -3905,6 +3905,13 @@
             const uEl = document.getElementById('dcf-upside');
             uEl.textContent = (result.upside >= 0 ? '+' : '') + result.upside.toFixed(1) + '%';
             uEl.className = 'value ' + (result.upside >= 0 ? 'green' : 'red');
+            const sigEl = document.getElementById('dcf-signal');
+            if (sigEl) {
+                const sig = result.upside > 50 ? 'Strong Buy' : result.upside > 20 ? 'Buy' : result.upside > -10 ? 'Hold' : result.upside > -30 ? 'Expensive' : 'Overrated';
+                const sigColors = {'Strong Buy':'#4ade80','Buy':'#22d3ee','Hold':'#a78bfa','Expensive':'#f59e0b','Overrated':'#f87171'};
+                sigEl.textContent = sig;
+                sigEl.style.color = sigColors[sig] || '#888';
+            }
 
             // Update projected FCF table
             const tbody = document.getElementById('dcf-proj-tbody');
@@ -3938,11 +3945,6 @@
             // Summary signal badge if available
             const v = d.valuation || {};
             const s = v.summary;
-            let signalHtml = '';
-            if (s && s.signal) {
-                const sc = signalColor(s.signal);
-                signalHtml = `<span class="signal-badge" style="background:${sc.bg}; color:${sc.fg}; font-size:0.75rem; padding:4px 10px; margin-left:8px;">${s.signal}</span>`;
-            }
             return `
                 <div class="analyzer-header">
                     <span class="ticker-badge">${d.ticker}</span>
@@ -3951,9 +3953,22 @@
                         <span style="color: var(--text-dim); font-size: 0.85rem;">${d.sector || ''} ${d.industry ? '· ' + d.industry : ''}</span>
                     </div>
                     <div style="margin-left: auto; text-align: right;">
-                        <div style="font-size: 1.6rem; font-weight: 700;">${formatMoney(d.price)}${signalHtml}</div>
-                        ${d.recommendationKey ? `<span class="rec-badge" style="background:${rc.bg}; color:${rc.fg};">${d.recommendationKey.replace('_',' ')}</span>` : ''}
+                        <div style="font-size: 1.6rem; font-weight: 700;">${formatMoney(d.price)}</div>
                     </div>
+                </div>
+                <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap; margin-bottom:16px;">
+                    ${s && s.signal ? `<div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+                        <span style="font-size:0.65rem; text-transform:uppercase; color:var(--text-dim); letter-spacing:0.5px;">InvT Valuation</span>
+                        <span style="background:${signalColor(s.signal).bg}; color:${signalColor(s.signal).fg}; font-size:1rem; font-weight:700; padding:6px 20px; border-radius:6px;">${s.signal}</span>
+                    </div>` : ''}
+                    ${d.recommendationKey ? `<div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+                        <span style="font-size:0.65rem; text-transform:uppercase; color:var(--text-dim); letter-spacing:0.5px;">Wall St. Analysts (${d.analystConsensus ? d.analystConsensus.numberOfAnalysts : ''})</span>
+                        <span class="rec-badge" style="background:${rc.bg}; color:${rc.fg}; font-size:1rem; font-weight:700; padding:6px 20px; border-radius:6px;">${d.recommendationKey.replace('_',' ')}</span>
+                    </div>` : ''}
+                    ${d.analystConsensus && d.analystConsensus.targetMean ? `<div style="display:flex; flex-direction:column; align-items:center; gap:2px; margin-left:auto;">
+                        <span style="font-size:0.65rem; text-transform:uppercase; color:var(--text-dim); letter-spacing:0.5px;">Analyst Target</span>
+                        <span style="font-size:1rem; font-weight:700; color:var(--text);">${formatMoney(d.analystConsensus.targetLow)} — ${formatMoney(d.analystConsensus.targetMean)} — ${formatMoney(d.analystConsensus.targetHigh)}</span>
+                    </div>` : ''}
                 </div>
                 <div style="margin-bottom: 20px;">
                     <div style="display:flex; justify-content:space-between; font-size:0.78rem; color:var(--text-dim); margin-bottom:4px;">
@@ -4144,12 +4159,22 @@
 
             // Result
             const upsideColor = dcf.upside >= 0 ? 'green' : 'red';
+            const signalColors = {'Strong Buy':'#4ade80','Buy':'#22d3ee','Hold':'#a78bfa','Expensive':'#f59e0b','Overrated':'#f87171'};
+            const sigColor = signalColors[dcf.signal] || '#888';
             html += `<div class="iv-result-box">
                 <div class="iv-result-item"><div class="label">Enterprise Value</div><div class="value" id="dcf-ev">${fmtBigNum(dcf.enterpriseValue)}</div></div>
                 <div class="iv-result-item"><div class="label">Equity Value</div><div class="value" id="dcf-eqVal">${fmtBigNum(dcf.equityValue)}</div></div>
                 <div class="iv-result-item"><div class="label">IV / Share</div><div class="value" id="dcf-iv">${formatMoney(dcf.ivPerShare)}</div></div>
                 <div class="iv-result-item"><div class="label">MoS IV</div><div class="value" id="dcf-mosIv">${formatMoney(dcf.marginOfSafetyIv)}</div></div>
                 <div class="iv-result-item"><div class="label">Upside</div><div class="value ${upsideColor}" id="dcf-upside">${(dcf.upside >= 0 ? '+' : '') + dcf.upside}%</div></div>
+                <div class="iv-result-item"><div class="label">Signal</div><div class="value" id="dcf-signal" style="color:${sigColor}; font-weight:700;">${dcf.signal}</div></div>
+            </div>`;
+
+            // Data sources
+            const ds = d.dataSources || {};
+            html += `<div style="margin-top:8px; font-size:0.75rem; color:var(--text-dim); display:flex; gap:12px; flex-wrap:wrap;">
+                <span>Financials: <strong style="color:var(--text);">${ds.financials || 'FMP'}</strong></span>
+                <span>Profile: <strong style="color:var(--text);">${ds.profile || 'Yahoo Finance'}</strong></span>
             </div>`;
 
             return html;
