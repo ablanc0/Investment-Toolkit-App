@@ -1476,6 +1476,19 @@ def _fmp_to_financials(fmp):
     return income, cashflow, balance
 
 
+def _upside_signal(upside):
+    """Map upside % to a valuation signal."""
+    if upside > 50:
+        return "Strong Buy"
+    elif upside > 20:
+        return "Buy"
+    elif upside > -10:
+        return "Hold"
+    elif upside > -30:
+        return "Expensive"
+    return "Overrated"
+
+
 def _trimmean(values, pct=0.2):
     """Trimmed mean — drop top/bottom pct of values."""
     if not values:
@@ -1640,6 +1653,7 @@ def compute_dcf(info, income, balance, cashflow):
             "ivPerShare": round(iv, 2),
             "marginOfSafetyIv": round(mos_iv, 2),
             "upside": round(upside, 1),
+            "signal": _upside_signal(upside),
         }
     except Exception as e:
         print(f"[DCF] Error: {e}")
@@ -1753,6 +1767,7 @@ def compute_endeuda2(info, income, balance, cashflow):
             "marginOfSafetyIv": round(mos_iv, 2),
             "ivPerShare": round(composite_iv, 2),
             "upside": round(upside, 1),
+            "signal": _upside_signal(upside),
         }
     except Exception as e:
         print(f"[Endeuda2] Error: {e}")
@@ -1792,6 +1807,7 @@ def compute_graham(info):
             "ivPerShare": round(iv, 2),
             "marginOfSafetyIv": round(mos_iv, 2),
             "upside": round(upside, 1),
+            "signal": _upside_signal(upside),
         }
     except Exception as e:
         print(f"[Graham] Error: {e}")
@@ -1872,6 +1888,7 @@ def compute_relative(info):
             "ivPerShare": round(iv, 2),
             "marginOfSafetyIv": round(mos_iv, 2),
             "upside": round(upside, 1),
+            "signal": _upside_signal(upside),
         }
     except Exception as e:
         print(f"[Relative] Error: {e}")
@@ -1920,18 +1937,6 @@ def compute_valuation_summary(dcf, graham, relative, endeuda2, info):
         price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
         upside = ((mos_iv - price) / price * 100) if price > 0 else 0
 
-        # Signal
-        if upside > 50:
-            signal = "Strong Buy"
-        elif upside > 20:
-            signal = "Buy"
-        elif upside > -10:
-            signal = "Hold"
-        elif upside > -30:
-            signal = "Expensive"
-        else:
-            signal = "Overrated"
-
         return {
             "category": category,
             "weights": weights,
@@ -1939,7 +1944,7 @@ def compute_valuation_summary(dcf, graham, relative, endeuda2, info):
             "compositeIv": round(composite, 2),
             "marginOfSafetyIv": round(mos_iv, 2),
             "upside": round(upside, 1),
-            "signal": signal,
+            "signal": _upside_signal(upside),
         }
     except Exception as e:
         print(f"[ValuationSummary] Error: {e}")
@@ -2024,9 +2029,17 @@ def api_stock_analyzer(ticker):
             "income": income,
             "balance": balance,
             "cashflow": cashflow,
+            "analystConsensus": {
+                "recommendation": info.get("recommendationKey", ""),
+                "targetMean": info.get("targetMeanPrice", 0),
+                "targetHigh": info.get("targetHighPrice", 0),
+                "targetLow": info.get("targetLowPrice", 0),
+                "numberOfAnalysts": info.get("numberOfAnalystOpinions", 0),
+                "source": "Yahoo Finance",
+            },
             "dataSources": {
-                "financials": "FMP",
-                "profile": "Yahoo Finance",
+                "financials": "FMP (income, cashflow, balance sheet, enterprise values)",
+                "profile": "Yahoo Finance (price, beta, ratios, analyst targets)",
             },
             "lastUpdated": datetime.now().isoformat(),
         }
