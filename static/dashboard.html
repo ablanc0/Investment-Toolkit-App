@@ -894,6 +894,45 @@
         }
         .iv-result-item .value.green { color: #22c55e; }
         .iv-result-item .value.red { color: #ef4444; }
+        .model-result-banner {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            background: var(--card-hover);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px 24px;
+            margin-bottom: 16px;
+        }
+        .model-result-signal {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            min-width: 120px;
+        }
+        .model-result-metrics {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+            flex: 1;
+            justify-content: space-around;
+        }
+        .model-result-metric { text-align: center; }
+        .model-result-metric .label {
+            display: block;
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .model-result-metric .value {
+            display: block;
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--text);
+            margin-top: 2px;
+        }
         .fcf-table {
             width: 100%;
             font-size: 0.82rem;
@@ -3664,15 +3703,16 @@
             document.getElementById('graham-adjMultiple').textContent = adjMultiple.toFixed(1);
             document.getElementById('graham-formula').textContent = `IV = EPS × (${basePE} + ${cg}g) × ${yieldBase} / ${yieldCurr}`;
             document.getElementById('graham-bondAdj').textContent = bondAdj.toFixed(4);
-            document.getElementById('graham-iv').textContent = formatMoney(iv);
-            document.getElementById('graham-mosIv').textContent = formatMoney(mosIv);
-            const uEl = document.getElementById('graham-upside');
-            uEl.textContent = (upside >= 0 ? '+' : '') + upside.toFixed(1) + '%';
-            uEl.className = 'value ' + (upside >= 0 ? 'green' : 'red');
+            // Update banner
+            const bIv = document.getElementById('graham-banner-iv');
+            if (bIv) bIv.textContent = formatMoney(iv);
+            const bMos = document.getElementById('graham-banner-mos');
+            if (bMos) bMos.textContent = formatMoney(mosIv);
+            const bUp = document.getElementById('graham-banner-upside');
+            if (bUp) { bUp.textContent = (upside >= 0 ? '+' : '') + upside.toFixed(1) + '%'; bUp.style.color = upside >= 0 ? '#22c55e' : '#ef4444'; }
             const sig = upside > 50 ? 'Strong Buy' : upside > 20 ? 'Buy' : upside > -10 ? 'Hold' : upside > -30 ? 'Expensive' : 'Overrated';
-            const sigColors = {'Strong Buy':'#4ade80','Buy':'#22d3ee','Hold':'#a78bfa','Expensive':'#f59e0b','Overrated':'#f87171'};
-            const sigEl = document.getElementById('graham-signal');
-            if (sigEl) { sigEl.textContent = sig; sigEl.style.color = sigColors[sig] || '#888'; }
+            const bannerSig = document.querySelector('#av-graham .model-result-signal span:last-child');
+            if (bannerSig) { const sc = signalColor(sig); bannerSig.textContent = sig; bannerSig.style.background = sc.bg; bannerSig.style.color = sc.fg; }
         }
 
         function grahamPreset(mode) {
@@ -3774,21 +3814,17 @@
             const diff = price > 0 ? ((compositeIv - price) / price * 100) : 0;
             const impliedGrowth = price > 0 ? (Math.pow(price / fcfPS / 15, 1/10) - 1) * 100 : 0;
 
-            document.getElementById('e2-compositeIv').textContent = formatMoney(compositeIv);
-            document.getElementById('e2-mosIv').textContent = formatMoney(mosIv);
-            const uEl = document.getElementById('e2-upside');
-            uEl.textContent = (upside >= 0 ? '+' : '') + upside.toFixed(1) + '%';
-            uEl.className = 'value ' + (upside >= 0 ? 'green' : 'red');
-
-            // Update header panel
-            const hIv = document.getElementById('e2-header-iv');
-            if (hIv) hIv.textContent = formatMoney(compositeIv);
-            const hDiff = document.getElementById('e2-header-diff');
-            if (hDiff) { hDiff.textContent = (diff >= 0 ? '+' : '') + diff.toFixed(1) + '%'; hDiff.style.color = diff >= 0 ? '#22c55e' : '#ef4444'; }
-            const hStatus = document.getElementById('e2-header-status');
-            if (hStatus) { hStatus.textContent = diff >= 0 ? 'Undervalued' : 'Overvalued'; hStatus.style.color = diff >= 0 ? '#22c55e' : '#ef4444'; }
-            const hMos = document.getElementById('e2-header-mos');
-            if (hMos) hMos.textContent = (price > 0 ? ((mosIv - price) / price * 100).toFixed(1) : '0') + '%';
+            // Update banner
+            const bIv = document.getElementById('e2-banner-iv');
+            if (bIv) bIv.textContent = formatMoney(compositeIv);
+            const bMos = document.getElementById('e2-banner-mos');
+            if (bMos) bMos.textContent = formatMoney(mosIv);
+            const bUp = document.getElementById('e2-banner-upside');
+            if (bUp) { bUp.textContent = (upside >= 0 ? '+' : '') + upside.toFixed(1) + '%'; bUp.style.color = upside >= 0 ? '#22c55e' : '#ef4444'; }
+            const sig = upside > 50 ? 'Strong Buy' : upside > 20 ? 'Buy' : upside > -10 ? 'Hold' : upside > -30 ? 'Expensive' : 'Overrated';
+            const bannerSig = document.querySelector('#av-endeuda2 .model-result-signal span:last-child');
+            if (bannerSig) { const sc2 = signalColor(sig); bannerSig.textContent = sig; bannerSig.style.background = sc2.bg; bannerSig.style.color = sc2.fg; }
+            // Update implied growth
             const hImpl = document.getElementById('e2-header-implied');
             if (hImpl) hImpl.textContent = impliedGrowth.toFixed(2) + '%';
 
@@ -3932,18 +3968,17 @@
             document.getElementById('dcf-wacc-display').textContent = (wacc * 100).toFixed(2) + '%';
             document.getElementById('dcf-ev').textContent = fmtBigNum(result.ev);
             document.getElementById('dcf-eqVal').textContent = fmtBigNum(result.eqVal);
-            document.getElementById('dcf-iv').textContent = formatMoney(result.iv);
-            document.getElementById('dcf-mosIv').textContent = formatMoney(result.mosIv);
-            const uEl = document.getElementById('dcf-upside');
-            uEl.textContent = (result.upside >= 0 ? '+' : '') + result.upside.toFixed(1) + '%';
-            uEl.className = 'value ' + (result.upside >= 0 ? 'green' : 'red');
-            const sigEl = document.getElementById('dcf-signal');
-            if (sigEl) {
-                const sig = result.upside > 50 ? 'Strong Buy' : result.upside > 20 ? 'Buy' : result.upside > -10 ? 'Hold' : result.upside > -30 ? 'Expensive' : 'Overrated';
-                const sigColors = {'Strong Buy':'#4ade80','Buy':'#22d3ee','Hold':'#a78bfa','Expensive':'#f59e0b','Overrated':'#f87171'};
-                sigEl.textContent = sig;
-                sigEl.style.color = sigColors[sig] || '#888';
-            }
+            // Update banner
+            const bIv = document.getElementById('dcf-banner-iv');
+            if (bIv) bIv.textContent = formatMoney(result.iv);
+            const bMos = document.getElementById('dcf-banner-mos');
+            if (bMos) bMos.textContent = formatMoney(result.mosIv);
+            const bUp = document.getElementById('dcf-banner-upside');
+            if (bUp) { bUp.textContent = (result.upside >= 0 ? '+' : '') + result.upside.toFixed(1) + '%'; bUp.style.color = result.upside >= 0 ? '#22c55e' : '#ef4444'; }
+            // Update banner signal
+            const sig = result.upside > 50 ? 'Strong Buy' : result.upside > 20 ? 'Buy' : result.upside > -10 ? 'Hold' : result.upside > -30 ? 'Expensive' : 'Overrated';
+            const bannerSig = document.querySelector('#av-dcf .model-result-signal span:last-child');
+            if (bannerSig) { const sc = signalColor(sig); bannerSig.textContent = sig; bannerSig.style.background = sc.bg; bannerSig.style.color = sc.fg; }
 
             // Update projected FCF table
             const tbody = document.getElementById('dcf-proj-tbody');
@@ -4035,6 +4070,24 @@
             }).join('') + '</div>';
         }
 
+        function _modelResultBanner(opts) {
+            const sc = signalColor(opts.signal);
+            const up = opts.upside;
+            const upColor = up >= 0 ? '#22c55e' : '#ef4444';
+            return `<div class="model-result-banner">
+                <div class="model-result-signal">
+                    <span style="font-size:0.65rem; text-transform:uppercase; color:var(--text-dim); letter-spacing:0.5px;">${opts.label}</span>
+                    <span style="background:${sc.bg}; color:${sc.fg}; font-size:1.1rem; font-weight:700; padding:8px 24px; border-radius:8px;">${opts.signal}</span>
+                </div>
+                <div class="model-result-metrics">
+                    <div class="model-result-metric"><span class="label">IV / Share</span><span class="value" id="${opts.id}-banner-iv">${formatMoney(opts.iv)}</span></div>
+                    <div class="model-result-metric"><span class="label">MoS IV</span><span class="value" id="${opts.id}-banner-mos">${formatMoney(opts.mosIv)}</span></div>
+                    <div class="model-result-metric"><span class="label">Current Price</span><span class="value">${formatMoney(opts.price)}</span></div>
+                    <div class="model-result-metric"><span class="label">Upside</span><span class="value" id="${opts.id}-banner-upside" style="color:${upColor}">${(up >= 0 ? '+' : '') + up}%</span></div>
+                </div>
+            </div>`;
+        }
+
         function renderAnalyzerOverview(d) {
             return `
                 <div class="analyzer-sections">
@@ -4109,8 +4162,14 @@
             if (!dcf) return '<p style="color: var(--text-dim); padding: 20px;">DCF model not available — insufficient financial data.</p>';
 
             const mosVal = 70;
+            // Result banner at top
+            let html = _modelResultBanner({
+                id: 'dcf', label: 'DCF Model', iv: dcf.ivPerShare, mosIv: dcf.marginOfSafetyIv,
+                price: d.price, upside: dcf.upside, signal: dcf.signal
+            });
+
             // WACC components with editable inputs
-            let html = `<div class="valuation-card">
+            html += `<div class="valuation-card">
                 <div class="valuation-card-title">WACC — Weighted Average Cost of Capital</div>
                 <div class="wacc-grid">
                     <div class="wacc-item">
@@ -4197,17 +4256,10 @@
                 </table>
             </div>`;
 
-            // Result
-            const upsideColor = dcf.upside >= 0 ? 'green' : 'red';
-            const signalColors = {'Strong Buy':'#4ade80','Buy':'#22d3ee','Hold':'#a78bfa','Expensive':'#f59e0b','Overrated':'#f87171'};
-            const sigColor = signalColors[dcf.signal] || '#888';
-            html += `<div class="iv-result-box">
-                <div class="iv-result-item"><div class="label">Enterprise Value</div><div class="value" id="dcf-ev">${fmtBigNum(dcf.enterpriseValue)}</div></div>
-                <div class="iv-result-item"><div class="label">Equity Value</div><div class="value" id="dcf-eqVal">${fmtBigNum(dcf.equityValue)}</div></div>
-                <div class="iv-result-item"><div class="label">IV / Share</div><div class="value" id="dcf-iv">${formatMoney(dcf.ivPerShare)}</div></div>
-                <div class="iv-result-item"><div class="label">MoS IV</div><div class="value" id="dcf-mosIv">${formatMoney(dcf.marginOfSafetyIv)}</div></div>
-                <div class="iv-result-item"><div class="label">Upside</div><div class="value ${upsideColor}" id="dcf-upside">${(dcf.upside >= 0 ? '+' : '') + dcf.upside}%</div></div>
-                <div class="iv-result-item"><div class="label">Signal</div><div class="value" id="dcf-signal" style="color:${sigColor}; font-weight:700;">${dcf.signal}</div></div>
+            // EV / Equity inline
+            html += `<div style="display:flex; gap:16px; margin-top:8px; font-size:0.85rem;">
+                <span style="color:var(--text-dim);">Enterprise Value: <strong id="dcf-ev" style="color:var(--text);">${fmtBigNum(dcf.enterpriseValue)}</strong></span>
+                <span style="color:var(--text-dim);">Equity Value: <strong id="dcf-eqVal" style="color:var(--text);">${fmtBigNum(dcf.equityValue)}</strong></span>
             </div>`;
 
             // Data sources
@@ -4236,12 +4288,13 @@
                 </div>`;
             }
 
-            const upsideColor = g.upside >= 0 ? 'green' : 'red';
-            const signalColors = {'Strong Buy':'#4ade80','Buy':'#22d3ee','Hold':'#a78bfa','Expensive':'#f59e0b','Overrated':'#f87171'};
-            const sigColor = signalColors[g.signal] || '#888';
             const inputStyle = 'class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;"';
             const aaaDateLabel = g.aaaYieldDate ? ` (${g.aaaYieldDate.substring(0,7)})` : ' (live)';
-            return `
+            let html = _modelResultBanner({
+                id: 'graham', label: 'Graham Formula', iv: g.ivPerShare, mosIv: g.marginOfSafetyIv,
+                price: d.price, upside: g.upside, signal: g.signal
+            });
+            html += `
                 <div class="valuation-card">
                     <div class="valuation-card-title" style="display:flex; justify-content:space-between; align-items:center;">
                         Graham Revised Formula
@@ -4281,16 +4334,10 @@
                         </div>
                     </div>
                 </div>
-                <div class="iv-result-box">
-                    <div class="iv-result-item"><div class="label">IV / Share</div><div class="value" id="graham-iv">${formatMoney(g.ivPerShare)}</div></div>
-                    <div class="iv-result-item"><div class="label">MoS IV</div><div class="value" id="graham-mosIv">${formatMoney(g.marginOfSafetyIv)}</div></div>
-                    <div class="iv-result-item"><div class="label">Current Price</div><div class="value">${formatMoney(d.price)}</div></div>
-                    <div class="iv-result-item"><div class="label">Upside</div><div class="value ${upsideColor}" id="graham-upside">${(g.upside >= 0 ? '+' : '') + g.upside}%</div></div>
-                    <div class="iv-result-item"><div class="label">Signal</div><div class="value" id="graham-signal" style="color:${sigColor}; font-weight:700;">${g.signal}</div></div>
-                </div>
                 <div style="color:var(--text-dim); font-size:0.75rem; margin-top:8px; padding:0 12px;">
                     Data: EPS &amp; earnings growth from FMP · AAA yield from FRED${aaaDateLabel}
                 </div>`;
+            return html;
         }
 
         function renderAnalyzerRelative(d) {
@@ -4343,8 +4390,12 @@
             const initEV = (hasPeers && pc.medians.evEbitda) ? pc.medians.evEbitda : defs.evEbitda;
             const initPB = (hasPeers && pc.medians.pb) ? pc.medians.pb : defs.pb;
 
-            return `
-                ${peerHtml}
+            let html = _modelResultBanner({
+                id: 'relative', label: 'Relative Valuation', iv: rel.ivPerShare, mosIv: rel.marginOfSafetyIv,
+                price: d.price, upside: rel.upside, signal: rel.signal
+            });
+            html += peerHtml;
+            html += `
                 <div class="valuation-card">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                         <div class="valuation-card-title" style="margin-bottom:0;">Implied Fair Value — ${rel.sector || 'Market Average'}</div>
@@ -4373,16 +4424,13 @@
                             </tr>
                         </tbody>
                     </table>
-                </div>
-                <div class="valuation-card">
-                    <div class="wacc-grid">
-                        <div class="wacc-item"><span class="wlabel">Margin of Safety %</span>
-                            <input id="rel-mos" type="number" step="5" value="30" class="form-input" style="width:64px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcRelative()">
-                        </div>
+                    <div style="margin-top:8px; display:flex; align-items:center; gap:8px; font-size:0.85rem;">
+                        <span style="color:var(--text-dim);">Margin of Safety %</span>
+                        <input id="rel-mos" type="number" step="5" value="30" class="form-input" style="width:64px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcRelative()">
                     </div>
                 </div>
-                <div id="rel-result-box"></div>
                 <div style="font-size:0.72rem; color:var(--text-dim); margin-top:8px; padding:0 4px;">Data: EPS, book value & EBITDA from FMP · Peer multiples from Finviz</div>`;
+            return html;
         }
 
         function relUpdatePeerAvg() {
@@ -4468,22 +4516,16 @@
             const upside = price > 0 ? ((mosIv - price) / price * 100) : 0;
             const upsideColor = upside >= 0 ? 'green' : 'red';
 
-            document.getElementById('rel-result-box').innerHTML = ivResultBox([
-                {label: 'Relative IV', value: formatMoney(iv)},
-                {label: `MoS IV (${mosPct}%)`, value: formatMoney(mosIv)},
-                {label: 'Current Price', value: formatMoney(price)},
-                {label: 'Upside', value: (upside >= 0 ? '+' : '') + upside.toFixed(1) + '%', colorClass: upsideColor},
-            ]);
-
-            // Update signal in header
-            const signalEl = document.getElementById('signal-relative');
-            if (signalEl) {
-                const signal = upside > 50 ? 'Strong Buy' : upside > 20 ? 'Buy' : upside > -10 ? 'Hold' : upside > -30 ? 'Expensive' : 'Overrated';
-                const signalColors = {'Strong Buy':'#4ade80','Buy':'#22d3ee','Hold':'#a78bfa','Expensive':'#f59e0b','Overrated':'#f87171'};
-                signalEl.textContent = signal;
-                signalEl.style.background = (signalColors[signal] || '#64748b') + '22';
-                signalEl.style.color = signalColors[signal] || '#64748b';
-            }
+            // Update banner
+            const bIv = document.getElementById('relative-banner-iv');
+            if (bIv) bIv.textContent = formatMoney(iv);
+            const bMos = document.getElementById('relative-banner-mos');
+            if (bMos) bMos.textContent = formatMoney(mosIv);
+            const bUp = document.getElementById('relative-banner-upside');
+            if (bUp) { bUp.textContent = (upside >= 0 ? '+' : '') + upside.toFixed(1) + '%'; bUp.style.color = upside >= 0 ? '#22c55e' : '#ef4444'; }
+            const sig = upside > 50 ? 'Strong Buy' : upside > 20 ? 'Buy' : upside > -10 ? 'Hold' : upside > -30 ? 'Expensive' : 'Overrated';
+            const bannerSig = document.querySelector('#av-relative .model-result-signal span:last-child');
+            if (bannerSig) { const sc = signalColor(sig); bannerSig.textContent = sig; bannerSig.style.background = sc.bg; bannerSig.style.color = sc.fg; }
         }
 
         function _e2ValueBar(iv, price) {
@@ -4552,47 +4594,30 @@
             // Implied growth: what growth rate would justify current price
             const impliedGrowth = price > 0 ? (Math.pow(price / e2.fcfPerShare / 15, 1/10) - 1) * 100 : 0;
 
-            // Card 1: Global Inputs + Results panel (side by side like endeuda2.com)
-            let html = `<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
-                <div class="valuation-card" style="margin-bottom:0;">
-                    <div class="valuation-card-title">DCF Scenarios — Multi-Scenario Intrinsic Value</div>
-                    <div class="wacc-grid">
-                        <div class="wacc-item">
-                            <span class="wlabel">FCF / Share</span>
-                            <input id="e2-fcfps" type="number" step="0.01" value="${e2.fcfPerShare}" class="form-input" style="width:90px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
-                        </div>
-                        <div class="wacc-item">
-                            <span class="wlabel">Discount Rate %</span>
-                            <input id="e2-discount" type="number" step="0.25" value="${e2.discountRate}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
-                        </div>
-                        <div class="wacc-item"><span class="wlabel">WACC (computed)</span><span class="wvalue">${e2.wacc}%</span></div>
-                        <div class="wacc-item">
-                            <span class="wlabel">Margin of Safety %</span>
-                            <input id="e2-mos" type="number" step="5" value="${mosVal}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
-                        </div>
+            // Result banner at top
+            let html = _modelResultBanner({
+                id: 'e2', label: 'DCF Scenarios', iv: compositeIv, mosIv: mosIv,
+                price: price, upside: e2.upside, signal: e2.signal
+            });
+
+            // Global inputs card
+            html += `<div class="valuation-card">
+                <div class="valuation-card-title">DCF Scenarios — Multi-Scenario Intrinsic Value</div>
+                <div class="wacc-grid">
+                    <div class="wacc-item">
+                        <span class="wlabel">FCF / Share</span>
+                        <input id="e2-fcfps" type="number" step="0.01" value="${e2.fcfPerShare}" class="form-input" style="width:90px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
                     </div>
-                </div>
-                <div class="valuation-card" style="margin-bottom:0; background:var(--bg);">
-                    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;">
-                        <span style="color:var(--text-dim); font-size:0.85rem;">Intrinsic Value</span>
-                        <span style="font-size:1.5rem; font-weight:700; color:var(--text);" id="e2-header-iv">${formatMoney(compositeIv)}</span>
+                    <div class="wacc-item">
+                        <span class="wlabel">Discount Rate %</span>
+                        <input id="e2-discount" type="number" step="0.25" value="${e2.discountRate}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
                     </div>
-                    <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                        <span style="color:var(--text-dim); font-size:0.85rem;">Difference</span>
-                        <span style="font-size:1.1rem; font-weight:600; color:${diff >= 0 ? '#22c55e' : '#ef4444'};" id="e2-header-diff">${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%</span>
+                    <div class="wacc-item"><span class="wlabel">WACC (computed)</span><span class="wvalue">${e2.wacc}%</span></div>
+                    <div class="wacc-item">
+                        <span class="wlabel">Margin of Safety %</span>
+                        <input id="e2-mos" type="number" step="5" value="${mosVal}" class="form-input" style="width:72px; text-align:right; padding:2px 6px; font-size:0.85rem;" onchange="recalcEndeuda2()">
                     </div>
-                    <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                        <span style="color:var(--text-dim); font-size:0.85rem;">Status</span>
-                        <span style="font-weight:700; color:${diff >= 0 ? '#22c55e' : '#ef4444'};" id="e2-header-status">${diff >= 0 ? 'Undervalued' : 'Overvalued'}</span>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                        <span style="color:var(--text-dim); font-size:0.85rem;">Margin of Safety</span>
-                        <span style="font-weight:600; color:var(--text);" id="e2-header-mos">${mos_pct}%</span>
-                    </div>
-                    <div style="display:flex; justify-content:space-between;">
-                        <span style="color:var(--text-dim); font-size:0.85rem;">Implied Growth <span style="font-size:0.72rem;">(${formatMoney(price)})</span></span>
-                        <span style="font-weight:600; color:var(--text);" id="e2-header-implied">${impliedGrowth.toFixed(2)}%</span>
-                    </div>
+                    <div class="wacc-item"><span class="wlabel">Implied Growth</span><span class="wvalue" id="e2-header-implied">${impliedGrowth.toFixed(2)}%</span></div>
                 </div>
             </div>`;
 
@@ -4661,13 +4686,14 @@
             const baseData = e2.scenarios.base;
             html += `<div class="valuation-card" id="e2-sensitivity">${_e2SensitivityMatrix(e2.fcfPerShare, baseData.growth1_5, baseData.growth6_10, e2.discountRate, baseData.terminalFactor)}</div>`;
 
-            // Card 5: Composite result
-            const upsideColor = e2.upside >= 0 ? 'green' : 'red';
-            html += `<div class="iv-result-box">
-                <div class="iv-result-item"><div class="label">Composite IV</div><div class="value" id="e2-compositeIv">${formatMoney(e2.compositeIv)}</div></div>
-                <div class="iv-result-item"><div class="label">MoS IV</div><div class="value" id="e2-mosIv">${formatMoney(e2.marginOfSafetyIv)}</div></div>
-                <div class="iv-result-item"><div class="label">Current Price</div><div class="value">${formatMoney(d.price)}</div></div>
-                <div class="iv-result-item"><div class="label">Upside</div><div class="value ${upsideColor}" id="e2-upside">${(e2.upside >= 0 ? '+' : '') + e2.upside}%</div></div>
+            // (Composite result is in the top banner)
+
+            // Data sources
+            const ds = d.dataSources || {};
+            html += `<div style="margin-top:8px; font-size:0.75rem; color:var(--text-dim); display:flex; gap:12px; flex-wrap:wrap;">
+                <span>Financials: <strong style="color:var(--text);">${ds.financials || 'FMP'}</strong></span>
+                <span>Profile: <strong style="color:var(--text);">${ds.profile || 'Yahoo Finance'}</strong></span>
+                <span>WACC: <strong style="color:var(--text);">${ds.ratios || 'Computed'}</strong></span>
             </div>`;
 
             return html;
