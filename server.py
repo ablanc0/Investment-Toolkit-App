@@ -2028,8 +2028,8 @@ def compute_dcf(info, income, balance, cashflow):
         return None
 
 
-def _run_endeuda2_scenario(fcf_ps, growth1, growth2, terminal_factor, discount_rate):
-    """Run one Endeuda2 scenario: two-phase growth (yr 1-5 + 6-10) + terminal multiple."""
+def _run_dcf_scenario(fcf_ps, growth1, growth2, terminal_factor, discount_rate):
+    """Run one DCF scenario: two-phase growth (yr 1-5 + 6-10) + terminal multiple."""
     year_by_year = []
     current_fcf = fcf_ps
     pv_sum = 0
@@ -2053,8 +2053,8 @@ def _run_endeuda2_scenario(fcf_ps, growth1, growth2, terminal_factor, discount_r
     }
 
 
-def compute_endeuda2(info, income, balance, cashflow):
-    """Endeuda2 scenario-based two-phase growth valuation using FCF per share.
+def compute_dcf_scenarios(info, income, balance, cashflow):
+    """DCF scenario-based two-phase growth valuation using FCF per share.
 
     Three weighted scenarios (Base 50%, Best 25%, Worst 25%),
     each with two-phase growth (years 1-5, years 6-10) and terminal multiple.
@@ -2109,7 +2109,7 @@ def compute_endeuda2(info, income, balance, cashflow):
         scenarios = {}
         composite_iv = 0
         for name, sd in scenario_defs.items():
-            result = _run_endeuda2_scenario(
+            result = _run_dcf_scenario(
                 fcf_ps, sd["growth1"], sd["growth2"],
                 sd["terminalFactor"], discount_rate
             )
@@ -2138,7 +2138,7 @@ def compute_endeuda2(info, income, balance, cashflow):
             "signal": _upside_signal(upside),
         }
     except Exception as e:
-        print(f"[Endeuda2] Error: {e}")
+        print(f"[DCF Scenarios] Error: {e}")
         return None
 
 
@@ -2275,7 +2275,7 @@ def compute_relative(info):
         return None
 
 
-def compute_valuation_summary(dcf, graham, relative, endeuda2, info):
+def compute_valuation_summary(dcf, graham, relative, dcf_scenarios, info):
     """Composite weighted IV based on stock category (Growth/Value/Blend)."""
     try:
         pe = info.get("trailingPE") or 0
@@ -2285,13 +2285,13 @@ def compute_valuation_summary(dcf, graham, relative, endeuda2, info):
         # Categorize
         if pe > 25 and rev_growth > 15:
             category = "Growth"
-            weights = {"dcf": 0.35, "graham": 0.15, "relative": 0.10, "endeuda2": 0.40}
+            weights = {"dcf": 0.35, "graham": 0.15, "relative": 0.10, "dcfScenarios": 0.40}
         elif pe > 0 and pe < 18 and div_yield > 0.01:
             category = "Value"
-            weights = {"dcf": 0.15, "graham": 0.25, "relative": 0.30, "endeuda2": 0.30}
+            weights = {"dcf": 0.15, "graham": 0.25, "relative": 0.30, "dcfScenarios": 0.30}
         else:
             category = "Blend"
-            weights = {"dcf": 0.25, "graham": 0.20, "relative": 0.20, "endeuda2": 0.35}
+            weights = {"dcf": 0.25, "graham": 0.20, "relative": 0.20, "dcfScenarios": 0.35}
 
         # Collect valid IVs
         models = {}
@@ -2301,8 +2301,8 @@ def compute_valuation_summary(dcf, graham, relative, endeuda2, info):
             models["graham"] = graham["ivPerShare"]
         if relative and relative.get("ivPerShare", 0) > 0:
             models["relative"] = relative["ivPerShare"]
-        if endeuda2 and endeuda2.get("ivPerShare", 0) > 0:
-            models["endeuda2"] = endeuda2["ivPerShare"]
+        if dcf_scenarios and dcf_scenarios.get("ivPerShare", 0) > 0:
+            models["dcfScenarios"] = dcf_scenarios["ivPerShare"]
 
         if not models:
             return None
@@ -2521,8 +2521,8 @@ def api_stock_analyzer(ticker):
         dcf = compute_dcf(info, income, balance, cashflow)
         graham = compute_graham(info, aaa_yield_live=aaa_yield_live, aaa_date=aaa_date)
         relative = compute_relative(info)
-        endeuda2 = compute_endeuda2(info, income, balance, cashflow)
-        summary = compute_valuation_summary(dcf, graham, relative, endeuda2, info)
+        dcf_scenarios = compute_dcf_scenarios(info, income, balance, cashflow)
+        summary = compute_valuation_summary(dcf, graham, relative, dcf_scenarios, info)
 
         # Wait for peers (max 10s)
         peer_thread.join(timeout=10)
@@ -2533,7 +2533,7 @@ def api_stock_analyzer(ticker):
             "dcf": dcf,
             "graham": graham,
             "relative": relative,
-            "endeuda2": endeuda2,
+            "dcfScenarios": dcf_scenarios,
             "summary": summary,
         }
 
