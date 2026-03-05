@@ -1316,7 +1316,10 @@ def api_super_investors_list():
     """List all available super investors."""
     return jsonify([
         {"key": k, "fund": v["fund"], "cik": v["cik"],
-         "cached": k in _13f_cache}
+         "cached": k in _13f_cache,
+         "fetchedAt": _13f_cache.get(k, {}).get("fetchedAt", ""),
+         "quarter": _13f_cache.get(k, {}).get("quarter", ""),
+         "holdingsCount": _13f_cache.get(k, {}).get("holdingsCount", 0)}
         for k, v in SUPER_INVESTORS.items()
     ])
 
@@ -1401,6 +1404,41 @@ def api_super_investor_overlap():
             })
     overlap.sort(key=lambda x: x["heldByCount"], reverse=True)
     return jsonify(overlap)
+
+
+@app.route("/api/super-investors/most-popular")
+def api_super_investor_most_popular():
+    """Top 50 most held stocks across all cached investors, ranked by investor count then value."""
+    ticker_data = {}  # ticker -> {name, investors: set, totalValue, totalShares}
+    for inv_key, data in _13f_cache.items():
+        if "holdings" not in data:
+            continue
+        for h in data["holdings"]:
+            tk = h.get("ticker", h.get("cusip", ""))
+            if not tk or tk == h.get("cusip", ""):
+                continue  # skip unresolved CUSIPs
+            if tk not in ticker_data:
+                ticker_data[tk] = {"name": h.get("name", ""), "investors": set(),
+                                   "totalValue": 0, "totalShares": 0}
+            ticker_data[tk]["investors"].add(inv_key)
+            ticker_data[tk]["totalValue"] += h["value"]
+            ticker_data[tk]["totalShares"] += h["shares"]
+    # Convert to list, sort by investor count desc, then value desc
+    popular = []
+    for tk, d in ticker_data.items():
+        popular.append({
+            "ticker": tk, "name": d["name"],
+            "investorCount": len(d["investors"]),
+            "investors": sorted(d["investors"]),
+            "totalValue": d["totalValue"],
+            "totalShares": d["totalShares"],
+        })
+    popular.sort(key=lambda x: (x["investorCount"], x["totalValue"]), reverse=True)
+    return jsonify({
+        "popular": popular[:50],
+        "cachedInvestors": len(_13f_cache),
+        "totalInvestors": len(SUPER_INVESTORS),
+    })
 
 
 # ── Projections & Risk Scenarios ────────────────────────────────────────
@@ -1783,8 +1821,28 @@ SUPER_INVESTORS = {
     "Li Lu":              {"cik": "0001709323", "fund": "Himalaya Capital"},
 }
 
+_13F_CACHE_FILE = DATA_DIR / "13f_cache.json"
 _13f_cache = {}  # investor_key -> {investor, fund, filingDate, quarter, holdings, totalValue}
 _13f_progress = {"done": 0, "total": 0, "current": "", "results": {}, "running": False}
+
+
+def _load_13f_cache():
+    """Load persisted 13F data from disk on startup."""
+    global _13f_cache
+    if _13F_CACHE_FILE.exists():
+        try:
+            _13f_cache = json.loads(_13F_CACHE_FILE.read_text())
+            print(f"[13F] Loaded {len(_13f_cache)} investors from disk cache")
+        except Exception:
+            _13f_cache = {}
+
+
+def _save_13f_cache():
+    """Persist 13F data to disk."""
+    try:
+        _13F_CACHE_FILE.write_text(json.dumps(_13f_cache, default=str))
+    except Exception as e:
+        print(f"[13F] Failed to save cache: {e}")
 
 
 def _fetch_13f_latest(cik):
@@ -1943,8 +2001,10 @@ def _fetch_investor_13f(investor_key):
         "holdings": holdings,
         "totalValue": total_value,
         "holdingsCount": len(holdings),
+        "fetchedAt": datetime.now().isoformat(),
     }
     _13f_cache[investor_key] = result
+    _save_13f_cache()
     return result
 
 
@@ -3776,6 +3836,7 @@ def api_status():
 # ── Main ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     load_disk_cache()
+    _load_13f_cache()
     print("\n" + "=" * 55)
     print("  InvToolkit — Investment Dashboard")
     print("=" * 55)
