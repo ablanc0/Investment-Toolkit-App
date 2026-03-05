@@ -3539,6 +3539,35 @@ def api_invt_score(ticker):
                 cat_entry["note"] = "Non-dividend payer"
             categories[cat_key] = cat_entry
 
+        # Yearly data for per-metric charts (compact: only fields needed for charting)
+        yearly_data = []
+        for d in yearly:
+            s = d.get("sharesOutstanding", 0) or 1
+            nd = d.get("totalDebt", 0) - d.get("cash", 0)
+            r = d.get("revenue", 0) or 1
+            tax_rate = d.get("taxProvision", 0) / d["pretaxIncome"] if d.get("pretaxIncome") and d["pretaxIncome"] > 0 else 0.21
+            invested = d.get("totalDebt", 0) + d.get("equity", 0) - d.get("cash", 0)
+            nopat = d.get("ebit", 0) * (1 - tax_rate)
+            yearly_data.append({
+                "year": d["year"],
+                "revenue": d.get("revenue", 0),
+                "eps": d.get("eps", 0),
+                "fcfPerShare": round(d.get("fcf", 0) / s, 2) if s else 0,
+                "gpm": round(d.get("grossProfit", 0) / r * 100, 2) if d.get("grossProfit") else None,
+                "npm": round(d.get("netIncome", 0) / r * 100, 2) if d.get("netIncome") else None,
+                "fcfMargin": round(d.get("fcf", 0) / r * 100, 2) if d.get("fcf") else None,
+                "netDebt": nd,
+                "netDebtFcf": round(nd / d["fcf"], 2) if d.get("fcf") and d["fcf"] > 0 else None,
+                "interestCov": round(d["ebit"] / d["interestExpense"], 2) if d.get("ebit") and d.get("interestExpense") and d["interestExpense"] > 0 else None,
+                "dps": round(d.get("dividendsPaid", 0) / s, 2) if s else 0,
+                "payoutRatio": round(d["dividendsPaid"] / d["netIncome"] * 100, 2) if d.get("dividendsPaid") and d.get("netIncome") and d["netIncome"] > 0 else None,
+                "fcfPayout": round(d["dividendsPaid"] / d["fcf"] * 100, 2) if d.get("dividendsPaid") and d.get("fcf") and d["fcf"] > 0 else None,
+                "sharesOut": d.get("sharesOutstanding", 0),
+                "roa": round(d["netIncome"] / d["totalAssets"] * 100, 2) if d.get("netIncome") and d.get("totalAssets") and d["totalAssets"] > 0 else None,
+                "roe": round(d["netIncome"] / d["equity"] * 100, 2) if d.get("netIncome") and d.get("equity") and d["equity"] > 0 else None,
+                "roic": round(nopat / invested * 100, 2) if invested > 0 else None,
+            })
+
         result = {
             "ticker": ticker,
             "score": overall,
@@ -3547,6 +3576,7 @@ def api_invt_score(ticker):
             "score1yr": overall_1yr,
             "categories": categories,
             "years": [d["year"] for d in yearly],
+            "yearlyData": yearly_data,
             "dataSource": data_source,
             "lastUpdated": datetime.now().isoformat(),
         }

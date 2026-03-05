@@ -4255,6 +4255,7 @@
                 _invtScoreLoaded = true;
                 container.innerHTML = renderInvtScore(data);
                 renderInvtRadarChart(data);
+                renderInvtMetricCharts(data);
             } catch (e) {
                 container.innerHTML = '<p style="color:var(--red); padding:20px;">Failed to load InvT Score. Check console.</p>';
                 console.error('InvT Score error:', e);
@@ -4364,10 +4365,96 @@
                         <td><span style="display:inline-block; padding:3px 10px; border-radius:10px; font-size:0.8rem; font-weight:700; background:${col}20; color:${col};">${avg}</span></td>
                     </tr>`;
                 });
-                html += '</tbody></table></div>';
+                html += `</tbody></table>
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-top:14px;">
+                        ${cat.metrics.map(m => `<div style="text-align:center;">
+                            <div style="font-size:0.7rem; color:var(--text-dim); margin-bottom:4px;">${m.name}</div>
+                            <canvas id="invt-mc-${m.key}" height="120"></canvas>
+                        </div>`).join('')}
+                    </div>
+                </div>`;
             });
             html += '</div>';
             return html;
+        }
+
+        // Mapping from metric key → yearlyData field for per-metric charts
+        const INVT_METRIC_YEARLY_KEY = {
+            revenue_cagr: 'revenue', eps_cagr: 'eps', fcf_share_cagr: 'fcfPerShare',
+            gpm: 'gpm', npm: 'npm', fcf_margin: 'fcfMargin',
+            net_debt_cagr: 'netDebt', net_debt_fcf: 'netDebtFcf', interest_cov: 'interestCov',
+            div_yield: null, dps_cagr: 'dps', payout_ratio: 'payoutRatio',
+            fcf_payout: 'fcfPayout', shares_cagr: 'sharesOut',
+            roa: 'roa', roe: 'roe', roic: 'roic',
+        };
+        const INVT_CAT_COLORS = {
+            growth: '#4ade80', profitability: '#3b82f6', debt: '#f59e0b',
+            dividends: '#a78bfa', efficiency: '#f97316',
+        };
+
+        function renderInvtMetricCharts(data) {
+            if (!data.yearlyData || !data.yearlyData.length) return;
+            const yd = data.yearlyData;
+            const years = yd.map(d => d.year);
+
+            // Format helpers for large numbers
+            const fmtVal = (v, key) => {
+                if (v == null) return '';
+                if (key === 'revenue' || key === 'netDebt' || key === 'sharesOut') {
+                    const abs = Math.abs(v);
+                    if (abs >= 1e12) return (v / 1e12).toFixed(1) + 'T';
+                    if (abs >= 1e9) return (v / 1e9).toFixed(1) + 'B';
+                    if (abs >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+                }
+                return typeof v === 'number' ? v.toFixed(1) : v;
+            };
+
+            for (const catKey of INVT_CAT_ORDER) {
+                const cat = data.categories[catKey];
+                if (!cat || cat.note) continue;
+                const color = INVT_CAT_COLORS[catKey] || '#6366f1';
+
+                for (const m of cat.metrics) {
+                    const yKey = INVT_METRIC_YEARLY_KEY[m.key];
+                    if (!yKey) continue;
+                    const canvas = document.getElementById('invt-mc-' + m.key);
+                    if (!canvas) continue;
+                    const vals = yd.map(d => d[yKey]);
+                    new Chart(canvas.getContext('2d'), {
+                        type: 'bar',
+                        data: {
+                            labels: years,
+                            datasets: [{
+                                data: vals,
+                                backgroundColor: color + '80',
+                                borderColor: color,
+                                borderWidth: 1,
+                                borderRadius: 3,
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    callbacks: { label: ctx => fmtVal(ctx.raw, yKey) + (m.unit === '%' ? '%' : m.unit === 'x' ? 'x' : '') }
+                                }
+                            },
+                            scales: {
+                                x: { ticks: { color: 'rgba(255,255,255,0.4)', font: { size: 10 } }, grid: { display: false } },
+                                y: {
+                                    ticks: {
+                                        color: 'rgba(255,255,255,0.3)', font: { size: 9 },
+                                        callback: v => fmtVal(v, yKey) + (m.unit === '%' ? '%' : m.unit === 'x' ? 'x' : '')
+                                    },
+                                    grid: { color: 'rgba(255,255,255,0.05)' }
+                                }
+                            }
+                        }
+                    });
+                }
+            }
         }
 
         function renderInvtRadarChart(data) {
