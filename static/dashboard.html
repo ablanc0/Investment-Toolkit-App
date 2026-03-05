@@ -1613,7 +1613,7 @@
                     <thead><tr>
                         <th>Ticker</th><th>Company</th><th style="text-align:right;">Price</th><th style="text-align:right;">Intrinsic V.</th>
                         <th style="text-align:right;">Distance</th><th style="text-align:right;">Score</th>
-                        <th>Sector</th><th>Category</th>
+                        <th>Sector</th><th>Val. Style</th>
                         <th style="text-align:right;">Div Yield</th><th style="text-align:right;">P/E</th>
                         <th>Signal</th><th>Updated</th>
                     </tr></thead><tbody id="ivBody"></tbody>
@@ -3944,7 +3944,7 @@
 
             const body = {
                 ticker: d.ticker || d.symbol || '',
-                companyName: d.shortName || d.companyName || '',
+                companyName: d.name || d.shortName || d.companyName || '',
                 currentPrice: d.price || 0,
                 intrinsicValue: compositeIv,
                 targetPrice: d.targetMeanPrice || 0,
@@ -3953,7 +3953,7 @@
                 sector: d.sector || '',
                 category: cat,
                 peRatio: d.trailingPE || 0,
-                eps: d.trailingEps || 0,
+                eps: d.earningsPerShare || d.trailingEps || 0,
                 annualDividend: d.dividendRate || 0,
                 dividendYield: d.dividendYield || 0,
                 signal: signal,
@@ -4858,23 +4858,34 @@
 
             const price = d.price || 0;
 
-            // 1. Result banner at top + save button
-            let html = _modelResultBanner({
-                id: 'summary', label: 'INVT Valuation', iv: s.compositeIv, mosIv: s.marginOfSafetyIv,
-                price: price, upside: s.upside, signal: s.signal
-            });
-            html += `<div style="text-align:right; margin:-8px 0 4px 0;">
-                <button onclick="saveCompositeIvToList()" class="btn btn-primary" style="font-size:0.78rem; padding:4px 16px;">Save to IV List</button>
+            // 1. Result banner at top with save button integrated
+            const _sc = signalColor(s.signal);
+            const _up = s.upside;
+            const _upColor = _up >= 0 ? '#22c55e' : '#ef4444';
+            let html = `<div class="model-result-banner">
+                <div class="model-result-signal">
+                    <span style="font-size:0.65rem; text-transform:uppercase; color:var(--text-dim); letter-spacing:0.5px;">INVT Valuation</span>
+                    <span style="background:${_sc.bg}; color:${_sc.fg}; font-size:1.1rem; font-weight:700; padding:8px 24px; border-radius:8px;">${s.signal}</span>
+                </div>
+                <div class="model-result-metrics">
+                    <div class="model-result-metric"><span class="label">IV / Share</span><span class="value" id="summary-banner-iv">${formatMoney(s.compositeIv)}</span></div>
+                    <div class="model-result-metric"><span class="label">MoS IV</span><span class="value" id="summary-banner-mos">${formatMoney(s.marginOfSafetyIv)}</span></div>
+                    <div class="model-result-metric"><span class="label">Current Price</span><span class="value">${formatMoney(price)}</span></div>
+                    <div class="model-result-metric"><span class="label">Upside</span><span class="value" id="summary-banner-upside" style="color:${_upColor}">${(_up >= 0 ? '+' : '') + _up}%</span></div>
+                </div>
+                <div style="display:flex; align-items:center;">
+                    <button onclick="saveCompositeIvToList()" style="background:var(--accent); color:#fff; border:none; padding:6px 14px; border-radius:6px; font-size:0.75rem; font-weight:600; cursor:pointer; white-space:nowrap;">Save to IV List</button>
+                </div>
             </div>`;
 
-            // 2. Category + weight explanation (editable dropdown)
+            // 2. Valuation style + weight explanation (editable dropdown)
             const catExplain = {
                 'Growth': 'Growth stocks weight DCF Scenarios (50%) and DCF (30%) heavily — forward-looking cash flow projections best capture growth potential.',
                 'Value': 'Value stocks weight Graham (30%) and Relative (25%) heavily — earnings-based and peer comparison models are most reliable for stable earners.',
                 'Blend': 'Blend stocks use balanced weights across all models, with DCF Scenarios slightly favored (35%).',
             };
             html += `<div class="valuation-card" style="text-align:center; padding:12px 24px;">
-                <span style="font-size:0.8rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px;">Stock Category: </span>
+                <span style="font-size:0.8rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px;">Valuation Style: </span>
                 <select id="summary-category" class="form-input" style="width:auto; padding:2px 8px; font-size:0.9rem; font-weight:700; text-align:center;" onchange="recalcSummaryCategory()">
                     <option value="Growth"${s.category === 'Growth' ? ' selected' : ''}>Growth</option>
                     <option value="Value"${s.category === 'Value' ? ' selected' : ''}>Value</option>
