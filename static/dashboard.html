@@ -6884,7 +6884,7 @@
                 }
                 // Switch table headers to Most Popular mode
                 if (thead) thead.innerHTML = '<tr><th style="width:40px;">#</th><th>Ticker</th><th>Company</th><th style="text-align:right;">Held By</th><th>Investors</th><th style="text-align:right;">Combined Value</th></tr>';
-                if (tableMeta) { tableMeta.style.display = 'block'; tableMeta.textContent = `Ranked by number of super investors holding each stock (${data.cachedInvestors}/${data.totalInvestors} investors loaded)`; }
+                if (tableMeta) { tableMeta.style.display = 'block'; tableMeta.textContent = `Ranked by number of super investors holding each stock — ${data.quarter || 'latest'} (${data.cachedInvestors}/${data.totalInvestors} investors)`; }
                 tbody.innerHTML = data.popular.map((s, i) => {
                     const valStr = s.totalValue >= 1e9 ? '$' + (s.totalValue/1e9).toFixed(1) + 'B' : '$' + (s.totalValue/1e6).toFixed(0) + 'M';
                     const countColor = s.investorCount >= 4 ? '#4ade80' : s.investorCount >= 3 ? '#22d3ee' : 'var(--text)';

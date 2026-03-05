@@ -1336,22 +1336,25 @@ def api_super_investor_buys_delete():
 @app.route("/api/super-investors")
 def api_super_investors_list():
     """List all available super investors."""
-    return jsonify([
-        {"key": k, "fund": v["fund"], "cik": v["cik"],
-         "note": v.get("note", ""),
-         "cached": k in _13f_cache,
-         "fetchedAt": _13f_cache.get(k, {}).get("fetchedAt", ""),
-         "quarter": _13f_cache.get(k, {}).get("quarter", ""),
-         "holdingsCount": _13f_cache.get(k, {}).get("holdingsCount", 0)}
-        for k, v in SUPER_INVESTORS.items()
-    ])
+    result = []
+    for k, v in SUPER_INVESTORS.items():
+        latest = _get_latest_quarter(k)
+        result.append({
+            "key": k, "fund": v["fund"], "cik": v["cik"],
+            "note": v.get("note", ""),
+            "cached": latest is not None,
+            "quarter": latest["quarter"] if latest else "",
+            "holdingsCount": latest["holdingsCount"] if latest else 0,
+        })
+    return jsonify(result)
 
 
 @app.route("/api/super-investors/13f/<investor_key>")
 def api_super_investor_13f(investor_key):
-    """Fetch 13F holdings for one investor (uses cache if available)."""
-    if investor_key in _13f_cache:
-        return jsonify(_13f_cache[investor_key])
+    """Fetch 13F holdings for one investor (reads from history, fetches if missing)."""
+    latest = _get_latest_quarter(investor_key)
+    if latest:
+        return jsonify(latest)
     try:
         result = _fetch_investor_13f(investor_key)
         if result is None:
@@ -1406,7 +1409,7 @@ def api_super_investor_overlap():
     investors = b.get("investors", [])
     ticker_investors = {}  # ticker -> [{investor, value, shares}]
     for inv_key in investors:
-        data = _13f_cache.get(inv_key)
+        data = _get_latest_quarter(inv_key)
         if not data or "holdings" not in data:
             continue
         for h in data["holdings"]:
@@ -1436,12 +1439,19 @@ def api_super_investor_overlap():
 
 @app.route("/api/super-investors/most-popular")
 def api_super_investor_most_popular():
-    """Top 50 most held stocks across all cached investors, ranked by investor count then value."""
+    """Top 50 most held stocks across investors with the latest quarter, ranked by investor count."""
+    current_q = _get_current_quarter_label()
     ticker_data = {}  # ticker -> {name, investors: set, totalValue, totalShares}
-    for inv_key, data in _13f_cache.items():
-        if "holdings" not in data:
+    matched_investors = 0
+    for inv_key in SUPER_INVESTORS:
+        hist = _13f_history.get(inv_key)
+        if not hist or not hist.get("quarters"):
             continue
-        for h in data["holdings"]:
+        latest = hist["quarters"][0]
+        if current_q and latest.get("quarter") != current_q:
+            continue  # skip investors whose latest quarter doesn't match
+        matched_investors += 1
+        for h in latest.get("holdings", []):
             tk = h.get("ticker", h.get("cusip", ""))
             if not tk or tk == h.get("cusip", ""):
                 continue  # skip unresolved CUSIPs
@@ -1464,8 +1474,9 @@ def api_super_investor_most_popular():
     popular.sort(key=lambda x: (x["investorCount"], x["totalValue"]), reverse=True)
     return jsonify({
         "popular": popular[:50],
-        "cachedInvestors": len(_13f_cache),
+        "cachedInvestors": matched_investors,
         "totalInvestors": len(SUPER_INVESTORS),
+        "quarter": current_q or "",
     })
 
 
@@ -1989,22 +2000,9 @@ SUPER_INVESTORS = {
     "Dan Loeb":             {"cik": "0001040273", "fund": "Third Point",                "note": "Activist/event-driven investor"},
 }
 
-_13F_CACHE_FILE = DATA_DIR / "13f_cache.json"
 _13F_HISTORY_FILE = DATA_DIR / "13f_history.json"
-_13f_cache = {}  # investor_key -> {investor, fund, filingDate, quarter, holdings, totalValue}
 _13f_history = {}  # investor_key -> {fund, cik, quarters: [{quarter, filingDate, totalValue, ...}]}
 _13f_progress = {"done": 0, "total": 0, "current": "", "results": {}, "running": False}
-
-
-def _load_13f_cache():
-    """Load persisted 13F data from disk on startup."""
-    global _13f_cache
-    if _13F_CACHE_FILE.exists():
-        try:
-            _13f_cache = json.loads(_13F_CACHE_FILE.read_text())
-            print(f"[13F] Loaded {len(_13f_cache)} investors from disk cache")
-        except Exception:
-            _13f_cache = {}
 
 
 def _load_13f_history():
@@ -2019,12 +2017,32 @@ def _load_13f_history():
             _13f_history = {}
 
 
-def _save_13f_cache():
-    """Persist 13F data to disk."""
-    try:
-        _13F_CACHE_FILE.write_text(json.dumps(_13f_cache, default=str))
-    except Exception as e:
-        print(f"[13F] Failed to save cache: {e}")
+def _get_latest_quarter(investor_key):
+    """Return the latest quarter data for an investor from history, or None."""
+    hist = _13f_history.get(investor_key)
+    if not hist or not hist.get("quarters"):
+        return None
+    q = hist["quarters"][0]
+    inv = SUPER_INVESTORS.get(investor_key, {})
+    return {
+        "investor": investor_key, "fund": inv.get("fund", ""), "note": inv.get("note", ""),
+        "filingDate": q.get("filingDate", ""), "quarter": q.get("quarter", ""),
+        "holdings": q.get("holdings", []), "totalValue": q.get("totalValue", 0),
+        "holdingsCount": q.get("holdingsCount", 0), "top10pct": q.get("top10pct", 0),
+    }
+
+
+def _get_current_quarter_label():
+    """Determine the most common latest quarter across all investors (e.g. 'Q4 2025')."""
+    from collections import Counter
+    labels = []
+    for key in SUPER_INVESTORS:
+        hist = _13f_history.get(key)
+        if hist and hist.get("quarters"):
+            labels.append(hist["quarters"][0].get("quarter", ""))
+    if not labels:
+        return None
+    return Counter(labels).most_common(1)[0][0]
 
 
 def _save_13f_history():
@@ -2226,8 +2244,8 @@ def _fetch_investor_13f(investor_key):
         "top10pct": top10pct,
         "fetchedAt": datetime.now().isoformat(),
     }
-    _13f_cache[investor_key] = result
-    _save_13f_cache()
+    _append_to_history(investor_key, result)
+    _save_13f_history()
     return result
 
 
@@ -4666,7 +4684,6 @@ def api_status():
 # ── Main ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     load_disk_cache()
-    _load_13f_cache()
     _load_13f_history()
     print("\n" + "=" * 55)
     print("  InvToolkit — Investment Dashboard")
