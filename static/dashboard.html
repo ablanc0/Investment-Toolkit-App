@@ -3850,6 +3850,58 @@
             }
         }
 
+        function recalcSummaryCategory() {
+            if (!_analyzerData || !_analyzerData.valuation) return;
+            const v = _analyzerData.valuation;
+            const cat = document.getElementById('summary-category').value;
+            const weightSets = {
+                'Growth': {dcf: 0.30, graham: 0.10, relative: 0.10, dcfScenarios: 0.50},
+                'Value': {dcf: 0.15, graham: 0.30, relative: 0.25, dcfScenarios: 0.30},
+                'Blend': {dcf: 0.25, graham: 0.20, relative: 0.20, dcfScenarios: 0.35},
+            };
+            const weights = weightSets[cat] || weightSets['Blend'];
+            const models = {};
+            if (v.dcf && v.dcf.ivPerShare > 0) models.dcf = v.dcf.ivPerShare;
+            if (v.graham && v.graham.ivPerShare > 0) models.graham = v.graham.ivPerShare;
+            if (v.relative && v.relative.ivPerShare > 0) models.relative = v.relative.ivPerShare;
+            if (v.dcfScenarios && v.dcfScenarios.ivPerShare > 0) models.dcfScenarios = v.dcfScenarios.ivPerShare;
+            const totalW = Object.keys(models).reduce((s, k) => s + (weights[k] || 0), 0);
+            if (totalW <= 0) return;
+            const composite = Object.keys(models).reduce((s, k) => s + models[k] * weights[k] / totalW, 0);
+            const mosIv = composite * 0.70;
+            const price = _analyzerData.price || 0;
+            const upside = price > 0 ? ((mosIv - price) / price * 100) : 0;
+            const signal = upside > 50 ? 'Strong Buy' : upside > 20 ? 'Buy' : upside > -10 ? 'Hold' : upside > -30 ? 'Expensive' : 'Overrated';
+
+            // Update banner
+            const bIv = document.getElementById('summary-banner-iv');
+            if (bIv) bIv.textContent = formatMoney(composite);
+            const bMos = document.getElementById('summary-banner-mos');
+            if (bMos) bMos.textContent = formatMoney(mosIv);
+            const bUp = document.getElementById('summary-banner-upside');
+            if (bUp) { bUp.textContent = (upside >= 0 ? '+' : '') + upside.toFixed(1) + '%'; bUp.style.color = upside >= 0 ? '#22c55e' : '#ef4444'; }
+            const bannerSig = document.querySelector('#av-summary .model-result-signal span:last-child');
+            if (bannerSig) { const sc2 = signalColor(signal); bannerSig.textContent = signal; bannerSig.style.background = sc2.bg; bannerSig.style.color = sc2.fg; }
+
+            // Update weight row in table
+            const weightCells = document.querySelectorAll('#summary-weight-row td');
+            const modelKeys = ['dcf', 'graham', 'relative', 'dcfScenarios'];
+            if (weightCells.length > 1) {
+                for (let i = 0; i < modelKeys.length; i++) {
+                    if (weightCells[i + 1]) weightCells[i + 1].textContent = weights[modelKeys[i]] ? (weights[modelKeys[i]] * 100).toFixed(0) + '%' : '—';
+                }
+            }
+
+            // Update explanation text
+            const catExplain = {
+                'Growth': 'Growth stocks weight DCF Scenarios (50%) and DCF (30%) heavily — forward-looking cash flow projections best capture growth potential.',
+                'Value': 'Value stocks weight Graham (30%) and Relative (25%) heavily — earnings-based and peer comparison models are most reliable for stable earners.',
+                'Blend': 'Blend stocks use balanced weights across all models, with DCF Scenarios slightly favored (35%).',
+            };
+            const explainEl = document.getElementById('summary-cat-explain');
+            if (explainEl) explainEl.textContent = catExplain[cat] || '';
+        }
+
         function rebuildFcfTable() {
             const tbody = document.getElementById('dcf-hist-tbody');
             if (!tbody || !window._dcfFcfLookup) return;
@@ -4739,7 +4791,7 @@
                 price: price, upside: s.upside, signal: s.signal
             });
 
-            // 2. Category + weight explanation
+            // 2. Category + weight explanation (editable dropdown)
             const catExplain = {
                 'Growth': 'Growth stocks weight DCF Scenarios (50%) and DCF (30%) heavily — forward-looking cash flow projections best capture growth potential.',
                 'Value': 'Value stocks weight Graham (30%) and Relative (25%) heavily — earnings-based and peer comparison models are most reliable for stable earners.',
@@ -4747,8 +4799,12 @@
             };
             html += `<div class="valuation-card" style="text-align:center; padding:12px 24px;">
                 <span style="font-size:0.8rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px;">Stock Category: </span>
-                <strong style="color:var(--text); font-size:0.9rem;">${s.category}</strong>
-                <div style="font-size:0.75rem; color:var(--text-dim); margin-top:6px;">${catExplain[s.category] || ''}</div>
+                <select id="summary-category" class="form-input" style="width:auto; padding:2px 8px; font-size:0.9rem; font-weight:700; text-align:center;" onchange="recalcSummaryCategory()">
+                    <option value="Growth"${s.category === 'Growth' ? ' selected' : ''}>Growth</option>
+                    <option value="Value"${s.category === 'Value' ? ' selected' : ''}>Value</option>
+                    <option value="Blend"${s.category === 'Blend' ? ' selected' : ''}>Blend</option>
+                </select>
+                <div id="summary-cat-explain" style="font-size:0.75rem; color:var(--text-dim); margin-top:6px;">${catExplain[s.category] || ''}</div>
             </div>`;
 
             // 3. Model comparison table
@@ -4776,7 +4832,7 @@
                             const c = up >= 0 ? '#22c55e' : '#ef4444';
                             return `<td style="text-align:center; color:${c};">${up >= 0 ? '+' : ''}${up}%</td>`;
                         }).join('')}</tr>
-                        <tr><td style="color:var(--text-dim);">Weight</td>${models.map(m => {
+                        <tr id="summary-weight-row"><td style="color:var(--text-dim);">Weight</td>${models.map(m => {
                             const w = s.weights[m.key] ? (s.weights[m.key] * 100).toFixed(0) + '%' : '—';
                             return `<td style="text-align:center;">${w}</td>`;
                         }).join('')}</tr>
@@ -4802,7 +4858,7 @@
 
             // Number line points
             const nlPoints = [
-                {value: s.compositeIv, label: 'Our IV', color: 'var(--accent)'},
+                {value: s.compositeIv, label: 'InvT IV', color: 'var(--accent)'},
                 {value: price, label: 'Price', color: '#94a3b8'},
             ];
             if (fmpDcf > 0) nlPoints.push({value: fmpDcf, label: 'FMP DCF', color: '#f59e0b'});
@@ -4829,7 +4885,7 @@
                         <span style="float:right; color:var(--text);">${analystLow > 0 ? formatMoney(analystLow) + ' — ' + formatMoney(analystHigh) : 'N/A'}</span>
                     </div>
                     <div>
-                        <span style="color:var(--text-dim);">Our Composite IV</span>
+                        <span style="color:var(--text-dim);">InvT Composite IV</span>
                         <span style="float:right; font-weight:600; color:var(--accent);">${formatMoney(s.compositeIv)}</span>
                     </div>
                 </div>
