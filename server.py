@@ -1975,7 +1975,7 @@ import xml.etree.ElementTree as ET
 
 SUPER_INVESTORS = {
     # Original 9
-    "Warren Buffett":       {"cik": "0001067983", "fund": "Berkshire Hathaway",         "note": "The Oracle of Omaha, greatest value investor"},
+    "Greg Abel":            {"cik": "0001067983", "fund": "Berkshire Hathaway",         "note": "CEO since 2025; formerly Warren Buffett — greatest value investor"},
     "Michael Burry":        {"cik": "0001649339", "fund": "Scion Asset Management",     "note": "Big Short fame, contrarian deep value"},
     "Bill Ackman":          {"cik": "0001336528", "fund": "Pershing Square",            "note": "Activist investor, concentrated bets"},
     "Ray Dalio":            {"cik": "0001350694", "fund": "Bridgewater Associates",     "note": "World's largest hedge fund, macro pioneer"},
@@ -2011,6 +2011,11 @@ def _load_13f_history():
     if _13F_HISTORY_FILE.exists():
         try:
             _13f_history = json.loads(_13F_HISTORY_FILE.read_text())
+            # Migrate renamed keys (one-time)
+            _RENAMED_KEYS = {"Warren Buffett": "Greg Abel"}
+            for old, new in _RENAMED_KEYS.items():
+                if old in _13f_history and new not in _13f_history:
+                    _13f_history[new] = _13f_history.pop(old)
             total_q = sum(len(h.get("quarters", [])) for h in _13f_history.values())
             print(f"[13F] Loaded history: {len(_13f_history)} investors, {total_q} quarters")
         except Exception:
