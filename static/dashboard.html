@@ -1636,28 +1636,33 @@
                         <select id="siInvestorSelect" onchange="fetch13F(this.value)" style="padding: 6px 12px; background: var(--card-hover); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem;">
                             <option value="">Select Investor...</option>
                         </select>
+                        <button onclick="showMostPopular()" style="padding: 6px 14px; background: var(--card-hover); color: var(--text); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 0.82rem;">Most Popular</button>
                         <button onclick="refreshAll13F()" style="padding: 6px 14px; background: var(--accent); color: #000; border: none; border-radius: 6px; cursor: pointer; font-size: 0.82rem; font-weight: 600;">Refresh All</button>
                         <button onclick="exportSuperInvCSV()" style="padding: 6px 14px; background: var(--card-hover); color: var(--text); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 0.82rem;">CSV</button>
                     </div>
                 </div>
                 <div id="si13fProgress" style="display: none; padding: 10px 14px; background: var(--card-hover); border-radius: 8px; margin-bottom: 12px; font-size: 0.85rem; color: var(--text-dim);"></div>
                 <div id="siInvestorNote" style="display: none; font-size: 0.82rem; color: var(--text-dim); font-style: italic; margin-bottom: 12px;"></div>
-                <div id="si13fMeta" style="display: none; display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;"></div>
-                <div id="siChartRow" style="display: none; margin-bottom: 20px; max-width: 420px;">
-                    <canvas id="siAllocationChart" height="280"></canvas>
+                <div id="si13fMeta" style="display: none; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;"></div>
+                <div id="siChartRow" style="display: none; margin-bottom: 20px;">
+                    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                        <div style="max-width: 380px; flex: 0 0 380px;">
+                            <canvas id="siAllocationChart" height="280"></canvas>
+                        </div>
+                        <div id="siHistoryChartWrap" style="display: none; flex: 1; min-width: 300px;">
+                            <canvas id="siHistoryChart" height="280"></canvas>
+                        </div>
+                    </div>
                 </div>
+                <div id="siActivityRow" style="display: none; margin-bottom: 16px; gap: 12px; flex-wrap: wrap;"></div>
+                <p id="siTableMeta" style="display: none; color: var(--text-dim); font-size: 0.82rem; margin-bottom: 12px;"></p>
                 <div class="table-wrapper"><table style="font-size: 0.82rem;">
-                    <thead><tr>
+                    <thead id="siTableHead"><tr>
                         <th style="width:40px;">#</th><th>Ticker</th><th>Company</th>
                         <th style="text-align:right;">Value ($M)</th><th style="text-align:right;">Shares</th>
                         <th style="text-align:right;">% Portfolio</th>
                     </tr></thead><tbody id="superInvBody"></tbody>
                 </table></div>
-            </div>
-            <div class="card" id="siMostPopularCard" style="margin-bottom: 24px;">
-                <div class="card-title">Most Popular Stocks Across Super Investors</div>
-                <p id="siPopularMeta" style="color: var(--text-dim); font-size: 0.82rem; margin-bottom: 12px;"></p>
-                <div id="siMostPopularContent"><p style="color: var(--text-dim); padding: 20px; text-align: center;">Click "Refresh All" to load 13F data from SEC EDGAR, or data will load from cache if available.</p></div>
             </div>
         </div>
 
@@ -6526,6 +6531,9 @@
                 }
                 _si13fCurrentData = data;
                 render13FHoldings(data);
+                // Fetch history chart and activity in parallel
+                fetchInvestorHistory(investorKey);
+                fetchInvestorActivity(investorKey);
             } catch(e) {
                 console.error(e);
                 if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#f87171; padding:30px;">Error: ${e.message}</td></tr>`;
@@ -6536,7 +6544,12 @@
             const tbody = document.getElementById('superInvBody');
             const meta = document.getElementById('si13fMeta');
             const chartRow = document.getElementById('siChartRow');
+            const thead = document.getElementById('siTableHead');
+            const tableMeta = document.getElementById('siTableMeta');
             if (!tbody) return;
+            // Restore holdings table headers
+            if (thead) thead.innerHTML = '<tr><th style="width:40px;">#</th><th>Ticker</th><th>Company</th><th style="text-align:right;">Value ($M)</th><th style="text-align:right;">Shares</th><th style="text-align:right;">% Portfolio</th></tr>';
+            if (tableMeta) tableMeta.style.display = 'none';
             // Meta info
             if (meta) {
                 const tv = data.totalValue || 0;
@@ -6605,6 +6618,58 @@
             }).join('');
         }
 
+        async function fetchInvestorHistory(investorKey) {
+            const wrap = document.getElementById('siHistoryChartWrap');
+            if (!wrap) return;
+            try {
+                const data = await fetch(`/api/super-investors/history/${encodeURIComponent(investorKey)}`).then(r => r.json());
+                if (!data.quarters || data.quarters.length < 2) { wrap.style.display = 'none'; return; }
+                wrap.style.display = 'block';
+                const canvas = document.getElementById('siHistoryChart');
+                if (!canvas) return;
+                if (charts['siHistoryChart']) charts['siHistoryChart'].destroy();
+                const quarters = [...data.quarters].reverse(); // chronological order
+                charts['siHistoryChart'] = new Chart(canvas.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: quarters.map(q => q.quarter),
+                        datasets: [{
+                            label: 'Portfolio Value',
+                            data: quarters.map(q => q.totalValue / 1e9),
+                            backgroundColor: '#6366f1',
+                            borderRadius: 3,
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { callbacks: { label: ctx => '$' + ctx.parsed.y.toFixed(1) + 'B' } }
+                        },
+                        scales: {
+                            x: { ticks: { color: '#94a3b8', maxRotation: 45, font: { size: 9 } }, grid: { display: false } },
+                            y: { ticks: { color: '#94a3b8', callback: v => '$' + v + 'B' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                        }
+                    }
+                });
+            } catch(e) { console.error(e); wrap.style.display = 'none'; }
+        }
+
+        async function fetchInvestorActivity(investorKey) {
+            const row = document.getElementById('siActivityRow');
+            if (!row) return;
+            try {
+                const data = await fetch(`/api/super-investors/activity/${encodeURIComponent(investorKey)}`).then(r => r.json());
+                if (data.error || (data.buysCount === 0 && data.sellsCount === 0)) { row.style.display = 'none'; return; }
+                row.style.display = 'flex';
+                const badge = (label, count, color) => `<div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">${label}: <strong style="color:${color};">${count}</strong></div>`;
+                let html = badge('Buys', data.buysCount, '#4ade80') + badge('Sells', data.sellsCount, '#f87171');
+                if (data.buys.length > 0) html += `<div style="padding:8px 14px; background:var(--card-hover); border-radius:8px; font-size:0.78rem; color:var(--text-dim);">New: ${data.buys.slice(0,5).map(b => b.ticker).join(', ')}</div>`;
+                if (data.sells.length > 0) html += `<div style="padding:8px 14px; background:var(--card-hover); border-radius:8px; font-size:0.78rem; color:var(--text-dim);">Sold: ${data.sells.slice(0,5).map(s => s.ticker).join(', ')}</div>`;
+                row.innerHTML = html;
+            } catch(e) { console.error(e); row.style.display = 'none'; }
+        }
+
         async function refreshAll13F() {
             const progress = document.getElementById('si13fProgress');
             if (progress) { progress.style.display = 'block'; progress.textContent = 'Fetching 13F filings from SEC EDGAR — this may take a few minutes due to API rate limits...'; }
@@ -6627,37 +6692,49 @@
             } catch(e) { console.error(e); if (progress) progress.textContent = 'Error: ' + e.message; }
         }
 
+        function showMostPopular() {
+            // Reset dropdown and show Most Popular in the same table
+            const sel = document.getElementById('siInvestorSelect');
+            if (sel) sel.value = '';
+            const noteEl = document.getElementById('siInvestorNote');
+            const meta = document.getElementById('si13fMeta');
+            const chartRow = document.getElementById('siChartRow');
+            const activityRow = document.getElementById('siActivityRow');
+            if (noteEl) noteEl.style.display = 'none';
+            if (meta) { meta.style.display = 'none'; meta.innerHTML = ''; }
+            if (chartRow) chartRow.style.display = 'none';
+            if (activityRow) activityRow.style.display = 'none';
+            _si13fCurrentData = null;
+            fetchMostPopular();
+        }
+
         async function fetchMostPopular() {
-            const card = document.getElementById('siMostPopularCard');
-            const content = document.getElementById('siMostPopularContent');
-            const meta = document.getElementById('siPopularMeta');
-            if (!card || !content) return;
+            const tbody = document.getElementById('superInvBody');
+            const thead = document.getElementById('siTableHead');
+            const tableMeta = document.getElementById('siTableMeta');
+            if (!tbody) return;
             try {
                 const data = await fetch('/api/super-investors/most-popular').then(r => r.json());
                 if (!data.popular || !data.popular.length) {
-                    content.innerHTML = '<p style="color:var(--text-dim); text-align:center; padding:20px;">No data yet. Click "Refresh All" to fetch 13F filings from SEC EDGAR.</p>';
+                    if (thead) thead.innerHTML = '<tr><th style="width:40px;">#</th><th>Ticker</th><th>Company</th><th style="text-align:right;">Value ($M)</th><th style="text-align:right;">Shares</th><th style="text-align:right;">% Portfolio</th></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-dim); padding:30px;">No data yet. Click "Refresh All" to fetch 13F filings.</td></tr>';
                     return;
                 }
-                if (meta) meta.textContent = `Ranked by number of super investors holding each stock (${data.cachedInvestors}/${data.totalInvestors} investors loaded)`;
-                content.innerHTML = `<div class="table-wrapper"><table style="font-size:0.82rem;">
-                    <thead><tr>
-                        <th style="width:40px;">#</th><th>Ticker</th><th>Company</th>
-                        <th style="text-align:right;">Held By</th><th>Investors</th>
-                        <th style="text-align:right;">Combined Value</th>
-                    </tr></thead>
-                    <tbody>${data.popular.map((s, i) => {
-                        const valStr = s.totalValue >= 1e9 ? '$' + (s.totalValue/1e9).toFixed(1) + 'B' : '$' + (s.totalValue/1e6).toFixed(0) + 'M';
-                        const countColor = s.investorCount >= 4 ? '#4ade80' : s.investorCount >= 3 ? '#22d3ee' : 'var(--text)';
-                        return `<tr>
-                            <td style="text-align:center; color:var(--text-dim);">${i+1}</td>
-                            <td><strong>${s.ticker}</strong></td>
-                            <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis;">${s.name || ''}</td>
-                            <td style="text-align:right; font-weight:700; color:${countColor};">${s.investorCount}</td>
-                            <td style="font-size:0.78rem; color:var(--text-dim);">${s.investors.join(', ')}</td>
-                            <td style="text-align:right; font-family:monospace;">${valStr}</td>
-                        </tr>`;
-                    }).join('')}</tbody>
-                </table></div>`;
+                // Switch table headers to Most Popular mode
+                if (thead) thead.innerHTML = '<tr><th style="width:40px;">#</th><th>Ticker</th><th>Company</th><th style="text-align:right;">Held By</th><th>Investors</th><th style="text-align:right;">Combined Value</th></tr>';
+                if (tableMeta) { tableMeta.style.display = 'block'; tableMeta.textContent = `Ranked by number of super investors holding each stock (${data.cachedInvestors}/${data.totalInvestors} investors loaded)`; }
+                tbody.innerHTML = data.popular.map((s, i) => {
+                    const valStr = s.totalValue >= 1e9 ? '$' + (s.totalValue/1e9).toFixed(1) + 'B' : '$' + (s.totalValue/1e6).toFixed(0) + 'M';
+                    const countColor = s.investorCount >= 4 ? '#4ade80' : s.investorCount >= 3 ? '#22d3ee' : 'var(--text)';
+                    return `<tr>
+                        <td style="text-align:center; color:var(--text-dim);">${i+1}</td>
+                        <td><strong>${s.ticker}</strong></td>
+                        <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis;">${s.name || ''}</td>
+                        <td style="text-align:right; font-weight:700; color:${countColor};">${s.investorCount}</td>
+                        <td style="font-size:0.78rem; color:var(--text-dim);">${s.investors.join(', ')}</td>
+                        <td style="text-align:right; font-family:monospace;">${valStr}</td>
+                    </tr>`;
+                }).join('');
             } catch(e) { console.error(e); }
         }
 

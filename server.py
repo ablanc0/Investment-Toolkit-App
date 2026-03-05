@@ -1378,11 +1378,16 @@ def api_super_investor_13f_all():
                     "ok": "error" not in (result or {}),
                     "holdingsCount": (result or {}).get("holdingsCount", 0),
                 }
+                # Append to history if we have a new quarter
+                if result and "error" not in result:
+                    _append_to_history(key, result)
             except Exception as e:
                 _13f_progress["results"][key] = {"ok": False, "error": str(e)}
             _13f_progress["done"] = i + 1
         _13f_progress["running"] = False
         _13f_progress["current"] = ""
+        # Save history after all investors are done
+        _save_13f_history()
     threading.Thread(target=_bg, daemon=True).start()
     return jsonify({"status": "started", "total": len(SUPER_INVESTORS)})
 
@@ -1461,6 +1466,58 @@ def api_super_investor_most_popular():
         "popular": popular[:50],
         "cachedInvestors": len(_13f_cache),
         "totalInvestors": len(SUPER_INVESTORS),
+    })
+
+
+@app.route("/api/super-investors/history/<investor_key>")
+def api_super_investor_history(investor_key):
+    """Return quarterly summary for portfolio value chart (no holdings array)."""
+    hist = _13f_history.get(investor_key)
+    if not hist:
+        return jsonify({"error": "No history data", "quarters": []})
+    summary = [{
+        "quarter": q["quarter"],
+        "filingDate": q.get("filingDate", ""),
+        "totalValue": q.get("totalValue", 0),
+        "holdingsCount": q.get("holdingsCount", 0),
+        "top10pct": q.get("top10pct", 0),
+    } for q in hist.get("quarters", [])]
+    return jsonify({"investor": investor_key, "fund": hist.get("fund", ""), "quarters": summary})
+
+
+@app.route("/api/super-investors/activity/<investor_key>")
+def api_super_investor_activity(investor_key):
+    """Compare latest vs previous quarter to show buys/sells/changes."""
+    hist = _13f_history.get(investor_key)
+    if not hist or len(hist.get("quarters", [])) < 2:
+        return jsonify({"error": "Need at least 2 quarters of history", "buys": [], "sells": [], "increased": [], "decreased": []})
+    quarters = hist["quarters"]  # sorted most recent first
+    current = {h["ticker"]: h for h in quarters[0].get("holdings", []) if h.get("ticker")}
+    previous = {h["ticker"]: h for h in quarters[1].get("holdings", []) if h.get("ticker")}
+    buys, sells, increased, decreased = [], [], [], []
+    for ticker, h in current.items():
+        if ticker not in previous:
+            buys.append({"ticker": ticker, "name": h.get("name", ""), "shares": h["shares"], "value": h["value"], "pctPortfolio": h.get("pctPortfolio", 0)})
+        else:
+            prev_shares = previous[ticker]["shares"]
+            if h["shares"] > prev_shares:
+                change_pct = round((h["shares"] - prev_shares) / prev_shares * 100, 1) if prev_shares else 0
+                increased.append({"ticker": ticker, "name": h.get("name", ""), "shares": h["shares"], "prevShares": prev_shares, "changePct": change_pct, "value": h["value"]})
+            elif h["shares"] < prev_shares:
+                change_pct = round((h["shares"] - prev_shares) / prev_shares * 100, 1) if prev_shares else 0
+                decreased.append({"ticker": ticker, "name": h.get("name", ""), "shares": h["shares"], "prevShares": prev_shares, "changePct": change_pct, "value": h["value"]})
+    for ticker, h in previous.items():
+        if ticker not in current:
+            sells.append({"ticker": ticker, "name": h.get("name", ""), "shares": h["shares"], "value": h["value"]})
+    return jsonify({
+        "currentQuarter": quarters[0].get("quarter", ""),
+        "previousQuarter": quarters[1].get("quarter", ""),
+        "buys": sorted(buys, key=lambda x: x["value"], reverse=True),
+        "sells": sorted(sells, key=lambda x: x["value"], reverse=True),
+        "increased": sorted(increased, key=lambda x: abs(x["changePct"]), reverse=True),
+        "decreased": sorted(decreased, key=lambda x: abs(x["changePct"]), reverse=True),
+        "buysCount": len(buys),
+        "sellsCount": len(sells),
     })
 
 
@@ -1877,7 +1934,9 @@ SUPER_INVESTORS = {
 }
 
 _13F_CACHE_FILE = DATA_DIR / "13f_cache.json"
+_13F_HISTORY_FILE = DATA_DIR / "13f_history.json"
 _13f_cache = {}  # investor_key -> {investor, fund, filingDate, quarter, holdings, totalValue}
+_13f_history = {}  # investor_key -> {fund, cik, quarters: [{quarter, filingDate, totalValue, ...}]}
 _13f_progress = {"done": 0, "total": 0, "current": "", "results": {}, "running": False}
 
 
@@ -1892,12 +1951,52 @@ def _load_13f_cache():
             _13f_cache = {}
 
 
+def _load_13f_history():
+    """Load historical 13F data from disk on startup."""
+    global _13f_history
+    if _13F_HISTORY_FILE.exists():
+        try:
+            _13f_history = json.loads(_13F_HISTORY_FILE.read_text())
+            total_q = sum(len(h.get("quarters", [])) for h in _13f_history.values())
+            print(f"[13F] Loaded history: {len(_13f_history)} investors, {total_q} quarters")
+        except Exception:
+            _13f_history = {}
+
+
 def _save_13f_cache():
     """Persist 13F data to disk."""
     try:
         _13F_CACHE_FILE.write_text(json.dumps(_13f_cache, default=str))
     except Exception as e:
         print(f"[13F] Failed to save cache: {e}")
+
+
+def _save_13f_history():
+    """Persist historical 13F data to disk."""
+    try:
+        _13F_HISTORY_FILE.write_text(json.dumps(_13f_history, default=str))
+    except Exception as e:
+        print(f"[13F] Failed to save history: {e}")
+
+
+def _append_to_history(investor_key, result):
+    """Append a quarter to history if not already present."""
+    quarter = result.get("quarter", "")
+    if not quarter:
+        return
+    inv = SUPER_INVESTORS.get(investor_key, {})
+    if investor_key not in _13f_history:
+        _13f_history[investor_key] = {"fund": inv.get("fund", ""), "cik": inv.get("cik", ""), "quarters": []}
+    existing = {q["quarter"] for q in _13f_history[investor_key]["quarters"]}
+    if quarter not in existing:
+        _13f_history[investor_key]["quarters"].insert(0, {
+            "quarter": quarter,
+            "filingDate": result.get("filingDate", ""),
+            "totalValue": result.get("totalValue", 0),
+            "holdingsCount": result.get("holdingsCount", 0),
+            "top10pct": result.get("top10pct", 0),
+            "holdings": result.get("holdings", []),
+        })
 
 
 def _fetch_13f_latest(cik):
@@ -1923,11 +2022,13 @@ def _fetch_13f_infotable(cik, accession_clean, accession_raw):
     index_url = f"https://www.sec.gov/Archives/edgar/data/{cik_num}/{accession_clean}/"
     r = http_requests.get(index_url, headers={"User-Agent": EDGAR_USER_AGENT}, timeout=15)
     r.raise_for_status()
-    # Find the infotable XML filename in the index page
-    matches = re.findall(r'href="([^"]*infotable[^"]*\.xml)"', r.text, re.IGNORECASE)
+    # Find XML filename — prefer infotable or holding files, skip primary_doc.xml
+    matches = re.findall(r'href="([^"]*(?:infotable|holding)[^"]*\.xml)"', r.text, re.IGNORECASE)
     if not matches:
-        # Try alternative: primary_doc.xml pattern
-        matches = re.findall(r'href="([^"]*\.xml)"', r.text, re.IGNORECASE)
+        all_xml = re.findall(r'href="([^"]*\.xml)"', r.text, re.IGNORECASE)
+        matches = [x for x in all_xml if "primary_doc" not in x.lower()]
+        if not matches:
+            matches = all_xml
     if not matches:
         return None
     xml_filename = matches[0]
@@ -1943,14 +2044,16 @@ def _fetch_13f_infotable(cik, accession_clean, accession_raw):
 
 
 def _parse_13f_xml(xml_string):
-    """Parse 13F infoTable XML into holdings list. Aggregates by CUSIP."""
+    """Parse 13F infoTable XML into holdings list. Aggregates by CUSIP.
+    Values are normalized to actual dollars (some filers report in thousands per SEC spec,
+    others in dollars — we auto-detect via median per-share price)."""
     ns = {"ns": "http://www.sec.gov/edgar/document/thirteenf/informationtable"}
     root = ET.fromstring(xml_string)
     by_cusip = {}
     for entry in root.findall(".//ns:infoTable", ns):
         cusip = (entry.findtext("ns:cusip", "", ns) or "").strip()
         name = (entry.findtext("ns:nameOfIssuer", "", ns) or "").strip()
-        value = int(entry.findtext("ns:value", "0", ns) or 0)  # value in dollars
+        value = int(entry.findtext("ns:value", "0", ns) or 0)
         shares_el = entry.find("ns:shrsOrPrnAmt", ns)
         shares = int(shares_el.findtext("ns:sshPrnamt", "0", ns) or 0) if shares_el else 0
         put_call = (entry.findtext("ns:putCall", "", ns) or "").strip()
@@ -1962,7 +2065,16 @@ def _parse_13f_xml(xml_string):
                 "cusip": cusip, "name": name, "value": value,
                 "shares": shares, "putCall": put_call,
             }
-    return list(by_cusip.values())
+    holdings = list(by_cusip.values())
+    # Auto-detect: SEC 13F values should be in thousands, but some filers report in dollars.
+    # Compute median per-share price; if < $1, values are in thousands → multiply by 1000.
+    prices = sorted([h["value"] / h["shares"] for h in holdings if h["shares"] > 0])
+    if prices:
+        median_price = prices[len(prices) // 2]
+        if median_price < 1.0:
+            for h in holdings:
+                h["value"] *= 1000
+    return holdings
 
 
 def _openfigi_batch(cusip_list, id_type="ID_CUSIP"):
@@ -4499,6 +4611,7 @@ def api_status():
 if __name__ == "__main__":
     load_disk_cache()
     _load_13f_cache()
+    _load_13f_history()
     print("\n" + "=" * 55)
     print("  InvToolkit — Investment Dashboard")
     print("=" * 55)
