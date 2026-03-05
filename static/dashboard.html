@@ -1641,7 +1641,11 @@
                     </div>
                 </div>
                 <div id="si13fProgress" style="display: none; padding: 10px 14px; background: var(--card-hover); border-radius: 8px; margin-bottom: 12px; font-size: 0.85rem; color: var(--text-dim);"></div>
+                <div id="siInvestorNote" style="display: none; font-size: 0.82rem; color: var(--text-dim); font-style: italic; margin-bottom: 12px;"></div>
                 <div id="si13fMeta" style="display: none; display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;"></div>
+                <div id="siChartRow" style="display: none; margin-bottom: 20px; max-width: 420px;">
+                    <canvas id="siAllocationChart" height="280"></canvas>
+                </div>
                 <div class="table-wrapper"><table style="font-size: 0.82rem;">
                     <thead><tr>
                         <th style="width:40px;">#</th><th>Ticker</th><th>Company</th>
@@ -6480,12 +6484,16 @@
 
         // ── Super Investor 13F Holdings ──────────────────────────
         let _si13fCurrentData = null; // current investor's holdings for CSV export
+        let _siInvestorNotes = {};    // investor_key -> note string
 
         async function fetchSuperInvestors() {
             try {
                 const investors = await fetch('/api/super-investors').then(r => r.json());
                 const sel = document.getElementById('siInvestorSelect');
                 if (!sel) return;
+                // Store notes for later use and sort alphabetically
+                investors.forEach(inv => { _siInvestorNotes[inv.key] = inv.note || ''; });
+                investors.sort((a, b) => a.key.localeCompare(b.key));
                 sel.innerHTML = '<option value="">Select Investor...</option>' +
                     investors.map(inv => {
                         let label = `${inv.key} — ${inv.fund}`;
@@ -6502,8 +6510,14 @@
             if (!investorKey) return;
             const tbody = document.getElementById('superInvBody');
             const meta = document.getElementById('si13fMeta');
+            const noteEl = document.getElementById('siInvestorNote');
+            const chartRow = document.getElementById('siChartRow');
             if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-dim); padding:30px;">Loading 13F data from SEC EDGAR...</td></tr>';
             if (meta) { meta.style.display = 'none'; meta.innerHTML = ''; }
+            if (chartRow) chartRow.style.display = 'none';
+            // Show investor bio note
+            const note = _siInvestorNotes[investorKey] || '';
+            if (noteEl) { noteEl.textContent = note; noteEl.style.display = note ? 'block' : 'none'; }
             try {
                 const data = await fetch(`/api/super-investors/13f/${encodeURIComponent(investorKey)}`).then(r => r.json());
                 if (data.error) {
@@ -6521,17 +6535,56 @@
         function render13FHoldings(data) {
             const tbody = document.getElementById('superInvBody');
             const meta = document.getElementById('si13fMeta');
+            const chartRow = document.getElementById('siChartRow');
             if (!tbody) return;
             // Meta info
             if (meta) {
                 const tv = data.totalValue || 0;
+                const top10 = data.top10pct || (data.holdings ? data.holdings.slice(0, 10).reduce((s, h) => s + (h.pctPortfolio || 0), 0).toFixed(1) : 0);
                 meta.style.display = 'flex';
                 meta.innerHTML = `
                     <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Filing: <strong>${data.quarter || '—'}</strong> (${data.filingDate || '—'})</div>
                     <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Holdings: <strong>${data.holdingsCount || 0}</strong></div>
                     <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Total Value: <strong>$${(tv/1e9).toFixed(1)}B</strong></div>
+                    <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Top 10: <strong>${top10}%</strong></div>
                     <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Fund: <strong>${data.fund || '—'}</strong></div>
                 `;
+            }
+            // Allocation doughnut chart
+            if (chartRow) {
+                chartRow.style.display = 'block';
+                const canvas = document.getElementById('siAllocationChart');
+                if (canvas) {
+                    if (charts['siAllocationChart']) { charts['siAllocationChart'].destroy(); }
+                    const holdings = data.holdings || [];
+                    const top10 = holdings.slice(0, 10);
+                    const otherValue = holdings.slice(10).reduce((s, h) => s + h.value, 0);
+                    const labels = top10.map(h => h.ticker || h.cusip);
+                    const values = top10.map(h => h.value);
+                    if (otherValue > 0) { labels.push('Other'); values.push(otherValue); }
+                    const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#84cc16', '#22c55e', '#06b6d4', '#14b8a6', '#a78bfa', '#94a3b8'];
+                    charts['siAllocationChart'] = new Chart(canvas.getContext('2d'), {
+                        type: 'doughnut',
+                        data: { labels, datasets: [{ data: values, backgroundColor: colors.slice(0, labels.length), borderColor: '#0f1117', borderWidth: 2 }] },
+                        options: {
+                            responsive: true, maintainAspectRatio: false, cutout: '60%',
+                            plugins: {
+                                legend: { position: 'right', labels: { color: '#e0e6ed', usePointStyle: true, padding: 12, font: { size: 11 } } },
+                                tooltip: {
+                                    callbacks: {
+                                        label: ctx => {
+                                            const v = ctx.parsed;
+                                            const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                                            const pct = (v / total * 100).toFixed(1);
+                                            const valStr = v >= 1e9 ? '$' + (v/1e9).toFixed(1) + 'B' : '$' + (v/1e6).toFixed(0) + 'M';
+                                            return `${ctx.label}: ${valStr} (${pct}%)`;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
             }
             // Holdings table
             const holdings = data.holdings || [];

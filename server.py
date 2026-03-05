@@ -1338,6 +1338,7 @@ def api_super_investors_list():
     """List all available super investors."""
     return jsonify([
         {"key": k, "fund": v["fund"], "cik": v["cik"],
+         "note": v.get("note", ""),
          "cached": k in _13f_cache,
          "fetchedAt": _13f_cache.get(k, {}).get("fetchedAt", ""),
          "quarter": _13f_cache.get(k, {}).get("quarter", ""),
@@ -1849,15 +1850,30 @@ def _edgar_to_financials(facts):
 import xml.etree.ElementTree as ET
 
 SUPER_INVESTORS = {
-    "Warren Buffett":     {"cik": "0001067983", "fund": "Berkshire Hathaway"},
-    "Michael Burry":      {"cik": "0001649339", "fund": "Scion Asset Management"},
-    "Bill Ackman":        {"cik": "0001336528", "fund": "Pershing Square"},
-    "Ray Dalio":          {"cik": "0001350694", "fund": "Bridgewater Associates"},
-    "Seth Klarman":       {"cik": "0001061768", "fund": "Baupost Group"},
-    "David Tepper":       {"cik": "0001656456", "fund": "Appaloosa Management"},
-    "Howard Marks":       {"cik": "0000949509", "fund": "Oaktree Capital Management"},
-    "Terry Smith":        {"cik": "0001569205", "fund": "Fundsmith LLP"},
-    "Li Lu":              {"cik": "0001709323", "fund": "Himalaya Capital"},
+    # Original 9
+    "Warren Buffett":       {"cik": "0001067983", "fund": "Berkshire Hathaway",         "note": "The Oracle of Omaha, greatest value investor"},
+    "Michael Burry":        {"cik": "0001649339", "fund": "Scion Asset Management",     "note": "Big Short fame, contrarian deep value"},
+    "Bill Ackman":          {"cik": "0001336528", "fund": "Pershing Square",            "note": "Activist investor, concentrated bets"},
+    "Ray Dalio":            {"cik": "0001350694", "fund": "Bridgewater Associates",     "note": "World's largest hedge fund, macro pioneer"},
+    "Seth Klarman":         {"cik": "0001061768", "fund": "Baupost Group",              "note": "Deep value, Margin of Safety author"},
+    "David Tepper":         {"cik": "0001656456", "fund": "Appaloosa Management",       "note": "Distressed debt and macro bets"},
+    "Howard Marks":         {"cik": "0000949509", "fund": "Oaktree Capital Management", "note": "Credit/distressed debt legend, memo writer"},
+    "Terry Smith":          {"cik": "0001569205", "fund": "Fundsmith LLP",              "note": "Quality compounder, buy-and-hold"},
+    "Li Lu":                {"cik": "0001709323", "fund": "Himalaya Capital",           "note": "Munger's pick, China-US value investor"},
+    # New 13
+    "Chris Hohn":           {"cik": "0001647251", "fund": "TCI Fund Management",        "note": "Activist investor, huge returns"},
+    "Stanley Druckenmiller": {"cik": "0001536411", "fund": "Duquesne Family Office",    "note": "Legendary macro trader, ex-Soros partner"},
+    "Dev Kantesaria":       {"cik": "0001697868", "fund": "Valley Forge Capital",       "note": "Quality-focused compounder"},
+    "Pat Dorsey":           {"cik": "0001671657", "fund": "Dorsey Asset Management",    "note": "Ex-Morningstar, economic moat expert"},
+    "Mohnish Pabrai":       {"cik": "0001549575", "fund": "Dalal Street",              "note": "Value investor, Buffett-style"},
+    "Joel Greenblatt":      {"cik": "0001510387", "fund": "Gotham Asset Management",    "note": "Magic Formula author"},
+    "Peter Brown":          {"cik": "0001037389", "fund": "Renaissance Technologies",   "note": "Quant legend, Medallion Fund"},
+    "Chuck Akre":           {"cik": "0001112520", "fund": "Akre Capital Management",    "note": "Compounder-focused, long-term hold"},
+    "Paul Tudor Jones":     {"cik": "0000923093", "fund": "Tudor Investment Corp",      "note": "Macro/hedge fund pioneer"},
+    "George Soros":         {"cik": "0001029160", "fund": "Soros Fund Management",      "note": "Macro legend, broke the Bank of England"},
+    "Chris Davis":          {"cik": "0001036325", "fund": "Davis Selected Advisers",    "note": "Multi-generational value fund family"},
+    "Chase Coleman":        {"cik": "0001167483", "fund": "Tiger Global Management",    "note": "Tiger Cub, tech and growth focused"},
+    "Dan Loeb":             {"cik": "0001040273", "fund": "Third Point",                "note": "Activist/event-driven investor"},
 }
 
 _13F_CACHE_FILE = DATA_DIR / "13f_cache.json"
@@ -2029,14 +2045,17 @@ def _fetch_investor_13f(investor_key):
     # Derive quarter from filing date
     filing_date = filing["filingDate"]
     quarter = _derive_quarter(filing_date)
+    top10pct = round(sum(h["pctPortfolio"] for h in holdings[:10]), 1)
     result = {
         "investor": investor_key,
         "fund": inv["fund"],
+        "note": inv.get("note", ""),
         "filingDate": filing_date,
         "quarter": quarter,
         "holdings": holdings,
         "totalValue": total_value,
         "holdingsCount": len(holdings),
+        "top10pct": top10pct,
         "fetchedAt": datetime.now().isoformat(),
     }
     _13f_cache[investor_key] = result
