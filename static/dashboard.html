@@ -773,6 +773,11 @@
             grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
             gap: 20px;
         }
+        .invt-grid-2col {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 16px;
+        }
         .analyzer-section {
             background: var(--card);
             border: 1px solid var(--border);
@@ -3691,6 +3696,7 @@
         }
 
         let _analyzerData = null; // stored for client-side recalculation
+        let _invtScoreLoaded = false;
 
         function recalcGraham() {
             if (!_analyzerData || !_analyzerData.valuation || !_analyzerData.valuation.graham) return;
@@ -4137,6 +4143,7 @@
             const tab = document.querySelector(`.analyzer-subtab[data-view="${viewId}"]`);
             if (view) view.classList.add('active');
             if (tab) tab.classList.add('active');
+            if (viewId === 'invtScore' && !_invtScoreLoaded) loadInvtScore();
         }
 
         function renderAnalyzerHeader(d) {
@@ -4221,6 +4228,174 @@
                     <div class="model-result-metric"><span class="label">Upside</span><span class="value" id="${opts.id}-banner-upside" style="color:${upColor}">${(up >= 0 ? '+' : '') + up}%</span></div>
                 </div>
             </div>`;
+        }
+
+        // ── InvT Score Tab ──────────────────────────────────────
+        function _invtScoreColor(s) {
+            if (s >= 9) return '#4ade80';
+            if (s >= 8) return '#22d3ee';
+            if (s >= 6) return '#3b82f6';
+            if (s >= 4) return '#f59e0b';
+            return '#f87171';
+        }
+
+        const INVT_CAT_ORDER = ['growth', 'profitability', 'debt', 'efficiency', 'dividends'];
+
+        async function loadInvtScore(refresh = false) {
+            const ticker = _analyzerData && _analyzerData.ticker;
+            if (!ticker) return;
+            const container = document.getElementById('invt-score-content');
+            if (!container) return;
+            container.innerHTML = '<p style="padding:20px; text-align:center; color:var(--text-dim);">Loading InvT Score...</p>';
+            try {
+                const qs = refresh ? '?refresh=true' : '';
+                const resp = await fetch(`/api/invt-score/${ticker}${qs}`);
+                if (!resp.ok) throw new Error('API error');
+                const data = await resp.json();
+                _invtScoreLoaded = true;
+                container.innerHTML = renderInvtScore(data);
+                renderInvtRadarChart(data);
+            } catch (e) {
+                container.innerHTML = '<p style="color:var(--red); padding:20px;">Failed to load InvT Score. Check console.</p>';
+                console.error('InvT Score error:', e);
+            }
+        }
+
+        function renderInvtScore(data) {
+            const c = _invtScoreColor(data.score);
+            const catOrder = INVT_CAT_ORDER;
+            const updatedStr = data.lastUpdated ? new Date(data.lastUpdated).toLocaleString() : '';
+            // Section 1: Hero Banner + Refresh
+            let html = `
+            <div style="display:flex; align-items:center; gap:24px; margin-bottom:24px; flex-wrap:wrap;">
+                <div style="position:relative; width:110px; height:110px; flex-shrink:0;">
+                    <svg viewBox="0 0 110 110" style="width:110px; height:110px; transform:rotate(-90deg);">
+                        <circle cx="55" cy="55" r="48" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="8"/>
+                        <circle cx="55" cy="55" r="48" fill="none" stroke="${c}" stroke-width="8"
+                            stroke-dasharray="${(data.score / 10) * 301.6} 301.6" stroke-linecap="round"/>
+                    </svg>
+                    <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                        <span style="font-size:1.8rem; font-weight:800; color:${c};">${data.score}</span>
+                        <span style="font-size:0.65rem; color:var(--text-dim);">/ 10</span>
+                    </div>
+                </div>
+                <div style="flex:1;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <div style="font-size:1.1rem; font-weight:700; color:${c}; margin-bottom:4px;">${data.label}</div>
+                        <button onclick="loadInvtScore(true)" title="Refresh" style="background:none; border:1px solid var(--border); border-radius:6px; padding:4px 8px; cursor:pointer; color:var(--text-dim); font-size:0.75rem; line-height:1;">&#x21bb;</button>
+                    </div>
+                    <div style="display:flex; gap:16px; font-size:0.82rem; color:var(--text-dim);">
+                        <span>5yr: <b style="color:var(--text);">${data.score5yr}</b></span>
+                        <span>1yr: <b style="color:var(--text);">${data.score1yr}</b></span>
+                        <span>Hybrid (70/30): <b style="color:${c};">${data.score}</b></span>
+                    </div>
+                    <div style="font-size:0.72rem; color:var(--text-dim); margin-top:6px;">
+                        ${data.years ? data.years[0] + '–' + data.years[data.years.length - 1] : ''} · ${data.dataSource}
+                        ${updatedStr ? ' · Updated ' + updatedStr : ''}
+                    </div>
+                </div>
+            </div>`;
+
+            // Section 2: Radar Chart + Category Bars (responsive)
+            html += `<div class="invt-grid-2col" style="margin-bottom:24px;">
+                <div class="analyzer-section" style="padding:16px;">
+                    <canvas id="invt-radar-chart" height="280"></canvas>
+                </div>
+                <div class="analyzer-section" style="padding:16px;">
+                    <div class="analyzer-section-title">Category Scores</div>
+                    ${catOrder.map(k => {
+                        const cat = data.categories[k];
+                        if (!cat) return '';
+                        if (cat.note) {
+                            return `<div style="margin-bottom:14px; opacity:0.4;">
+                                <div style="display:flex; justify-content:space-between; font-size:0.82rem; margin-bottom:4px;">
+                                    <span style="color:var(--text);">${cat.label}</span>
+                                    <span style="font-size:0.72rem; color:var(--text-dim);">${cat.note}</span>
+                                </div>
+                                <div style="background:rgba(255,255,255,0.06); border-radius:6px; height:10px; overflow:hidden;"></div>
+                            </div>`;
+                        }
+                        const sc = cat.score ?? 0;
+                        const col = _invtScoreColor(sc);
+                        return `<div style="margin-bottom:14px;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.82rem; margin-bottom:4px;">
+                                <span style="color:var(--text);">${cat.label}</span>
+                                <span style="font-weight:700; color:${col};">${sc} / 10</span>
+                            </div>
+                            <div style="background:rgba(255,255,255,0.06); border-radius:6px; height:10px; overflow:hidden;">
+                                <div style="width:${sc * 10}%; height:100%; background:${col}; border-radius:6px; transition:width 0.4s;"></div>
+                            </div>
+                            <div style="display:flex; gap:12px; font-size:0.7rem; color:var(--text-dim); margin-top:2px;">
+                                <span>5yr: ${cat.score5yr ?? '—'}</span><span>1yr: ${cat.score1yr ?? '—'}</span>
+                            </div>
+                        </div>`;
+                    }).join('')}
+                </div>
+            </div>`;
+
+            // Section 3: Metric Breakdown Cards (responsive)
+            html += '<div class="invt-grid-2col">';
+            catOrder.forEach(k => {
+                const cat = data.categories[k];
+                if (!cat) return;
+                // Non-dividend payer: show muted card
+                if (cat.note) {
+                    html += `<div class="analyzer-section" style="grid-column:1/-1; opacity:0.45;">
+                        <div class="analyzer-section-title">${cat.label}</div>
+                        <p style="color:var(--text-dim); font-size:0.85rem; padding:12px 0;">${cat.note} — category excluded from score</p>
+                    </div>`;
+                    return;
+                }
+                html += `<div class="analyzer-section" style="${k === 'dividends' ? 'grid-column:1/-1;' : ''}">
+                    <div class="analyzer-section-title">${cat.label} — <span style="color:${_invtScoreColor(cat.score)};">${cat.score}/10</span></div>
+                    <table class="fcf-table">
+                        <thead><tr><th>Metric</th><th>5yr</th><th>1yr</th><th>Score</th></tr></thead>
+                        <tbody>`;
+                cat.metrics.forEach(m => {
+                    const s5 = m.score5yr ?? m.score1yr ?? 0;
+                    const s1 = m.score1yr ?? m.score5yr ?? 0;
+                    const avg = Math.round((s5 * 0.7 + s1 * 0.3) * 10) / 10;
+                    const col = _invtScoreColor(avg);
+                    const fmt = v => v == null ? '—' : (m.unit === '%' ? v.toFixed(2) + '%' : m.unit === 'x' ? v.toFixed(2) + 'x' : v.toFixed(2));
+                    html += `<tr>
+                        <td>${m.name}</td>
+                        <td>${fmt(m.value5yr)}</td>
+                        <td>${fmt(m.value1yr)}</td>
+                        <td><span style="display:inline-block; padding:3px 10px; border-radius:10px; font-size:0.8rem; font-weight:700; background:${col}20; color:${col};">${avg}</span></td>
+                    </tr>`;
+                });
+                html += '</tbody></table></div>';
+            });
+            html += '</div>';
+            return html;
+        }
+
+        function renderInvtRadarChart(data) {
+            const canvas = document.getElementById('invt-radar-chart');
+            if (!canvas) return;
+            // Filter out N/A categories (non-dividend payers) from radar
+            const catOrder = INVT_CAT_ORDER.filter(k => data.categories[k] && !data.categories[k].note);
+            const labels = catOrder.map(k => data.categories[k].label);
+            const hybrid = catOrder.map(k => data.categories[k].score ?? 0);
+            const fiveYr = catOrder.map(k => data.categories[k].score5yr ?? 0);
+            const oneYr = catOrder.map(k => data.categories[k].score1yr ?? 0);
+            new Chart(canvas.getContext('2d'), {
+                type: 'radar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Hybrid', data: hybrid, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.15)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#6366f1' },
+                        { label: '5yr', data: fiveYr, borderColor: '#4ade80', backgroundColor: 'transparent', borderWidth: 1.5, borderDash: [5, 3], pointRadius: 3, pointBackgroundColor: '#4ade80' },
+                        { label: '1yr', data: oneYr, borderColor: '#f59e0b', backgroundColor: 'transparent', borderWidth: 1.5, borderDash: [5, 3], pointRadius: 3, pointBackgroundColor: '#f59e0b' },
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { r: { min: 0, max: 10, ticks: { stepSize: 2, color: 'rgba(255,255,255,0.3)', backdropColor: 'transparent' }, grid: { color: 'rgba(255,255,255,0.08)' }, pointLabels: { color: 'rgba(255,255,255,0.7)', font: { size: 11 } } } },
+                    plugins: { legend: { labels: { color: 'rgba(255,255,255,0.6)', boxWidth: 12, font: { size: 11 } } } }
+                }
+            });
         }
 
         function renderAnalyzerOverview(d) {
@@ -5064,8 +5239,10 @@
                 localStorage.setItem('analyzerLastTicker', ticker);
 
                 const hasValuation = d.valuation && (d.valuation.dcf || d.valuation.graham || d.valuation.relative);
+                _invtScoreLoaded = false;
                 const tabs = [
                     {id: 'overview', label: 'Overview'},
+                    {id: 'invtScore', label: 'InvT Score'},
                     {id: 'dcf', label: 'DCF Model'},
                     {id: 'graham', label: 'Graham'},
                     {id: 'relative', label: 'Relative'},
@@ -5084,6 +5261,7 @@
 
                 // Sub-views
                 html += `<div id="av-overview" class="analyzer-subview active">${renderAnalyzerOverview(d)}</div>`;
+                html += `<div id="av-invtScore" class="analyzer-subview"><div id="invt-score-content" style="padding:20px; text-align:center; color:var(--text-dim);">Loading InvT Score...</div></div>`;
                 html += `<div id="av-dcf" class="analyzer-subview">${renderAnalyzerDcf(d)}</div>`;
                 html += `<div id="av-graham" class="analyzer-subview">${renderAnalyzerGraham(d)}</div>`;
                 html += `<div id="av-relative" class="analyzer-subview">${renderAnalyzerRelative(d)}</div>`;
