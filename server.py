@@ -1509,6 +1509,13 @@ def api_super_investor_activity(investor_key):
     for ticker, h in previous.items():
         if ticker not in current:
             sells.append({"ticker": ticker, "name": h.get("name", ""), "shares": h["shares"], "value": h["value"]})
+    # Build per-ticker lookup for inline activity badges
+    by_ticker = {}
+    for b in buys: by_ticker[b["ticker"]] = {"type": "new"}
+    for s in sells: by_ticker[s["ticker"]] = {"type": "sold"}
+    for i in increased: by_ticker[i["ticker"]] = {"type": "increased", "changePct": i["changePct"]}
+    for d in decreased: by_ticker[d["ticker"]] = {"type": "decreased", "changePct": d["changePct"]}
+
     return jsonify({
         "currentQuarter": quarters[0].get("quarter", ""),
         "previousQuarter": quarters[1].get("quarter", ""),
@@ -1518,7 +1525,44 @@ def api_super_investor_activity(investor_key):
         "decreased": sorted(decreased, key=lambda x: abs(x["changePct"]), reverse=True),
         "buysCount": len(buys),
         "sellsCount": len(sells),
+        "byTicker": by_ticker,
     })
+
+
+@app.route("/api/super-investors/prices", methods=["POST"])
+def api_super_investor_prices():
+    """Fetch current prices for a list of tickers (max 50)."""
+    body = request.get_json(force=True) or {}
+    tickers = body.get("tickers", [])[:50]
+    if not tickers:
+        return jsonify({"prices": {}})
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(fetch_ticker_data, tickers))
+    prices = {}
+    for ticker, data in zip(tickers, results):
+        if data and data.get("price"):
+            prices[ticker] = {"price": data["price"], "changePercent": data.get("changePercent", 0)}
+    return jsonify({"prices": prices})
+
+
+@app.route("/api/super-investors/holding-history/<investor_key>/<ticker>")
+def api_super_investor_holding_history(investor_key, ticker):
+    """Return a holding's value/shares across all historical quarters."""
+    hist = _13f_history.get(investor_key)
+    if not hist:
+        return jsonify({"ticker": ticker, "history": []})
+    history = []
+    for q in hist.get("quarters", []):
+        for h in q.get("holdings", []):
+            if h.get("ticker") == ticker:
+                history.append({
+                    "quarter": q.get("quarter", ""),
+                    "value": h.get("value", 0),
+                    "shares": h.get("shares", 0),
+                    "pctPortfolio": h.get("pctPortfolio", 0),
+                })
+                break
+    return jsonify({"ticker": ticker, "history": history})
 
 
 # ── Projections & Risk Scenarios ────────────────────────────────────────
