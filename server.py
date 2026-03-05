@@ -1638,6 +1638,14 @@ def _fmp_get(endpoint, **params):
         return None
 
 
+def _fetch_fmp_dcf(symbol):
+    """Fetch FMP's own DCF intrinsic value as an external benchmark."""
+    data = _fmp_get("discounted-cash-flow", symbol=symbol)
+    if data and isinstance(data, list) and len(data) > 0:
+        return round(data[0].get("dcf", 0), 2)
+    return None
+
+
 def _fetch_fred_aaa_yield():
     """Fetch latest AAA corporate bond yield from FRED (no API key needed).
     Returns (value, date_str) e.g. (5.30, '2026-02-01').
@@ -2282,13 +2290,13 @@ def compute_valuation_summary(dcf, graham, relative, dcf_scenarios, info):
         rev_growth = (info.get("revenueGrowth") or 0) * 100
         div_yield = info.get("dividendYield") or 0
 
-        # Categorize
-        if pe > 25 and rev_growth > 15:
+        # Categorize stock to assign model weights
+        if pe > 22 and rev_growth > 12:
             category = "Growth"
-            weights = {"dcf": 0.35, "graham": 0.15, "relative": 0.10, "dcfScenarios": 0.40}
-        elif pe > 0 and pe < 18 and div_yield > 0.01:
+            weights = {"dcf": 0.30, "graham": 0.10, "relative": 0.10, "dcfScenarios": 0.50}
+        elif (pe > 0 and pe < 24 and div_yield > 1.5) or (pe > 0 and pe < 16):
             category = "Value"
-            weights = {"dcf": 0.15, "graham": 0.25, "relative": 0.30, "dcfScenarios": 0.30}
+            weights = {"dcf": 0.15, "graham": 0.30, "relative": 0.25, "dcfScenarios": 0.30}
         else:
             category = "Blend"
             weights = {"dcf": 0.25, "graham": 0.20, "relative": 0.20, "dcfScenarios": 0.35}
@@ -2510,12 +2518,17 @@ def api_stock_analyzer(ticker):
         # Fetch live AAA yield from FRED for Graham model
         aaa_yield_live, aaa_date = _fetch_fred_aaa_yield()
 
-        # Fetch Finviz peer comparison in background thread
+        # Fetch Finviz peers and FMP DCF benchmark in background threads
         peer_result = [None]
+        fmp_dcf_result = [None]
         def _bg_peers():
             peer_result[0] = _fetch_peer_comparison(ticker)
+        def _bg_fmp_dcf():
+            fmp_dcf_result[0] = _fetch_fmp_dcf(ticker)
         peer_thread = threading.Thread(target=_bg_peers)
+        fmp_dcf_thread = threading.Thread(target=_bg_fmp_dcf)
         peer_thread.start()
+        fmp_dcf_thread.start()
 
         # Valuation models (run while peers fetch in background)
         dcf = compute_dcf(info, income, balance, cashflow)
@@ -2524,8 +2537,9 @@ def api_stock_analyzer(ticker):
         dcf_scenarios = compute_dcf_scenarios(info, income, balance, cashflow)
         summary = compute_valuation_summary(dcf, graham, relative, dcf_scenarios, info)
 
-        # Wait for peers (max 10s)
+        # Wait for peers and FMP DCF (max 10s)
         peer_thread.join(timeout=10)
+        fmp_dcf_thread.join(timeout=5)
         if relative and peer_result[0]:
             relative["peerComparison"] = peer_result[0]
 
@@ -2535,6 +2549,13 @@ def api_stock_analyzer(ticker):
             "relative": relative,
             "dcfScenarios": dcf_scenarios,
             "summary": summary,
+        }
+        result["benchmarks"] = {
+            "fmpDcf": fmp_dcf_result[0],
+            "analystMean": info.get("targetMeanPrice", 0),
+            "analystHigh": info.get("targetHighPrice", 0),
+            "analystLow": info.get("targetLowPrice", 0),
+            "analystCount": info.get("numberOfAnalystOpinions", 0),
         }
 
         # Persist to file and memory cache

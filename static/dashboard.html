@@ -4706,57 +4706,137 @@
             return html;
         }
 
+        function _ivNumberLine(points, minVal, maxVal) {
+            // Render a horizontal number line with labeled markers
+            const range = maxVal - minVal;
+            if (range <= 0) return '';
+            let html = '<div style="position:relative; height:40px; margin:16px 0 28px 0;">';
+            // Base line
+            html += '<div style="position:absolute; top:18px; left:0; right:0; height:2px; background:var(--border);"></div>';
+            for (const p of points) {
+                if (!p.value || p.value <= 0) continue;
+                const pct = Math.max(0, Math.min(100, ((p.value - minVal) / range) * 100));
+                html += `<div style="position:absolute; left:${pct}%; transform:translateX(-50%); text-align:center;">
+                    <div style="width:3px; height:14px; background:${p.color}; margin:0 auto; border-radius:2px; margin-top:12px;"></div>
+                    <div style="font-size:0.65rem; color:${p.color}; white-space:nowrap; margin-top:2px; font-weight:600;">${p.label}</div>
+                    <div style="font-size:0.6rem; color:var(--text-dim); white-space:nowrap;">${formatMoney(p.value)}</div>
+                </div>`;
+            }
+            html += '</div>';
+            return html;
+        }
+
         function renderAnalyzerSummary(d) {
             const v = d.valuation || {};
             const s = v.summary;
             if (!s) return '<p style="color: var(--text-dim); padding: 20px;">No valuation models produced valid results.</p>';
 
-            // Model cards
+            const price = d.price || 0;
+
+            // 1. Result banner at top
+            let html = _modelResultBanner({
+                id: 'summary', label: 'INVT Valuation', iv: s.compositeIv, mosIv: s.marginOfSafetyIv,
+                price: price, upside: s.upside, signal: s.signal
+            });
+
+            // 2. Category + weight explanation
+            const catExplain = {
+                'Growth': 'Growth stocks weight DCF Scenarios (50%) and DCF (30%) heavily — forward-looking cash flow projections best capture growth potential.',
+                'Value': 'Value stocks weight Graham (30%) and Relative (25%) heavily — earnings-based and peer comparison models are most reliable for stable earners.',
+                'Blend': 'Blend stocks use balanced weights across all models, with DCF Scenarios slightly favored (35%).',
+            };
+            html += `<div class="valuation-card" style="text-align:center; padding:12px 24px;">
+                <span style="font-size:0.8rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px;">Stock Category: </span>
+                <strong style="color:var(--text); font-size:0.9rem;">${s.category}</strong>
+                <div style="font-size:0.75rem; color:var(--text-dim); margin-top:6px;">${catExplain[s.category] || ''}</div>
+            </div>`;
+
+            // 3. Model comparison table
             const models = [
-                {key: 'dcf', name: 'DCF Model', data: v.dcf},
-                {key: 'graham', name: 'Graham Formula', data: v.graham},
-                {key: 'relative', name: 'Relative Valuation', data: v.relative},
+                {key: 'dcf', name: 'DCF', data: v.dcf},
+                {key: 'graham', name: 'Graham', data: v.graham},
+                {key: 'relative', name: 'Relative', data: v.relative},
                 {key: 'dcfScenarios', name: 'DCF Scenarios', data: v.dcfScenarios},
             ];
-            let cardsHtml = '<div class="iv-comparison">';
-            for (const m of models) {
-                if (!m.data) {
-                    cardsHtml += `<div class="iv-model-card" style="opacity:0.4;">
-                        <div class="model-name">${m.name}</div>
-                        <div class="model-iv" style="color: var(--text-dim);">N/A</div>
-                    </div>`;
-                    continue;
-                }
-                const up = m.data.upside;
-                const upColor = up >= 0 ? '#22c55e' : '#ef4444';
-                const weight = s.weights[m.key] ? (s.weights[m.key] * 100).toFixed(0) + '%' : '—';
-                cardsHtml += `<div class="iv-model-card">
-                    <div class="model-name">${m.name}</div>
-                    <div class="model-iv" style="color: var(--text);">${formatMoney(m.data.ivPerShare)}</div>
-                    <div class="model-upside" style="color: ${upColor};">${up >= 0 ? '+' : ''}${up}% upside</div>
-                    <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 6px;">Weight: ${weight}</div>
-                </div>`;
-            }
-            cardsHtml += '</div>';
-
-            // Signal
-            const sc = signalColor(s.signal);
-            const compUpColor = s.upside >= 0 ? 'green' : 'red';
-
-            return `
-                <div class="valuation-card" style="text-align: center; margin-bottom: 20px;">
-                    <div style="font-size: 0.8rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">
-                        Stock Category: <strong style="color: var(--text);">${s.category}</strong>
-                    </div>
-                    <span class="signal-badge" style="background:${sc.bg}; color:${sc.fg};">${s.signal}</span>
+            html += `<div class="valuation-card">
+                <div class="valuation-card-title">Model Comparison</div>
+                <table class="fcf-table" style="font-size:0.85rem;">
+                    <thead><tr>
+                        <th></th>
+                        ${models.map(m => `<th style="text-align:center;">${m.name}</th>`).join('')}
+                    </tr></thead>
+                    <tbody>
+                        <tr><td style="color:var(--text-dim);">IV / Share</td>${models.map(m => {
+                            if (!m.data) return '<td style="text-align:center; color:var(--text-dim);">N/A</td>';
+                            return `<td style="text-align:center; font-weight:700;">${formatMoney(m.data.ivPerShare)}</td>`;
+                        }).join('')}</tr>
+                        <tr><td style="color:var(--text-dim);">Upside</td>${models.map(m => {
+                            if (!m.data) return '<td style="text-align:center; color:var(--text-dim);">—</td>';
+                            const up = m.data.upside;
+                            const c = up >= 0 ? '#22c55e' : '#ef4444';
+                            return `<td style="text-align:center; color:${c};">${up >= 0 ? '+' : ''}${up}%</td>`;
+                        }).join('')}</tr>
+                        <tr><td style="color:var(--text-dim);">Weight</td>${models.map(m => {
+                            const w = s.weights[m.key] ? (s.weights[m.key] * 100).toFixed(0) + '%' : '—';
+                            return `<td style="text-align:center;">${w}</td>`;
+                        }).join('')}</tr>
+                        <tr><td style="color:var(--text-dim);">Signal</td>${models.map(m => {
+                            if (!m.data) return '<td style="text-align:center; color:var(--text-dim);">—</td>';
+                            const sc = signalColor(m.data.signal || '');
+                            return `<td style="text-align:center;"><span style="background:${sc.bg}; color:${sc.fg}; font-size:0.72rem; padding:2px 8px; border-radius:6px;">${m.data.signal || '—'}</span></td>`;
+                        }).join('')}</tr>
+                    </tbody>
+                </table>
+                <div style="display:grid; grid-template-columns:repeat(${models.filter(m=>m.data).length}, 1fr); gap:12px; margin-top:12px;">
+                    ${models.filter(m => m.data).map(m => `<div>${_e2ValueBar(m.data.ivPerShare, price)}</div>`).join('')}
                 </div>
-                ${cardsHtml}
-                ${ivResultBox([
-                    {label: 'Composite IV', value: formatMoney(s.compositeIv)},
-                    {label: 'MoS IV (30%)', value: formatMoney(s.marginOfSafetyIv)},
-                    {label: 'Current Price', value: formatMoney(d.price)},
-                    {label: 'Upside', value: (s.upside >= 0 ? '+' : '') + s.upside + '%', colorClass: compUpColor},
-                ])}`;
+            </div>`;
+
+            // 4. External benchmarks
+            const bm = d.benchmarks || {};
+            const fmpDcf = bm.fmpDcf || 0;
+            const analystMean = bm.analystMean || d.targetMeanPrice || 0;
+            const analystHigh = bm.analystHigh || d.targetHighPrice || 0;
+            const analystLow = bm.analystLow || d.targetLowPrice || 0;
+            const analystCount = bm.analystCount || d.numberOfAnalysts || 0;
+
+            // Number line points
+            const nlPoints = [
+                {value: s.compositeIv, label: 'Our IV', color: 'var(--accent)'},
+                {value: price, label: 'Price', color: '#94a3b8'},
+            ];
+            if (fmpDcf > 0) nlPoints.push({value: fmpDcf, label: 'FMP DCF', color: '#f59e0b'});
+            if (analystMean > 0) nlPoints.push({value: analystMean, label: 'Analyst', color: '#22d3ee'});
+            const allVals = nlPoints.map(p => p.value).filter(v => v > 0);
+            if (analystLow > 0) allVals.push(analystLow);
+            if (analystHigh > 0) allVals.push(analystHigh);
+            const nlMin = Math.min(...allVals) * 0.9;
+            const nlMax = Math.max(...allVals) * 1.05;
+
+            html += `<div class="valuation-card">
+                <div class="valuation-card-title">External Benchmarks</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:0.85rem; margin-bottom:8px;">
+                    <div>
+                        <span style="color:var(--text-dim);">FMP DCF Fair Value</span>
+                        <span style="float:right; font-weight:600; color:#f59e0b;">${fmpDcf > 0 ? formatMoney(fmpDcf) : 'N/A'}</span>
+                    </div>
+                    <div>
+                        <span style="color:var(--text-dim);">Analyst Mean Target</span>
+                        <span style="float:right; font-weight:600; color:#22d3ee;">${analystMean > 0 ? formatMoney(analystMean) : 'N/A'}${analystCount > 0 ? ` <span style="font-size:0.72rem; color:var(--text-dim);">(${analystCount} analysts)</span>` : ''}</span>
+                    </div>
+                    <div>
+                        <span style="color:var(--text-dim);">Analyst Range</span>
+                        <span style="float:right; color:var(--text);">${analystLow > 0 ? formatMoney(analystLow) + ' — ' + formatMoney(analystHigh) : 'N/A'}</span>
+                    </div>
+                    <div>
+                        <span style="color:var(--text-dim);">Our Composite IV</span>
+                        <span style="float:right; font-weight:600; color:var(--accent);">${formatMoney(s.compositeIv)}</span>
+                    </div>
+                </div>
+                ${_ivNumberLine(nlPoints, nlMin, nlMax)}
+            </div>`;
+
+            return html;
         }
 
         async function analyzeStock(refresh = true) {
