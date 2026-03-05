@@ -3900,6 +3900,79 @@
             };
             const explainEl = document.getElementById('summary-cat-explain');
             if (explainEl) explainEl.textContent = catExplain[cat] || '';
+
+            // Update InvT Composite IV in benchmarks card
+            const compositeEl = document.getElementById('summary-composite-iv');
+            if (compositeEl) compositeEl.textContent = formatMoney(composite);
+
+            // Re-render number line with updated InvT IV
+            const nlContainer = document.getElementById('summary-number-line');
+            if (nlContainer) {
+                const bm = _analyzerData.benchmarks || {};
+                const fmpDcf = bm.fmpDcf || 0;
+                const analystMean = bm.analystMean || _analyzerData.targetMeanPrice || 0;
+                const analystLow = bm.analystLow || _analyzerData.targetLowPrice || 0;
+                const analystHigh = bm.analystHigh || _analyzerData.targetHighPrice || 0;
+                const fmpGraham = bm.fmpGrahamNumber || 0;
+                const nlPoints = [
+                    {value: composite, label: 'InvT IV', color: 'var(--accent)'},
+                    {value: price, label: 'Price', color: '#94a3b8'},
+                ];
+                if (fmpDcf > 0) nlPoints.push({value: fmpDcf, label: 'FMP DCF', color: '#f59e0b'});
+                if (fmpGraham > 0) nlPoints.push({value: fmpGraham, label: 'Graham #', color: '#a78bfa'});
+                if (analystMean > 0) nlPoints.push({value: analystMean, label: 'Analyst', color: '#22d3ee'});
+                const allVals = nlPoints.map(p => p.value).filter(v => v > 0);
+                if (analystLow > 0) allVals.push(analystLow);
+                if (analystHigh > 0) allVals.push(analystHigh);
+                const nlMin = Math.min(...allVals) * 0.9;
+                const nlMax = Math.max(...allVals) * 1.05;
+                nlContainer.innerHTML = _ivNumberLine(nlPoints, nlMin, nlMax);
+            }
+        }
+
+        async function saveCompositeIvToList() {
+            if (!_analyzerData) return;
+            const d = _analyzerData;
+            const s = d.valuation?.summary;
+            if (!s) return;
+            // Read current composite IV from banner (may have been recalculated via category change)
+            const bannerIv = document.getElementById('summary-banner-iv');
+            const compositeIv = bannerIv ? parseFloat(bannerIv.textContent.replace(/[$,]/g, '')) : s.compositeIv;
+            const cat = document.getElementById('summary-category')?.value || s.category;
+            const bannerSig = document.querySelector('#av-summary .model-result-signal span:last-child');
+            const signal = bannerSig ? bannerSig.textContent : s.signal;
+
+            const body = {
+                ticker: d.ticker || d.symbol || '',
+                companyName: d.shortName || d.companyName || '',
+                currentPrice: d.price || 0,
+                intrinsicValue: compositeIv,
+                targetPrice: d.targetMeanPrice || 0,
+                week52Low: d.fiftyTwoWeekLow || 0,
+                week52High: d.fiftyTwoWeekHigh || 0,
+                sector: d.sector || '',
+                category: cat,
+                peRatio: d.trailingPE || 0,
+                eps: d.trailingEps || 0,
+                annualDividend: d.dividendRate || 0,
+                dividendYield: d.dividendYield || 0,
+                signal: signal,
+            };
+            try {
+                const resp = await fetch('/api/intrinsic-values/upsert', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)
+                });
+                const result = await resp.json();
+                if (result.ok) {
+                    showSaveToast(`${result.ticker} ${result.action} in IV list`);
+                } else {
+                    showSaveToast('Error saving IV', true);
+                }
+            } catch(e) {
+                console.error(e);
+                showSaveToast('Error saving IV', true);
+            }
         }
 
         function rebuildFcfTable() {
@@ -4785,11 +4858,14 @@
 
             const price = d.price || 0;
 
-            // 1. Result banner at top
+            // 1. Result banner at top + save button
             let html = _modelResultBanner({
                 id: 'summary', label: 'INVT Valuation', iv: s.compositeIv, mosIv: s.marginOfSafetyIv,
                 price: price, upside: s.upside, signal: s.signal
             });
+            html += `<div style="text-align:right; margin:-8px 0 4px 0;">
+                <button onclick="saveCompositeIvToList()" class="btn btn-primary" style="font-size:0.78rem; padding:4px 16px;">Save to IV List</button>
+            </div>`;
 
             // 2. Category + weight explanation (editable dropdown)
             const catExplain = {
@@ -4851,6 +4927,14 @@
             // 4. External benchmarks
             const bm = d.benchmarks || {};
             const fmpDcf = bm.fmpDcf || 0;
+            const fmpGraham = bm.fmpGrahamNumber || 0;
+            const fmpRating = bm.fmpRating || '';
+            const fmpRatingScore = bm.fmpRatingScore || 0;
+            const fmpAltmanZ = bm.fmpAltmanZ || 0;
+            const fmpPiotroski = bm.fmpPiotroski || 0;
+            const fmpEarningsYield = bm.fmpEarningsYield || 0;
+            const fmpFcfYield = bm.fmpFcfYield || 0;
+            const fmpRoic = bm.fmpRoic || 0;
             const analystMean = bm.analystMean || d.targetMeanPrice || 0;
             const analystHigh = bm.analystHigh || d.targetHighPrice || 0;
             const analystLow = bm.analystLow || d.targetLowPrice || 0;
@@ -4862,6 +4946,7 @@
                 {value: price, label: 'Price', color: '#94a3b8'},
             ];
             if (fmpDcf > 0) nlPoints.push({value: fmpDcf, label: 'FMP DCF', color: '#f59e0b'});
+            if (fmpGraham > 0) nlPoints.push({value: fmpGraham, label: 'Graham #', color: '#a78bfa'});
             if (analystMean > 0) nlPoints.push({value: analystMean, label: 'Analyst', color: '#22d3ee'});
             const allVals = nlPoints.map(p => p.value).filter(v => v > 0);
             if (analystLow > 0) allVals.push(analystLow);
@@ -4869,27 +4954,70 @@
             const nlMin = Math.min(...allVals) * 0.9;
             const nlMax = Math.max(...allVals) * 1.05;
 
+            // Rating badge color
+            const ratingColors = {S:'#4ade80', A:'#22d3ee', B:'#60a5fa', C:'#f59e0b', D:'#f87171', F:'#ef4444'};
+            const ratingColor = ratingColors[fmpRating] || '#64748b';
+
+            // Altman Z interpretation
+            const zLabel = fmpAltmanZ > 2.99 ? 'Safe' : fmpAltmanZ > 1.81 ? 'Grey Zone' : fmpAltmanZ > 0 ? 'Distress' : '';
+            const zColor = fmpAltmanZ > 2.99 ? '#4ade80' : fmpAltmanZ > 1.81 ? '#f59e0b' : '#f87171';
+
+            // Piotroski interpretation
+            const pColor = fmpPiotroski >= 7 ? '#4ade80' : fmpPiotroski >= 4 ? '#f59e0b' : '#f87171';
+
             html += `<div class="valuation-card">
-                <div class="valuation-card-title">External Benchmarks</div>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:0.85rem; margin-bottom:8px;">
+                <div class="valuation-card-title">External Benchmarks & Reference Data</div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; font-size:0.85rem; margin-bottom:12px;">
+                    <div>
+                        <span style="color:var(--text-dim);">InvT Composite IV</span>
+                        <span id="summary-composite-iv" style="float:right; font-weight:600; color:var(--accent);">${formatMoney(s.compositeIv)}</span>
+                    </div>
                     <div>
                         <span style="color:var(--text-dim);">FMP DCF Fair Value</span>
                         <span style="float:right; font-weight:600; color:#f59e0b;">${fmpDcf > 0 ? formatMoney(fmpDcf) : 'N/A'}</span>
                     </div>
                     <div>
+                        <span style="color:var(--text-dim);">FMP Graham Number</span>
+                        <span style="float:right; font-weight:600; color:#a78bfa;">${fmpGraham > 0 ? formatMoney(fmpGraham) : 'N/A'}</span>
+                    </div>
+                    <div>
                         <span style="color:var(--text-dim);">Analyst Mean Target</span>
-                        <span style="float:right; font-weight:600; color:#22d3ee;">${analystMean > 0 ? formatMoney(analystMean) : 'N/A'}${analystCount > 0 ? ` <span style="font-size:0.72rem; color:var(--text-dim);">(${analystCount} analysts)</span>` : ''}</span>
+                        <span style="float:right; font-weight:600; color:#22d3ee;">${analystMean > 0 ? formatMoney(analystMean) : 'N/A'}${analystCount > 0 ? ` <span style="font-size:0.72rem; color:var(--text-dim);">(${analystCount})</span>` : ''}</span>
                     </div>
                     <div>
                         <span style="color:var(--text-dim);">Analyst Range</span>
                         <span style="float:right; color:var(--text);">${analystLow > 0 ? formatMoney(analystLow) + ' — ' + formatMoney(analystHigh) : 'N/A'}</span>
                     </div>
                     <div>
-                        <span style="color:var(--text-dim);">InvT Composite IV</span>
-                        <span style="float:right; font-weight:600; color:var(--accent);">${formatMoney(s.compositeIv)}</span>
+                        <span style="color:var(--text-dim);">FMP Rating</span>
+                        <span style="float:right;">${fmpRating ? `<span style="background:${ratingColor}20; color:${ratingColor}; padding:1px 10px; border-radius:6px; font-weight:700; font-size:0.82rem;">${fmpRating}</span> <span style="color:var(--text-dim); font-size:0.72rem;">(${fmpRatingScore}/5)</span>` : 'N/A'}</span>
                     </div>
                 </div>
-                ${_ivNumberLine(nlPoints, nlMin, nlMax)}
+
+                <div id="summary-number-line">${_ivNumberLine(nlPoints, nlMin, nlMax)}</div>
+
+                <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-top:8px;">
+                    <div style="text-align:center; padding:8px; background:var(--bg); border-radius:8px;">
+                        <div style="font-size:0.68rem; color:var(--text-dim); text-transform:uppercase;">Altman Z</div>
+                        <div style="font-size:1.1rem; font-weight:700; color:${zColor};">${fmpAltmanZ > 0 ? fmpAltmanZ.toFixed(2) : 'N/A'}</div>
+                        ${zLabel ? `<div style="font-size:0.62rem; color:${zColor};">${zLabel}</div>` : ''}
+                    </div>
+                    <div style="text-align:center; padding:8px; background:var(--bg); border-radius:8px;">
+                        <div style="font-size:0.68rem; color:var(--text-dim); text-transform:uppercase;">Piotroski</div>
+                        <div style="font-size:1.1rem; font-weight:700; color:${pColor};">${fmpPiotroski > 0 ? fmpPiotroski + '/9' : 'N/A'}</div>
+                        ${fmpPiotroski > 0 ? `<div style="font-size:0.62rem; color:${pColor};">${fmpPiotroski >= 7 ? 'Strong' : fmpPiotroski >= 4 ? 'Neutral' : 'Weak'}</div>` : ''}
+                    </div>
+                    <div style="text-align:center; padding:8px; background:var(--bg); border-radius:8px;">
+                        <div style="font-size:0.68rem; color:var(--text-dim); text-transform:uppercase;">Earnings Yield</div>
+                        <div style="font-size:1.1rem; font-weight:700; color:var(--text);">${fmpEarningsYield ? fmpEarningsYield.toFixed(1) + '%' : 'N/A'}</div>
+                        ${fmpFcfYield ? `<div style="font-size:0.62rem; color:var(--text-dim);">FCF Yield: ${fmpFcfYield.toFixed(1)}%</div>` : ''}
+                    </div>
+                    <div style="text-align:center; padding:8px; background:var(--bg); border-radius:8px;">
+                        <div style="font-size:0.68rem; color:var(--text-dim); text-transform:uppercase;">ROIC</div>
+                        <div style="font-size:1.1rem; font-weight:700; color:${fmpRoic > 15 ? '#4ade80' : fmpRoic > 8 ? '#f59e0b' : '#f87171'};">${fmpRoic ? fmpRoic.toFixed(1) + '%' : 'N/A'}</div>
+                    </div>
+                </div>
             </div>`;
 
             return html;
