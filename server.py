@@ -1816,8 +1816,8 @@ SUPER_INVESTORS = {
     "Ray Dalio":          {"cik": "0001350694", "fund": "Bridgewater Associates"},
     "Seth Klarman":       {"cik": "0001061768", "fund": "Baupost Group"},
     "David Tepper":       {"cik": "0001656456", "fund": "Appaloosa Management"},
-    "Howard Marks":       {"cik": "0001141681", "fund": "Oaktree Capital"},
-    "Terry Smith":        {"cik": "0001594477", "fund": "Fundsmith"},
+    "Howard Marks":       {"cik": "0000949509", "fund": "Oaktree Capital Management"},
+    "Terry Smith":        {"cik": "0001569205", "fund": "Fundsmith LLP"},
     "Li Lu":              {"cik": "0001709323", "fund": "Himalaya Capital"},
 }
 
@@ -1910,57 +1910,54 @@ def _parse_13f_xml(xml_string):
     return list(by_cusip.values())
 
 
+def _openfigi_batch(cusip_list, id_type="ID_CUSIP"):
+    """Resolve a list of CUSIPs/CINS via OpenFIGI with rate limiting. Returns {cusip: ticker}."""
+    ticker_map = {}
+    batch_count = 0
+    for i in range(0, len(cusip_list), 10):
+        batch = cusip_list[i:i+10]
+        body = [{"idType": id_type, "idValue": c} for c in batch]
+        for attempt in range(3):
+            try:
+                r = http_requests.post(
+                    "https://api.openfigi.com/v3/mapping",
+                    json=body,
+                    headers={"Content-Type": "application/json"},
+                    timeout=30,
+                )
+                if r.status_code == 200:
+                    results = r.json()
+                    for j, item in enumerate(results):
+                        if isinstance(item, dict) and "data" in item and item["data"]:
+                            entries = item["data"]
+                            us_entry = next((e for e in entries if e.get("exchCode") == "US"), None)
+                            chosen = us_entry or entries[0]
+                            ticker_map[batch[j]] = chosen.get("ticker", "")
+                    break
+                elif r.status_code == 429:
+                    time.sleep(30)  # wait for rate limit reset
+                else:
+                    break
+            except Exception:
+                break
+        batch_count += 1
+        # Rate limit: 25 req/min for unauthenticated. Pause every 20 batches.
+        if batch_count % 20 == 0:
+            time.sleep(30)
+    return ticker_map
+
+
 def _resolve_cusips_to_tickers(holdings):
-    """Batch resolve CUSIPs to tickers via OpenFIGI (free, no key, 100/batch)."""
+    """Batch resolve CUSIPs to tickers via OpenFIGI (free, no key, 10/batch, 25 req/min)."""
     cusips = list(dict.fromkeys(h["cusip"] for h in holdings if h.get("cusip")))
     if not cusips:
         return holdings
-    ticker_map = {}
-    for i in range(0, len(cusips), 10):
-        batch = cusips[i:i+10]
-        body = [{"idType": "ID_CUSIP", "idValue": c} for c in batch]
-        try:
-            r = http_requests.post(
-                "https://api.openfigi.com/v3/mapping",
-                json=body,
-                headers={"Content-Type": "application/json"},
-                timeout=30,
-            )
-            if r.status_code == 200:
-                results = r.json()
-                for j, item in enumerate(results):
-                    if isinstance(item, dict) and "data" in item and item["data"]:
-                        # Prefer US composite exchange ticker
-                        entries = item["data"]
-                        us_entry = next((e for e in entries if e.get("exchCode") == "US"), None)
-                        chosen = us_entry or entries[0]
-                        ticker_map[batch[j]] = chosen.get("ticker", "")
-            else:
-                app.logger.warning(f"[13F] OpenFIGI status {r.status_code}: {r.text[:200]}")
-        except Exception as e:
-            app.logger.error(f"[13F] OpenFIGI failed: {e}")
-    # Retry unresolved international CUSIPs (CINS codes starting with letter) using ID_CINS
+    ticker_map = _openfigi_batch(cusips, "ID_CUSIP")
+    # Retry unresolved international CUSIPs (CINS codes starting with letter)
     unresolved_cins = [c for c in cusips if c not in ticker_map and c[0:1].isalpha()]
-    for i in range(0, len(unresolved_cins), 10):
-        batch = unresolved_cins[i:i+10]
-        body = [{"idType": "ID_CINS", "idValue": c} for c in batch]
-        try:
-            r = http_requests.post(
-                "https://api.openfigi.com/v3/mapping",
-                json=body,
-                headers={"Content-Type": "application/json"},
-                timeout=30,
-            )
-            if r.status_code == 200:
-                results = r.json()
-                for j, item in enumerate(results):
-                    if isinstance(item, dict) and "data" in item and item["data"]:
-                        entries = item["data"]
-                        us_entry = next((e for e in entries if e.get("exchCode") == "US"), None)
-                        chosen = us_entry or entries[0]
-                        ticker_map[batch[j]] = chosen.get("ticker", "")
-        except Exception:
-            pass
+    if unresolved_cins:
+        cins_map = _openfigi_batch(unresolved_cins, "ID_CINS")
+        ticker_map.update(cins_map)
     for h in holdings:
         h["ticker"] = ticker_map.get(h["cusip"], h["cusip"])
     return holdings

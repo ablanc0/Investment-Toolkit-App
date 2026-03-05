@@ -1648,11 +1648,6 @@
                 <p id="siPopularMeta" style="color: var(--text-dim); font-size: 0.82rem; margin-bottom: 12px;"></p>
                 <div id="siMostPopularContent"><p style="color: var(--text-dim); padding: 20px; text-align: center;">Click "Refresh All" to load 13F data from SEC EDGAR, or data will load from cache if available.</p></div>
             </div>
-            <div class="card" id="siOverlapCard" style="display: none;">
-                <div class="card-title">Overlap Analysis</div>
-                <p style="color: var(--text-dim); font-size: 0.82rem; margin-bottom: 12px;">Tickers held by 2+ of the investors loaded above.</p>
-                <div id="siOverlapContent"></div>
-            </div>
         </div>
 
         <!-- Projections Tab -->
@@ -6124,41 +6119,10 @@
                             // Refresh dropdown, most popular, and overlap
                             await fetchSuperInvestors();
                             await fetchMostPopular();
-                            await computeOverlap();
                         }
                     }, 2000);
                 }
             } catch(e) { console.error(e); if (progress) progress.textContent = 'Error: ' + e.message; }
-        }
-
-        async function computeOverlap() {
-            const card = document.getElementById('siOverlapCard');
-            const content = document.getElementById('siOverlapContent');
-            if (!card || !content) return;
-            try {
-                const investors = Object.keys(await fetch('/api/super-investors').then(r => r.json()).then(list => {
-                    const cached = {};
-                    list.forEach(inv => { if (inv.cached) cached[inv.key] = true; });
-                    return cached;
-                }));
-                if (investors.length < 2) { card.style.display = 'none'; return; }
-                const overlap = await fetch('/api/super-investors/overlap', {
-                    method: 'POST', headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({investors})
-                }).then(r => r.json());
-                if (!overlap.length) { card.style.display = 'none'; return; }
-                card.style.display = 'block';
-                content.innerHTML = `<div class="table-wrapper"><table style="font-size:0.82rem;">
-                    <thead><tr><th>Ticker</th><th>Company</th><th style="text-align:right;">Held By</th><th>Investors</th><th style="text-align:right;">Combined Value</th></tr></thead>
-                    <tbody>${overlap.map(o => `<tr>
-                        <td><strong>${o.ticker}</strong></td>
-                        <td style="max-width:180px; overflow:hidden; text-overflow:ellipsis;">${o.name || ''}</td>
-                        <td style="text-align:right; font-weight:700; color:var(--accent);">${o.heldByCount}</td>
-                        <td style="font-size:0.78rem; color:var(--text-dim);">${o.heldBy.join(', ')}</td>
-                        <td style="text-align:right; font-family:monospace;">$${(o.combinedValue/1e9).toFixed(1)}B</td>
-                    </tr>`).join('')}</tbody>
-                </table></div>`;
-            } catch(e) { console.error(e); card.style.display = 'none'; }
         }
 
         async function fetchMostPopular() {
