@@ -2016,10 +2016,39 @@ def _load_13f_history():
             for old, new in _RENAMED_KEYS.items():
                 if old in _13f_history and new not in _13f_history:
                     _13f_history[new] = _13f_history.pop(old)
+            _sanitize_13f_history()
             total_q = sum(len(h.get("quarters", [])) for h in _13f_history.values())
             print(f"[13F] Loaded history: {len(_13f_history)} investors, {total_q} quarters")
         except Exception:
             _13f_history = {}
+
+
+def _sanitize_13f_history():
+    """Clean up known data quality issues in historical 13F data on load."""
+    dirty = False
+    for key, hist in _13f_history.items():
+        quarters = hist.get("quarters", [])
+        if len(quarters) < 3:
+            continue
+        # Compute median holdings count and totalValue for this investor
+        counts = sorted([q.get("holdingsCount", 0) for q in quarters if q.get("holdingsCount", 0) > 0])
+        values = sorted([q.get("totalValue", 0) for q in quarters if q.get("totalValue", 0) > 0])
+        if not counts or not values:
+            continue
+        median_count = counts[len(counts) // 2]
+        median_value = values[len(values) // 2]
+        # Remove quarters that are clearly amendment filings (1-4 holdings when median is 20+)
+        # or have wildly wrong values (>100x median, i.e. not normalized)
+        original_len = len(quarters)
+        quarters[:] = [q for q in quarters
+                       if not (q.get("holdingsCount", 0) <= 4 and median_count >= 20)
+                       and not (q.get("totalValue", 0) > median_value * 100)]
+        removed = original_len - len(quarters)
+        if removed:
+            print(f"[13F] Sanitized {key}: removed {removed} bad quarter(s)")
+            dirty = True
+    if dirty:
+        _save_13f_history()
 
 
 def _get_latest_quarter(investor_key):
