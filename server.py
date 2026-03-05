@@ -1221,6 +1221,61 @@ def api_intrinsic_values_delete():
     return crud_delete("intrinsicValues", int(b.get("index", -1)))
 
 
+@app.route("/api/intrinsic-values/upsert", methods=["POST"])
+def api_intrinsic_values_upsert():
+    """Insert or update an IV entry by ticker. Used by Stock Analyzer Summary tab."""
+    b = request.get_json()
+    ticker = b.get("ticker", "").upper().strip()
+    if not ticker:
+        return jsonify({"error": "ticker required"}), 400
+
+    portfolio = load_portfolio()
+    iv_list = portfolio.get("intrinsicValues", [])
+
+    item = {
+        "ticker": ticker,
+        "companyName": b.get("companyName", ""),
+        "currentPrice": float(b.get("currentPrice", 0)),
+        "intrinsicValue": float(b.get("intrinsicValue", 0)),
+        "targetPrice": float(b.get("targetPrice", 0)),
+        "distanceFromIntrinsic": float(b.get("distanceFromIntrinsic", 0)),
+        "invtScore": b.get("invtScore", ""),
+        "week52Low": float(b.get("week52Low", 0)),
+        "week52High": float(b.get("week52High", 0)),
+        "securityType": b.get("securityType", "Stocks"),
+        "sector": b.get("sector", ""),
+        "category": b.get("category", ""),
+        "peRatio": float(b.get("peRatio", 0)),
+        "eps": float(b.get("eps", 0)),
+        "annualDividend": float(b.get("annualDividend", 0)),
+        "dividendYield": float(b.get("dividendYield", 0)),
+        "signal": b.get("signal", ""),
+        "updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+    # Compute distanceFromIntrinsic if not provided
+    if item["intrinsicValue"] > 0 and item["currentPrice"] > 0:
+        item["distanceFromIntrinsic"] = round((item["currentPrice"] / item["intrinsicValue"]) - 1, 4)
+
+    # Find existing entry by ticker
+    found = -1
+    for i, existing in enumerate(iv_list):
+        if existing.get("ticker", "").upper() == ticker:
+            found = i
+            break
+
+    if found >= 0:
+        iv_list[found] = item
+        action = "updated"
+    else:
+        iv_list.append(item)
+        action = "added"
+
+    portfolio["intrinsicValues"] = iv_list
+    save_portfolio(portfolio)
+    return jsonify({"ok": True, "action": action, "ticker": ticker})
+
+
 # ── Super Investor Buys ────────────────────────────────────────────────
 @app.route("/api/super-investor-buys")
 def api_super_investor_buys():
@@ -1636,6 +1691,46 @@ def _fmp_get(endpoint, **params):
     except Exception as e:
         print(f"[FMP] Request failed for {endpoint}: {e}")
         return None
+
+
+def _fetch_fmp_dcf(symbol):
+    """Fetch FMP's own DCF intrinsic value as an external benchmark."""
+    data = _fmp_get("discounted-cash-flow", symbol=symbol)
+    if data and isinstance(data, list) and len(data) > 0:
+        return round(data[0].get("dcf", 0), 2)
+    return None
+
+
+def _fetch_fmp_benchmarks(symbol):
+    """Fetch FMP key-metrics, ratings, and financial-scores in one call set."""
+    result = {}
+    # Key metrics → Graham Number, earnings yield, FCF yield, ROIC
+    km = _fmp_get("key-metrics", symbol=symbol, period="annual")
+    if km and isinstance(km, list) and len(km) > 0:
+        latest = km[0]
+        result["grahamNumber"] = round(latest.get("grahamNumber", 0) or 0, 2)
+        result["earningsYield"] = round((latest.get("earningsYield", 0) or 0) * 100, 2)
+        result["freeCashFlowYield"] = round((latest.get("freeCashFlowYield", 0) or 0) * 100, 2)
+        result["roic"] = round((latest.get("returnOnInvestedCapital", 0) or 0) * 100, 2)
+
+    # Ratings snapshot → overall letter grade + subscores
+    rt = _fmp_get("ratings-snapshot", symbol=symbol)
+    if rt and isinstance(rt, list) and len(rt) > 0:
+        r = rt[0]
+        result["rating"] = r.get("rating", "")
+        result["ratingScore"] = r.get("overallScore", 0)
+        result["ratingDcfScore"] = r.get("discountedCashFlowScore", 0)
+        result["ratingPeScore"] = r.get("priceToEarningsScore", 0)
+        result["ratingPbScore"] = r.get("priceToBookScore", 0)
+
+    # Financial scores → Altman Z-Score, Piotroski Score
+    fs = _fmp_get("financial-scores", symbol=symbol)
+    if fs and isinstance(fs, list) and len(fs) > 0:
+        f = fs[0]
+        result["altmanZScore"] = round(f.get("altmanZScore", 0) or 0, 2)
+        result["piotroskiScore"] = f.get("piotroskiScore", 0)
+
+    return result
 
 
 def _fetch_fred_aaa_yield():
@@ -2282,13 +2377,13 @@ def compute_valuation_summary(dcf, graham, relative, dcf_scenarios, info):
         rev_growth = (info.get("revenueGrowth") or 0) * 100
         div_yield = info.get("dividendYield") or 0
 
-        # Categorize
-        if pe > 25 and rev_growth > 15:
+        # Categorize stock to assign model weights
+        if pe > 22 and rev_growth > 12:
             category = "Growth"
-            weights = {"dcf": 0.35, "graham": 0.15, "relative": 0.10, "dcfScenarios": 0.40}
-        elif pe > 0 and pe < 18 and div_yield > 0.01:
+            weights = {"dcf": 0.30, "graham": 0.10, "relative": 0.10, "dcfScenarios": 0.50}
+        elif (pe > 0 and pe < 24 and div_yield > 1.5) or (pe > 0 and pe < 16):
             category = "Value"
-            weights = {"dcf": 0.15, "graham": 0.25, "relative": 0.30, "dcfScenarios": 0.30}
+            weights = {"dcf": 0.15, "graham": 0.30, "relative": 0.25, "dcfScenarios": 0.30}
         else:
             category = "Blend"
             weights = {"dcf": 0.25, "graham": 0.20, "relative": 0.20, "dcfScenarios": 0.35}
@@ -2510,12 +2605,22 @@ def api_stock_analyzer(ticker):
         # Fetch live AAA yield from FRED for Graham model
         aaa_yield_live, aaa_date = _fetch_fred_aaa_yield()
 
-        # Fetch Finviz peer comparison in background thread
+        # Fetch Finviz peers and FMP benchmarks in background threads
         peer_result = [None]
+        fmp_dcf_result = [None]
+        fmp_bench_result = [{}]
         def _bg_peers():
             peer_result[0] = _fetch_peer_comparison(ticker)
+        def _bg_fmp_dcf():
+            fmp_dcf_result[0] = _fetch_fmp_dcf(ticker)
+        def _bg_fmp_bench():
+            fmp_bench_result[0] = _fetch_fmp_benchmarks(ticker)
         peer_thread = threading.Thread(target=_bg_peers)
+        fmp_dcf_thread = threading.Thread(target=_bg_fmp_dcf)
+        fmp_bench_thread = threading.Thread(target=_bg_fmp_bench)
         peer_thread.start()
+        fmp_dcf_thread.start()
+        fmp_bench_thread.start()
 
         # Valuation models (run while peers fetch in background)
         dcf = compute_dcf(info, income, balance, cashflow)
@@ -2524,8 +2629,10 @@ def api_stock_analyzer(ticker):
         dcf_scenarios = compute_dcf_scenarios(info, income, balance, cashflow)
         summary = compute_valuation_summary(dcf, graham, relative, dcf_scenarios, info)
 
-        # Wait for peers (max 10s)
+        # Wait for peers and FMP benchmarks (max 10s)
         peer_thread.join(timeout=10)
+        fmp_dcf_thread.join(timeout=5)
+        fmp_bench_thread.join(timeout=8)
         if relative and peer_result[0]:
             relative["peerComparison"] = peer_result[0]
 
@@ -2535,6 +2642,25 @@ def api_stock_analyzer(ticker):
             "relative": relative,
             "dcfScenarios": dcf_scenarios,
             "summary": summary,
+        }
+        fmp_bench = fmp_bench_result[0] or {}
+        result["benchmarks"] = {
+            "fmpDcf": fmp_dcf_result[0],
+            "fmpGrahamNumber": fmp_bench.get("grahamNumber", 0),
+            "fmpRating": fmp_bench.get("rating", ""),
+            "fmpRatingScore": fmp_bench.get("ratingScore", 0),
+            "fmpRatingDcfScore": fmp_bench.get("ratingDcfScore", 0),
+            "fmpRatingPeScore": fmp_bench.get("ratingPeScore", 0),
+            "fmpRatingPbScore": fmp_bench.get("ratingPbScore", 0),
+            "fmpAltmanZ": fmp_bench.get("altmanZScore", 0),
+            "fmpPiotroski": fmp_bench.get("piotroskiScore", 0),
+            "fmpEarningsYield": fmp_bench.get("earningsYield", 0),
+            "fmpFcfYield": fmp_bench.get("freeCashFlowYield", 0),
+            "fmpRoic": fmp_bench.get("roic", 0),
+            "analystMean": info.get("targetMeanPrice", 0),
+            "analystHigh": info.get("targetHighPrice", 0),
+            "analystLow": info.get("targetLowPrice", 0),
+            "analystCount": info.get("numberOfAnalystOpinions", 0),
         }
 
         # Persist to file and memory cache

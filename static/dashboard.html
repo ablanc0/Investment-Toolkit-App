@@ -1613,7 +1613,7 @@
                     <thead><tr>
                         <th>Ticker</th><th>Company</th><th style="text-align:right;">Price</th><th style="text-align:right;">Intrinsic V.</th>
                         <th style="text-align:right;">Distance</th><th style="text-align:right;">Score</th>
-                        <th>Sector</th><th>Category</th>
+                        <th>Sector</th><th>Val. Style</th>
                         <th style="text-align:right;">Div Yield</th><th style="text-align:right;">P/E</th>
                         <th>Signal</th><th>Updated</th>
                     </tr></thead><tbody id="ivBody"></tbody>
@@ -3850,6 +3850,131 @@
             }
         }
 
+        function recalcSummaryCategory() {
+            if (!_analyzerData || !_analyzerData.valuation) return;
+            const v = _analyzerData.valuation;
+            const cat = document.getElementById('summary-category').value;
+            const weightSets = {
+                'Growth': {dcf: 0.30, graham: 0.10, relative: 0.10, dcfScenarios: 0.50},
+                'Value': {dcf: 0.15, graham: 0.30, relative: 0.25, dcfScenarios: 0.30},
+                'Blend': {dcf: 0.25, graham: 0.20, relative: 0.20, dcfScenarios: 0.35},
+            };
+            const weights = weightSets[cat] || weightSets['Blend'];
+            const models = {};
+            if (v.dcf && v.dcf.ivPerShare > 0) models.dcf = v.dcf.ivPerShare;
+            if (v.graham && v.graham.ivPerShare > 0) models.graham = v.graham.ivPerShare;
+            if (v.relative && v.relative.ivPerShare > 0) models.relative = v.relative.ivPerShare;
+            if (v.dcfScenarios && v.dcfScenarios.ivPerShare > 0) models.dcfScenarios = v.dcfScenarios.ivPerShare;
+            const totalW = Object.keys(models).reduce((s, k) => s + (weights[k] || 0), 0);
+            if (totalW <= 0) return;
+            const composite = Object.keys(models).reduce((s, k) => s + models[k] * weights[k] / totalW, 0);
+            const mosIv = composite * 0.70;
+            const price = _analyzerData.price || 0;
+            const upside = price > 0 ? ((mosIv - price) / price * 100) : 0;
+            const signal = upside > 50 ? 'Strong Buy' : upside > 20 ? 'Buy' : upside > -10 ? 'Hold' : upside > -30 ? 'Expensive' : 'Overrated';
+
+            // Update banner
+            const bIv = document.getElementById('summary-banner-iv');
+            if (bIv) bIv.textContent = formatMoney(composite);
+            const bMos = document.getElementById('summary-banner-mos');
+            if (bMos) bMos.textContent = formatMoney(mosIv);
+            const bUp = document.getElementById('summary-banner-upside');
+            if (bUp) { bUp.textContent = (upside >= 0 ? '+' : '') + upside.toFixed(1) + '%'; bUp.style.color = upside >= 0 ? '#22c55e' : '#ef4444'; }
+            const bannerSig = document.querySelector('#av-summary .model-result-signal span:last-child');
+            if (bannerSig) { const sc2 = signalColor(signal); bannerSig.textContent = signal; bannerSig.style.background = sc2.bg; bannerSig.style.color = sc2.fg; }
+
+            // Update weight row in table
+            const weightCells = document.querySelectorAll('#summary-weight-row td');
+            const modelKeys = ['dcf', 'graham', 'relative', 'dcfScenarios'];
+            if (weightCells.length > 1) {
+                for (let i = 0; i < modelKeys.length; i++) {
+                    if (weightCells[i + 1]) weightCells[i + 1].textContent = weights[modelKeys[i]] ? (weights[modelKeys[i]] * 100).toFixed(0) + '%' : '—';
+                }
+            }
+
+            // Update explanation text
+            const catExplain = {
+                'Growth': 'Growth stocks weight DCF Scenarios (50%) and DCF (30%) heavily — forward-looking cash flow projections best capture growth potential.',
+                'Value': 'Value stocks weight Graham (30%) and Relative (25%) heavily — earnings-based and peer comparison models are most reliable for stable earners.',
+                'Blend': 'Blend stocks use balanced weights across all models, with DCF Scenarios slightly favored (35%).',
+            };
+            const explainEl = document.getElementById('summary-cat-explain');
+            if (explainEl) explainEl.textContent = catExplain[cat] || '';
+
+            // Update InvT Composite IV in benchmarks card
+            const compositeEl = document.getElementById('summary-composite-iv');
+            if (compositeEl) compositeEl.textContent = formatMoney(composite);
+
+            // Re-render number line with updated InvT IV
+            const nlContainer = document.getElementById('summary-number-line');
+            if (nlContainer) {
+                const bm = _analyzerData.benchmarks || {};
+                const fmpDcf = bm.fmpDcf || 0;
+                const analystMean = bm.analystMean || _analyzerData.targetMeanPrice || 0;
+                const analystLow = bm.analystLow || _analyzerData.targetLowPrice || 0;
+                const analystHigh = bm.analystHigh || _analyzerData.targetHighPrice || 0;
+                const fmpGraham = bm.fmpGrahamNumber || 0;
+                const nlPoints = [
+                    {value: composite, label: 'InvT IV', color: 'var(--accent)'},
+                    {value: price, label: 'Price', color: '#94a3b8'},
+                ];
+                if (fmpDcf > 0) nlPoints.push({value: fmpDcf, label: 'FMP DCF', color: '#f59e0b'});
+                if (fmpGraham > 0) nlPoints.push({value: fmpGraham, label: 'Graham #', color: '#a78bfa'});
+                if (analystMean > 0) nlPoints.push({value: analystMean, label: 'Analyst', color: '#22d3ee'});
+                const allVals = nlPoints.map(p => p.value).filter(v => v > 0);
+                if (analystLow > 0) allVals.push(analystLow);
+                if (analystHigh > 0) allVals.push(analystHigh);
+                const nlMin = Math.min(...allVals) * 0.9;
+                const nlMax = Math.max(...allVals) * 1.05;
+                nlContainer.innerHTML = _ivNumberLine(nlPoints, nlMin, nlMax);
+            }
+        }
+
+        async function saveCompositeIvToList() {
+            if (!_analyzerData) return;
+            const d = _analyzerData;
+            const s = d.valuation?.summary;
+            if (!s) return;
+            // Read current composite IV from banner (may have been recalculated via category change)
+            const bannerIv = document.getElementById('summary-banner-iv');
+            const compositeIv = bannerIv ? parseFloat(bannerIv.textContent.replace(/[$,]/g, '')) : s.compositeIv;
+            const cat = document.getElementById('summary-category')?.value || s.category;
+            const bannerSig = document.querySelector('#av-summary .model-result-signal span:last-child');
+            const signal = bannerSig ? bannerSig.textContent : s.signal;
+
+            const body = {
+                ticker: d.ticker || d.symbol || '',
+                companyName: d.name || d.shortName || d.companyName || '',
+                currentPrice: d.price || 0,
+                intrinsicValue: compositeIv,
+                targetPrice: d.targetMeanPrice || 0,
+                week52Low: d.fiftyTwoWeekLow || 0,
+                week52High: d.fiftyTwoWeekHigh || 0,
+                sector: d.sector || '',
+                category: cat,
+                peRatio: d.trailingPE || 0,
+                eps: d.earningsPerShare || d.trailingEps || 0,
+                annualDividend: d.dividendRate || 0,
+                dividendYield: d.dividendYield || 0,
+                signal: signal,
+            };
+            try {
+                const resp = await fetch('/api/intrinsic-values/upsert', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)
+                });
+                const result = await resp.json();
+                if (result.ok) {
+                    showSaveToast(`${result.ticker} ${result.action} in IV list`);
+                } else {
+                    showSaveToast('Error saving IV', true);
+                }
+            } catch(e) {
+                console.error(e);
+                showSaveToast('Error saving IV', true);
+            }
+        }
+
         function rebuildFcfTable() {
             const tbody = document.getElementById('dcf-hist-tbody');
             if (!tbody || !window._dcfFcfLookup) return;
@@ -4706,57 +4831,207 @@
             return html;
         }
 
+        function _ivNumberLine(points, minVal, maxVal) {
+            // Render a horizontal number line with labeled markers
+            const range = maxVal - minVal;
+            if (range <= 0) return '';
+            let html = '<div style="position:relative; height:40px; margin:16px 0 28px 0;">';
+            // Base line
+            html += '<div style="position:absolute; top:18px; left:0; right:0; height:2px; background:var(--border);"></div>';
+            for (const p of points) {
+                if (!p.value || p.value <= 0) continue;
+                const pct = Math.max(0, Math.min(100, ((p.value - minVal) / range) * 100));
+                html += `<div style="position:absolute; left:${pct}%; transform:translateX(-50%); text-align:center;">
+                    <div style="width:3px; height:14px; background:${p.color}; margin:0 auto; border-radius:2px; margin-top:12px;"></div>
+                    <div style="font-size:0.65rem; color:${p.color}; white-space:nowrap; margin-top:2px; font-weight:600;">${p.label}</div>
+                    <div style="font-size:0.6rem; color:var(--text-dim); white-space:nowrap;">${formatMoney(p.value)}</div>
+                </div>`;
+            }
+            html += '</div>';
+            return html;
+        }
+
         function renderAnalyzerSummary(d) {
             const v = d.valuation || {};
             const s = v.summary;
             if (!s) return '<p style="color: var(--text-dim); padding: 20px;">No valuation models produced valid results.</p>';
 
-            // Model cards
+            const price = d.price || 0;
+
+            // 1. Result banner at top with save button integrated
+            const _sc = signalColor(s.signal);
+            const _up = s.upside;
+            const _upColor = _up >= 0 ? '#22c55e' : '#ef4444';
+            let html = `<div class="model-result-banner">
+                <div class="model-result-signal">
+                    <span style="font-size:0.65rem; text-transform:uppercase; color:var(--text-dim); letter-spacing:0.5px;">INVT Valuation</span>
+                    <span style="background:${_sc.bg}; color:${_sc.fg}; font-size:1.1rem; font-weight:700; padding:8px 24px; border-radius:8px;">${s.signal}</span>
+                </div>
+                <div class="model-result-metrics">
+                    <div class="model-result-metric"><span class="label">IV / Share</span><span class="value" id="summary-banner-iv">${formatMoney(s.compositeIv)}</span></div>
+                    <div class="model-result-metric"><span class="label">MoS IV</span><span class="value" id="summary-banner-mos">${formatMoney(s.marginOfSafetyIv)}</span></div>
+                    <div class="model-result-metric"><span class="label">Current Price</span><span class="value">${formatMoney(price)}</span></div>
+                    <div class="model-result-metric"><span class="label">Upside</span><span class="value" id="summary-banner-upside" style="color:${_upColor}">${(_up >= 0 ? '+' : '') + _up}%</span></div>
+                </div>
+                <div style="display:flex; align-items:center;">
+                    <button onclick="saveCompositeIvToList()" style="background:var(--accent); color:#fff; border:none; padding:6px 14px; border-radius:6px; font-size:0.75rem; font-weight:600; cursor:pointer; white-space:nowrap;">Save to IV List</button>
+                </div>
+            </div>`;
+
+            // 2. Valuation style + weight explanation (editable dropdown)
+            const catExplain = {
+                'Growth': 'Growth stocks weight DCF Scenarios (50%) and DCF (30%) heavily — forward-looking cash flow projections best capture growth potential.',
+                'Value': 'Value stocks weight Graham (30%) and Relative (25%) heavily — earnings-based and peer comparison models are most reliable for stable earners.',
+                'Blend': 'Blend stocks use balanced weights across all models, with DCF Scenarios slightly favored (35%).',
+            };
+            html += `<div class="valuation-card" style="text-align:center; padding:12px 24px;">
+                <span style="font-size:0.8rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px;">Valuation Style: </span>
+                <select id="summary-category" class="form-input" style="width:auto; padding:2px 8px; font-size:0.9rem; font-weight:700; text-align:center;" onchange="recalcSummaryCategory()">
+                    <option value="Growth"${s.category === 'Growth' ? ' selected' : ''}>Growth</option>
+                    <option value="Value"${s.category === 'Value' ? ' selected' : ''}>Value</option>
+                    <option value="Blend"${s.category === 'Blend' ? ' selected' : ''}>Blend</option>
+                </select>
+                <div id="summary-cat-explain" style="font-size:0.75rem; color:var(--text-dim); margin-top:6px;">${catExplain[s.category] || ''}</div>
+            </div>`;
+
+            // 3. Model comparison table
             const models = [
-                {key: 'dcf', name: 'DCF Model', data: v.dcf},
-                {key: 'graham', name: 'Graham Formula', data: v.graham},
-                {key: 'relative', name: 'Relative Valuation', data: v.relative},
+                {key: 'dcf', name: 'DCF', data: v.dcf},
+                {key: 'graham', name: 'Graham', data: v.graham},
+                {key: 'relative', name: 'Relative', data: v.relative},
                 {key: 'dcfScenarios', name: 'DCF Scenarios', data: v.dcfScenarios},
             ];
-            let cardsHtml = '<div class="iv-comparison">';
-            for (const m of models) {
-                if (!m.data) {
-                    cardsHtml += `<div class="iv-model-card" style="opacity:0.4;">
-                        <div class="model-name">${m.name}</div>
-                        <div class="model-iv" style="color: var(--text-dim);">N/A</div>
-                    </div>`;
-                    continue;
-                }
-                const up = m.data.upside;
-                const upColor = up >= 0 ? '#22c55e' : '#ef4444';
-                const weight = s.weights[m.key] ? (s.weights[m.key] * 100).toFixed(0) + '%' : '—';
-                cardsHtml += `<div class="iv-model-card">
-                    <div class="model-name">${m.name}</div>
-                    <div class="model-iv" style="color: var(--text);">${formatMoney(m.data.ivPerShare)}</div>
-                    <div class="model-upside" style="color: ${upColor};">${up >= 0 ? '+' : ''}${up}% upside</div>
-                    <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 6px;">Weight: ${weight}</div>
-                </div>`;
-            }
-            cardsHtml += '</div>';
-
-            // Signal
-            const sc = signalColor(s.signal);
-            const compUpColor = s.upside >= 0 ? 'green' : 'red';
-
-            return `
-                <div class="valuation-card" style="text-align: center; margin-bottom: 20px;">
-                    <div style="font-size: 0.8rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">
-                        Stock Category: <strong style="color: var(--text);">${s.category}</strong>
-                    </div>
-                    <span class="signal-badge" style="background:${sc.bg}; color:${sc.fg};">${s.signal}</span>
+            html += `<div class="valuation-card">
+                <div class="valuation-card-title">Model Comparison</div>
+                <table class="fcf-table" style="font-size:0.85rem;">
+                    <thead><tr>
+                        <th></th>
+                        ${models.map(m => `<th style="text-align:center;">${m.name}</th>`).join('')}
+                    </tr></thead>
+                    <tbody>
+                        <tr><td style="color:var(--text-dim);">IV / Share</td>${models.map(m => {
+                            if (!m.data) return '<td style="text-align:center; color:var(--text-dim);">N/A</td>';
+                            return `<td style="text-align:center; font-weight:700;">${formatMoney(m.data.ivPerShare)}</td>`;
+                        }).join('')}</tr>
+                        <tr><td style="color:var(--text-dim);">Upside</td>${models.map(m => {
+                            if (!m.data) return '<td style="text-align:center; color:var(--text-dim);">—</td>';
+                            const up = m.data.upside;
+                            const c = up >= 0 ? '#22c55e' : '#ef4444';
+                            return `<td style="text-align:center; color:${c};">${up >= 0 ? '+' : ''}${up}%</td>`;
+                        }).join('')}</tr>
+                        <tr id="summary-weight-row"><td style="color:var(--text-dim);">Weight</td>${models.map(m => {
+                            const w = s.weights[m.key] ? (s.weights[m.key] * 100).toFixed(0) + '%' : '—';
+                            return `<td style="text-align:center;">${w}</td>`;
+                        }).join('')}</tr>
+                        <tr><td style="color:var(--text-dim);">Signal</td>${models.map(m => {
+                            if (!m.data) return '<td style="text-align:center; color:var(--text-dim);">—</td>';
+                            const sc = signalColor(m.data.signal || '');
+                            return `<td style="text-align:center;"><span style="background:${sc.bg}; color:${sc.fg}; font-size:0.72rem; padding:2px 8px; border-radius:6px;">${m.data.signal || '—'}</span></td>`;
+                        }).join('')}</tr>
+                    </tbody>
+                </table>
+                <div style="display:grid; grid-template-columns:repeat(${models.filter(m=>m.data).length}, 1fr); gap:12px; margin-top:12px;">
+                    ${models.filter(m => m.data).map(m => `<div>${_e2ValueBar(m.data.ivPerShare, price)}</div>`).join('')}
                 </div>
-                ${cardsHtml}
-                ${ivResultBox([
-                    {label: 'Composite IV', value: formatMoney(s.compositeIv)},
-                    {label: 'MoS IV (30%)', value: formatMoney(s.marginOfSafetyIv)},
-                    {label: 'Current Price', value: formatMoney(d.price)},
-                    {label: 'Upside', value: (s.upside >= 0 ? '+' : '') + s.upside + '%', colorClass: compUpColor},
-                ])}`;
+            </div>`;
+
+            // 4. External benchmarks
+            const bm = d.benchmarks || {};
+            const fmpDcf = bm.fmpDcf || 0;
+            const fmpGraham = bm.fmpGrahamNumber || 0;
+            const fmpRating = bm.fmpRating || '';
+            const fmpRatingScore = bm.fmpRatingScore || 0;
+            const fmpAltmanZ = bm.fmpAltmanZ || 0;
+            const fmpPiotroski = bm.fmpPiotroski || 0;
+            const fmpEarningsYield = bm.fmpEarningsYield || 0;
+            const fmpFcfYield = bm.fmpFcfYield || 0;
+            const fmpRoic = bm.fmpRoic || 0;
+            const analystMean = bm.analystMean || d.targetMeanPrice || 0;
+            const analystHigh = bm.analystHigh || d.targetHighPrice || 0;
+            const analystLow = bm.analystLow || d.targetLowPrice || 0;
+            const analystCount = bm.analystCount || d.numberOfAnalysts || 0;
+
+            // Number line points
+            const nlPoints = [
+                {value: s.compositeIv, label: 'InvT IV', color: 'var(--accent)'},
+                {value: price, label: 'Price', color: '#94a3b8'},
+            ];
+            if (fmpDcf > 0) nlPoints.push({value: fmpDcf, label: 'FMP DCF', color: '#f59e0b'});
+            if (fmpGraham > 0) nlPoints.push({value: fmpGraham, label: 'Graham #', color: '#a78bfa'});
+            if (analystMean > 0) nlPoints.push({value: analystMean, label: 'Analyst', color: '#22d3ee'});
+            const allVals = nlPoints.map(p => p.value).filter(v => v > 0);
+            if (analystLow > 0) allVals.push(analystLow);
+            if (analystHigh > 0) allVals.push(analystHigh);
+            const nlMin = Math.min(...allVals) * 0.9;
+            const nlMax = Math.max(...allVals) * 1.05;
+
+            // Rating badge color
+            const ratingColors = {S:'#4ade80', A:'#22d3ee', B:'#60a5fa', C:'#f59e0b', D:'#f87171', F:'#ef4444'};
+            const ratingColor = ratingColors[fmpRating] || '#64748b';
+
+            // Altman Z interpretation
+            const zLabel = fmpAltmanZ > 2.99 ? 'Safe' : fmpAltmanZ > 1.81 ? 'Grey Zone' : fmpAltmanZ > 0 ? 'Distress' : '';
+            const zColor = fmpAltmanZ > 2.99 ? '#4ade80' : fmpAltmanZ > 1.81 ? '#f59e0b' : '#f87171';
+
+            // Piotroski interpretation
+            const pColor = fmpPiotroski >= 7 ? '#4ade80' : fmpPiotroski >= 4 ? '#f59e0b' : '#f87171';
+
+            html += `<div class="valuation-card">
+                <div class="valuation-card-title">External Benchmarks & Reference Data</div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; font-size:0.85rem; margin-bottom:12px;">
+                    <div>
+                        <span style="color:var(--text-dim);">InvT Composite IV</span>
+                        <span id="summary-composite-iv" style="float:right; font-weight:600; color:var(--accent);">${formatMoney(s.compositeIv)}</span>
+                    </div>
+                    <div>
+                        <span style="color:var(--text-dim);">FMP DCF Fair Value</span>
+                        <span style="float:right; font-weight:600; color:#f59e0b;">${fmpDcf > 0 ? formatMoney(fmpDcf) : 'N/A'}</span>
+                    </div>
+                    <div>
+                        <span style="color:var(--text-dim);">FMP Graham Number</span>
+                        <span style="float:right; font-weight:600; color:#a78bfa;">${fmpGraham > 0 ? formatMoney(fmpGraham) : 'N/A'}</span>
+                    </div>
+                    <div>
+                        <span style="color:var(--text-dim);">Analyst Mean Target</span>
+                        <span style="float:right; font-weight:600; color:#22d3ee;">${analystMean > 0 ? formatMoney(analystMean) : 'N/A'}${analystCount > 0 ? ` <span style="font-size:0.72rem; color:var(--text-dim);">(${analystCount})</span>` : ''}</span>
+                    </div>
+                    <div>
+                        <span style="color:var(--text-dim);">Analyst Range</span>
+                        <span style="float:right; color:var(--text);">${analystLow > 0 ? formatMoney(analystLow) + ' — ' + formatMoney(analystHigh) : 'N/A'}</span>
+                    </div>
+                    <div>
+                        <span style="color:var(--text-dim);">FMP Rating</span>
+                        <span style="float:right;">${fmpRating ? `<span style="background:${ratingColor}20; color:${ratingColor}; padding:1px 10px; border-radius:6px; font-weight:700; font-size:0.82rem;">${fmpRating}</span> <span style="color:var(--text-dim); font-size:0.72rem;">(${fmpRatingScore}/5)</span>` : 'N/A'}</span>
+                    </div>
+                </div>
+
+                <div id="summary-number-line">${_ivNumberLine(nlPoints, nlMin, nlMax)}</div>
+
+                <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-top:8px;">
+                    <div style="text-align:center; padding:8px; background:var(--bg); border-radius:8px;">
+                        <div style="font-size:0.68rem; color:var(--text-dim); text-transform:uppercase;">Altman Z</div>
+                        <div style="font-size:1.1rem; font-weight:700; color:${zColor};">${fmpAltmanZ > 0 ? fmpAltmanZ.toFixed(2) : 'N/A'}</div>
+                        ${zLabel ? `<div style="font-size:0.62rem; color:${zColor};">${zLabel}</div>` : ''}
+                    </div>
+                    <div style="text-align:center; padding:8px; background:var(--bg); border-radius:8px;">
+                        <div style="font-size:0.68rem; color:var(--text-dim); text-transform:uppercase;">Piotroski</div>
+                        <div style="font-size:1.1rem; font-weight:700; color:${pColor};">${fmpPiotroski > 0 ? fmpPiotroski + '/9' : 'N/A'}</div>
+                        ${fmpPiotroski > 0 ? `<div style="font-size:0.62rem; color:${pColor};">${fmpPiotroski >= 7 ? 'Strong' : fmpPiotroski >= 4 ? 'Neutral' : 'Weak'}</div>` : ''}
+                    </div>
+                    <div style="text-align:center; padding:8px; background:var(--bg); border-radius:8px;">
+                        <div style="font-size:0.68rem; color:var(--text-dim); text-transform:uppercase;">Earnings Yield</div>
+                        <div style="font-size:1.1rem; font-weight:700; color:var(--text);">${fmpEarningsYield ? fmpEarningsYield.toFixed(1) + '%' : 'N/A'}</div>
+                        ${fmpFcfYield ? `<div style="font-size:0.62rem; color:var(--text-dim);">FCF Yield: ${fmpFcfYield.toFixed(1)}%</div>` : ''}
+                    </div>
+                    <div style="text-align:center; padding:8px; background:var(--bg); border-radius:8px;">
+                        <div style="font-size:0.68rem; color:var(--text-dim); text-transform:uppercase;">ROIC</div>
+                        <div style="font-size:1.1rem; font-weight:700; color:${fmpRoic > 15 ? '#4ade80' : fmpRoic > 8 ? '#f59e0b' : '#f87171'};">${fmpRoic ? fmpRoic.toFixed(1) + '%' : 'N/A'}</div>
+                    </div>
+                </div>
+            </div>`;
+
+            return html;
         }
 
         async function analyzeStock(refresh = true) {
