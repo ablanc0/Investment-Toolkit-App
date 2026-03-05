@@ -6,6 +6,7 @@
     <title>Portfolio Fidelity 2024 - Investment Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-treemap@3.1.0/dist/chartjs-chart-treemap.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -1648,6 +1649,9 @@
                     <div style="display: flex; gap: 20px; flex-wrap: wrap;">
                         <div style="max-width: 380px; flex: 0 0 380px;">
                             <canvas id="siAllocationChart" height="280"></canvas>
+                        </div>
+                        <div style="flex: 1; min-width: 300px; max-width: 500px;">
+                            <canvas id="siTreemapChart" height="280"></canvas>
                         </div>
                         <div id="siHistoryChartWrap" style="display: none; flex: 1; min-width: 300px;">
                             <canvas id="siHistoryChart" height="280"></canvas>
@@ -6601,6 +6605,64 @@
                     });
                 }
             }
+            // Allocation treemap
+            const treemapCanvas = document.getElementById('siTreemapChart');
+            if (treemapCanvas) {
+                if (charts['siTreemapChart']) { charts['siTreemapChart'].destroy(); }
+                const allHoldings = data.holdings || [];
+                const top15 = allHoldings.slice(0, 15);
+                const otherVal = allHoldings.slice(15).reduce((s, h) => s + h.value, 0);
+                const tmData = top15.map(h => ({label: h.ticker || h.cusip, value: h.value}));
+                if (otherVal > 0) tmData.push({label: 'Other', value: otherVal});
+                const totalVal = tmData.reduce((s, d) => s + d.value, 0);
+                const tmColors = ['#6366f1','#8b5cf6','#ec4899','#f43f5e','#f59e0b','#84cc16','#22c55e','#06b6d4','#14b8a6','#a78bfa','#94a3b8','#e879f9','#fb923c','#38bdf8','#4ade80','#fbbf24'];
+                charts['siTreemapChart'] = new Chart(treemapCanvas.getContext('2d'), {
+                    type: 'treemap',
+                    data: {
+                        datasets: [{
+                            tree: tmData,
+                            key: 'value',
+                            backgroundColor: (ctx) => tmColors[ctx.dataIndex % tmColors.length],
+                            borderColor: '#0f1117',
+                            borderWidth: 2,
+                            labels: {
+                                display: true,
+                                align: 'center',
+                                position: 'middle',
+                                color: '#fff',
+                                font: {size: 11, weight: 'bold'},
+                                formatter: (ctx) => {
+                                    const d = ctx.dataset.tree[ctx.dataIndex];
+                                    if (!d) return '';
+                                    const pct = (d.value / totalVal * 100).toFixed(1);
+                                    return [d.label, pct + '%'];
+                                }
+                            }
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: {display: false},
+                            tooltip: {
+                                callbacks: {
+                                    title: (items) => {
+                                        const d = items[0]?.dataset?.tree?.[items[0].dataIndex];
+                                        return d ? d.label : '';
+                                    },
+                                    label: (ctx) => {
+                                        const d = ctx.dataset.tree[ctx.dataIndex];
+                                        if (!d) return '';
+                                        const valStr = d.value >= 1e9 ? '$' + (d.value/1e9).toFixed(1) + 'B' : '$' + (d.value/1e6).toFixed(0) + 'M';
+                                        const pct = (d.value / totalVal * 100).toFixed(1);
+                                        return `${valStr} (${pct}%)`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
             // Holdings table (8 columns: #, Ticker, Company, Value, Shares, %, Activity, Price)
             const holdings = data.holdings || [];
             const investorKey = data.investor || '';
@@ -6688,12 +6750,20 @@
                 const ticker = cell.dataset.ticker;
                 const info = _siActivityByTicker[ticker];
                 if (!info) { cell.innerHTML = ''; return; }
-                let label = '', color = '';
+                let label = '', color = '', html = '';
                 if (info.type === 'new') { label = 'NEW'; color = '#4ade80'; }
                 else if (info.type === 'sold') { label = 'SOLD'; color = '#f87171'; }
                 else if (info.type === 'increased') { label = `+${info.changePct}%`; color = '#4ade80'; }
                 else if (info.type === 'decreased') { label = `${info.changePct}%`; color = '#f87171'; }
-                if (label) cell.innerHTML = `<span style="font-size:0.7rem; font-weight:700; padding:2px 6px; border-radius:4px; background:${color}22; color:${color};">${label}</span>`;
+                if (label) html = `<span style="font-size:0.7rem; font-weight:700; padding:2px 6px; border-radius:4px; background:${color}22; color:${color};">${label}</span>`;
+                // Value change sub-line (for holdings in both quarters)
+                if (info.valueChangePct !== undefined && Math.abs(info.valueChangePct) >= 0.1) {
+                    const vc = info.valueChangePct;
+                    const vcColor = vc > 0 ? '#4ade80' : '#f87171';
+                    const vcStr = vc > 0 ? `+${vc}%` : `${vc}%`;
+                    html += `<div style="font-size:0.65rem; color:${vcColor}; margin-top:2px;">Val ${vcStr}</div>`;
+                }
+                cell.innerHTML = html;
             });
         }
 

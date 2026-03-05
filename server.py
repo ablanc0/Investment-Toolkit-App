@@ -1513,8 +1513,20 @@ def api_super_investor_activity(investor_key):
     by_ticker = {}
     for b in buys: by_ticker[b["ticker"]] = {"type": "new"}
     for s in sells: by_ticker[s["ticker"]] = {"type": "sold"}
-    for i in increased: by_ticker[i["ticker"]] = {"type": "increased", "changePct": i["changePct"]}
-    for d in decreased: by_ticker[d["ticker"]] = {"type": "decreased", "changePct": d["changePct"]}
+    for i in increased:
+        prev_val = previous[i["ticker"]]["value"]
+        val_chg = round((i["value"] - prev_val) / prev_val * 100, 1) if prev_val else 0
+        by_ticker[i["ticker"]] = {"type": "increased", "changePct": i["changePct"], "valueChangePct": val_chg}
+    for d in decreased:
+        prev_val = previous[d["ticker"]]["value"]
+        val_chg = round((d["value"] - prev_val) / prev_val * 100, 1) if prev_val else 0
+        by_ticker[d["ticker"]] = {"type": "decreased", "changePct": d["changePct"], "valueChangePct": val_chg}
+    # Unchanged holdings (same shares but value may differ due to price movement)
+    for ticker, h in current.items():
+        if ticker in previous and ticker not in by_ticker:
+            prev_val = previous[ticker]["value"]
+            val_chg = round((h["value"] - prev_val) / prev_val * 100, 1) if prev_val else 0
+            by_ticker[ticker] = {"type": "unchanged", "valueChangePct": val_chg}
 
     return jsonify({
         "currentQuarter": quarters[0].get("quarter", ""),
