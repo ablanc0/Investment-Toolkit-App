@@ -12,6 +12,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from flask import Flask, jsonify, request, send_from_directory
 
+import re
 import yfinance as yf
 from finvizfinance.quote import finvizfinance
 
@@ -1308,6 +1309,100 @@ def api_super_investor_buys_delete():
     return crud_delete("superInvestorBuys", int(b.get("index", -1)))
 
 
+# ── Super Investor 13F Routes ─────────────────────────────────────────
+
+@app.route("/api/super-investors")
+def api_super_investors_list():
+    """List all available super investors."""
+    return jsonify([
+        {"key": k, "fund": v["fund"], "cik": v["cik"],
+         "cached": k in _13f_cache}
+        for k, v in SUPER_INVESTORS.items()
+    ])
+
+
+@app.route("/api/super-investors/13f/<investor_key>")
+def api_super_investor_13f(investor_key):
+    """Fetch 13F holdings for one investor (uses cache if available)."""
+    if investor_key in _13f_cache:
+        return jsonify(_13f_cache[investor_key])
+    try:
+        result = _fetch_investor_13f(investor_key)
+        if result is None:
+            return jsonify({"error": f"Unknown investor: {investor_key}"}), 404
+        return jsonify(result)
+    except Exception as e:
+        print(f"[13F] Error fetching {investor_key}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/super-investors/13f-all", methods=["POST"])
+def api_super_investor_13f_all():
+    """Fetch all investors in a background thread."""
+    if _13f_progress.get("running"):
+        return jsonify({"status": "already_running"})
+    _13f_progress.update({"done": 0, "total": len(SUPER_INVESTORS),
+                          "current": "", "results": {}, "running": True})
+    def _bg():
+        for i, key in enumerate(SUPER_INVESTORS):
+            _13f_progress["current"] = key
+            try:
+                result = _fetch_investor_13f(key)
+                _13f_progress["results"][key] = {
+                    "ok": "error" not in (result or {}),
+                    "holdingsCount": (result or {}).get("holdingsCount", 0),
+                }
+            except Exception as e:
+                _13f_progress["results"][key] = {"ok": False, "error": str(e)}
+            _13f_progress["done"] = i + 1
+        _13f_progress["running"] = False
+        _13f_progress["current"] = ""
+    threading.Thread(target=_bg, daemon=True).start()
+    return jsonify({"status": "started", "total": len(SUPER_INVESTORS)})
+
+
+
+@app.route("/api/super-investors/13f-progress")
+def api_super_investor_13f_progress():
+    """Poll progress for the background 13F fetch."""
+    return jsonify(_13f_progress)
+
+
+@app.route("/api/super-investors/overlap", methods=["POST"])
+def api_super_investor_overlap():
+    """Compute ticker overlap across selected investors."""
+    b = request.get_json()
+    investors = b.get("investors", [])
+    ticker_investors = {}  # ticker -> [{investor, value, shares}]
+    for inv_key in investors:
+        data = _13f_cache.get(inv_key)
+        if not data or "holdings" not in data:
+            continue
+        for h in data["holdings"]:
+            tk = h.get("ticker", h.get("cusip", ""))
+            if tk not in ticker_investors:
+                ticker_investors[tk] = []
+            ticker_investors[tk].append({
+                "investor": inv_key,
+                "value": h["value"],
+                "shares": h["shares"],
+                "name": h.get("name", ""),
+            })
+    # Only tickers held by 2+ investors
+    overlap = []
+    for tk, entries in ticker_investors.items():
+        if len(entries) >= 2:
+            overlap.append({
+                "ticker": tk,
+                "name": entries[0]["name"],
+                "heldBy": [e["investor"] for e in entries],
+                "heldByCount": len(entries),
+                "combinedValue": sum(e["value"] for e in entries),
+            })
+    overlap.sort(key=lambda x: x["heldByCount"], reverse=True)
+    return jsonify(overlap)
+
+
 # ── Projections & Risk Scenarios ────────────────────────────────────────
 
 def compute_projections(config, return_pct_override=None):
@@ -1670,6 +1765,208 @@ def _edgar_to_financials(facts):
         }
 
     return income, cashflow, balance
+
+
+# ── SEC EDGAR 13F — Super Investor Holdings ───────────────────────────
+
+import xml.etree.ElementTree as ET
+
+SUPER_INVESTORS = {
+    "Warren Buffett":     {"cik": "0001067983", "fund": "Berkshire Hathaway"},
+    "Michael Burry":      {"cik": "0001649339", "fund": "Scion Asset Management"},
+    "Bill Ackman":        {"cik": "0001336528", "fund": "Pershing Square"},
+    "Ray Dalio":          {"cik": "0001350694", "fund": "Bridgewater Associates"},
+    "Seth Klarman":       {"cik": "0001061768", "fund": "Baupost Group"},
+    "David Tepper":       {"cik": "0001656456", "fund": "Appaloosa Management"},
+    "Howard Marks":       {"cik": "0001141681", "fund": "Oaktree Capital"},
+    "Terry Smith":        {"cik": "0001594477", "fund": "Fundsmith"},
+    "Li Lu":              {"cik": "0001709323", "fund": "Himalaya Capital"},
+}
+
+_13f_cache = {}  # investor_key -> {investor, fund, filingDate, quarter, holdings, totalValue}
+_13f_progress = {"done": 0, "total": 0, "current": "", "results": {}, "running": False}
+
+
+def _fetch_13f_latest(cik):
+    """Get the most recent 13F-HR filing accession number and date."""
+    url = f"https://data.sec.gov/submissions/CIK{cik}.json"
+    r = http_requests.get(url, headers={"User-Agent": EDGAR_USER_AGENT}, timeout=15)
+    r.raise_for_status()
+    data = r.json()
+    recent = data.get("filings", {}).get("recent", {})
+    forms = recent.get("form", [])
+    accessions = recent.get("accessionNumber", [])
+    dates = recent.get("filingDate", [])
+    for i, form in enumerate(forms):
+        if form in ("13F-HR", "13F-HR/A"):
+            acc = accessions[i].replace("-", "")
+            return {"accession": accessions[i], "accessionClean": acc, "filingDate": dates[i]}
+    return None
+
+
+def _fetch_13f_infotable(cik, accession_clean, accession_raw):
+    """Download the infoTable XML from a 13F filing."""
+    cik_num = cik.lstrip("0")
+    index_url = f"https://www.sec.gov/Archives/edgar/data/{cik_num}/{accession_clean}/"
+    r = http_requests.get(index_url, headers={"User-Agent": EDGAR_USER_AGENT}, timeout=15)
+    r.raise_for_status()
+    # Find the infotable XML filename in the index page
+    matches = re.findall(r'href="([^"]*infotable[^"]*\.xml)"', r.text, re.IGNORECASE)
+    if not matches:
+        # Try alternative: primary_doc.xml pattern
+        matches = re.findall(r'href="([^"]*\.xml)"', r.text, re.IGNORECASE)
+    if not matches:
+        return None
+    xml_filename = matches[0]
+    if xml_filename.startswith("http"):
+        xml_url = xml_filename
+    elif xml_filename.startswith("/"):
+        xml_url = f"https://www.sec.gov{xml_filename}"
+    else:
+        xml_url = f"https://www.sec.gov/Archives/edgar/data/{cik_num}/{accession_clean}/{xml_filename}"
+    r2 = http_requests.get(xml_url, headers={"User-Agent": EDGAR_USER_AGENT}, timeout=30)
+    r2.raise_for_status()
+    return r2.text
+
+
+def _parse_13f_xml(xml_string):
+    """Parse 13F infoTable XML into holdings list. Aggregates by CUSIP."""
+    ns = {"ns": "http://www.sec.gov/edgar/document/thirteenf/informationtable"}
+    root = ET.fromstring(xml_string)
+    by_cusip = {}
+    for entry in root.findall(".//ns:infoTable", ns):
+        cusip = (entry.findtext("ns:cusip", "", ns) or "").strip()
+        name = (entry.findtext("ns:nameOfIssuer", "", ns) or "").strip()
+        value = int(entry.findtext("ns:value", "0", ns) or 0)  # value in dollars
+        shares_el = entry.find("ns:shrsOrPrnAmt", ns)
+        shares = int(shares_el.findtext("ns:sshPrnamt", "0", ns) or 0) if shares_el else 0
+        put_call = (entry.findtext("ns:putCall", "", ns) or "").strip()
+        if cusip in by_cusip:
+            by_cusip[cusip]["value"] += value
+            by_cusip[cusip]["shares"] += shares
+        else:
+            by_cusip[cusip] = {
+                "cusip": cusip, "name": name, "value": value,
+                "shares": shares, "putCall": put_call,
+            }
+    return list(by_cusip.values())
+
+
+def _resolve_cusips_to_tickers(holdings):
+    """Batch resolve CUSIPs to tickers via OpenFIGI (free, no key, 100/batch)."""
+    cusips = list(dict.fromkeys(h["cusip"] for h in holdings if h.get("cusip")))
+    if not cusips:
+        return holdings
+    ticker_map = {}
+    for i in range(0, len(cusips), 10):
+        batch = cusips[i:i+10]
+        body = [{"idType": "ID_CUSIP", "idValue": c} for c in batch]
+        try:
+            r = http_requests.post(
+                "https://api.openfigi.com/v3/mapping",
+                json=body,
+                headers={"Content-Type": "application/json"},
+                timeout=30,
+            )
+            if r.status_code == 200:
+                results = r.json()
+                for j, item in enumerate(results):
+                    if isinstance(item, dict) and "data" in item and item["data"]:
+                        # Prefer US composite exchange ticker
+                        entries = item["data"]
+                        us_entry = next((e for e in entries if e.get("exchCode") == "US"), None)
+                        chosen = us_entry or entries[0]
+                        ticker_map[batch[j]] = chosen.get("ticker", "")
+            else:
+                app.logger.warning(f"[13F] OpenFIGI status {r.status_code}: {r.text[:200]}")
+        except Exception as e:
+            app.logger.error(f"[13F] OpenFIGI failed: {e}")
+    # Retry unresolved international CUSIPs (CINS codes starting with letter) using ID_CINS
+    unresolved_cins = [c for c in cusips if c not in ticker_map and c[0:1].isalpha()]
+    for i in range(0, len(unresolved_cins), 10):
+        batch = unresolved_cins[i:i+10]
+        body = [{"idType": "ID_CINS", "idValue": c} for c in batch]
+        try:
+            r = http_requests.post(
+                "https://api.openfigi.com/v3/mapping",
+                json=body,
+                headers={"Content-Type": "application/json"},
+                timeout=30,
+            )
+            if r.status_code == 200:
+                results = r.json()
+                for j, item in enumerate(results):
+                    if isinstance(item, dict) and "data" in item and item["data"]:
+                        entries = item["data"]
+                        us_entry = next((e for e in entries if e.get("exchCode") == "US"), None)
+                        chosen = us_entry or entries[0]
+                        ticker_map[batch[j]] = chosen.get("ticker", "")
+        except Exception:
+            pass
+    for h in holdings:
+        h["ticker"] = ticker_map.get(h["cusip"], h["cusip"])
+    return holdings
+
+
+def _fetch_investor_13f(investor_key):
+    """Full 13F pipeline for one investor. Returns dict with holdings."""
+    inv = SUPER_INVESTORS.get(investor_key)
+    if not inv:
+        return None
+    cik = inv["cik"]
+    # Step 1: Find latest 13F filing
+    filing = _fetch_13f_latest(cik)
+    if not filing:
+        return {"investor": investor_key, "fund": inv["fund"], "error": "No 13F filing found"}
+    # Step 2: Download infoTable XML
+    xml = _fetch_13f_infotable(cik, filing["accessionClean"], filing["accession"])
+    if not xml:
+        return {"investor": investor_key, "fund": inv["fund"], "error": "Could not fetch infoTable XML"}
+    # Step 3: Parse holdings
+    holdings = _parse_13f_xml(xml)
+    # Step 4: Resolve CUSIPs to tickers
+    holdings = _resolve_cusips_to_tickers(holdings)
+    # Sort by value descending
+    holdings.sort(key=lambda h: h["value"], reverse=True)
+    total_value = sum(h["value"] for h in holdings)
+    # Add portfolio percentage
+    for h in holdings:
+        h["pctPortfolio"] = round(h["value"] / total_value * 100, 2) if total_value else 0
+    # Derive quarter from filing date
+    filing_date = filing["filingDate"]
+    quarter = _derive_quarter(filing_date)
+    result = {
+        "investor": investor_key,
+        "fund": inv["fund"],
+        "filingDate": filing_date,
+        "quarter": quarter,
+        "holdings": holdings,
+        "totalValue": total_value,
+        "holdingsCount": len(holdings),
+    }
+    _13f_cache[investor_key] = result
+    return result
+
+
+def _derive_quarter(filing_date):
+    """Derive the reporting quarter from the filing date (filings are ~45 days after quarter end)."""
+    try:
+        dt = datetime.strptime(filing_date, "%Y-%m-%d")
+        # 13F is due 45 days after quarter end, so filing in Feb = Q4 prev year, May = Q1, Aug = Q2, Nov = Q3
+        month = dt.month
+        year = dt.year
+        if month <= 2:
+            return f"Q4 {year - 1}"
+        elif month <= 5:
+            return f"Q1 {year}"
+        elif month <= 8:
+            return f"Q2 {year}"
+        elif month <= 11:
+            return f"Q3 {year}"
+        else:
+            return f"Q4 {year}"
+    except:
+        return ""
 
 
 # ── FMP API (fallback) ─────────────────────────────────────────────────

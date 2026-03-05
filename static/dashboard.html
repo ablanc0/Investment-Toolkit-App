@@ -1623,18 +1623,30 @@
 
         <div class="tab-content" id="superinv">
             <div class="card" style="margin-bottom: 24px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                    <div class="card-title" style="margin-bottom: 0;">⭐ 50 Most Bought Dividend Stocks by Super Investors (Q2 2025)</div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+                    <div class="card-title" style="margin-bottom: 0;">Super Investor 13F Holdings</div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <select id="siInvestorSelect" onchange="fetch13F(this.value)" style="padding: 6px 12px; background: var(--card-hover); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem;">
+                            <option value="">Select Investor...</option>
+                        </select>
+                        <button onclick="refreshAll13F()" style="padding: 6px 14px; background: var(--accent); color: #000; border: none; border-radius: 6px; cursor: pointer; font-size: 0.82rem; font-weight: 600;">Refresh All</button>
+                        <button onclick="exportSuperInvCSV()" style="padding: 6px 14px; background: var(--card-hover); color: var(--text); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 0.82rem;">CSV</button>
+                    </div>
                 </div>
-                <div id="siSummary" style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;"></div>
+                <div id="si13fProgress" style="display: none; padding: 10px 14px; background: var(--card-hover); border-radius: 8px; margin-bottom: 12px; font-size: 0.85rem; color: var(--text-dim);"></div>
+                <div id="si13fMeta" style="display: none; display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;"></div>
                 <div class="table-wrapper"><table style="font-size: 0.82rem;">
                     <thead><tr>
-                        <th style="width:40px;">Rank</th><th>Ticker</th><th>Company</th><th>Sector</th>
-                        <th style="text-align:right;">Dividend</th><th style="text-align:right;">Yield</th>
-                        <th style="text-align:right;">Payout Ratio</th><th style="text-align:right;">5Y Div Growth</th>
-                        <th style="text-align:right;">ROIC</th>
+                        <th style="width:40px;">#</th><th>Ticker</th><th>Company</th>
+                        <th style="text-align:right;">Value ($M)</th><th style="text-align:right;">Shares</th>
+                        <th style="text-align:right;">% Portfolio</th>
                     </tr></thead><tbody id="superInvBody"></tbody>
                 </table></div>
+            </div>
+            <div class="card" id="siOverlapCard" style="display: none;">
+                <div class="card-title">Overlap Analysis</div>
+                <p style="color: var(--text-dim); font-size: 0.82rem; margin-bottom: 12px;">Tickers held by 2+ of the investors loaded above.</p>
+                <div id="siOverlapContent"></div>
             </div>
         </div>
 
@@ -2070,7 +2082,7 @@
                 annual: fetchAnnualData,
                 lab: fetchMyLab,
                 ivlist: fetchIntrinsicValues,
-                superinv: fetchSuperInvestorBuys,
+                superinv: fetchSuperInvestors,
                 salary: fetchSalaryData,
                 passive: fetchPassiveIncome,
                 rule4pct: fetchRule4Pct,
@@ -3203,10 +3215,7 @@
             }
         }
 
-        function populateSuperInv() {
-            const container = document.getElementById('superinvContainer');
-            container.innerHTML = '<p style="color: var(--text-dim);">Super investor holdings data coming soon.</p>';
-        }
+        // populateSuperInv() removed — replaced by fetchSuperInvestors()/fetch13F()
 
         // Inline Editing Functions
         function editCell(td, ticker, field, currentValue, inputType) {
@@ -6020,55 +6029,138 @@
             }).join('');
         }
 
-        // ── Super Investor Buys ──────────────────────────────────
-        async function fetchSuperInvestorBuys() {
+        // ── Super Investor 13F Holdings ──────────────────────────
+        let _si13fCurrentData = null; // current investor's holdings for CSV export
+
+        async function fetchSuperInvestors() {
             try {
-                const data = await fetch('/api/super-investor-buys').then(r => r.json());
-                renderSuperInvestorBuys(data.superInvestorBuys || []);
+                const investors = await fetch('/api/super-investors').then(r => r.json());
+                const sel = document.getElementById('siInvestorSelect');
+                if (!sel) return;
+                sel.innerHTML = '<option value="">Select Investor...</option>' +
+                    investors.map(inv =>
+                        `<option value="${inv.key}">${inv.key} — ${inv.fund}${inv.cached ? ' (cached)' : ''}</option>`
+                    ).join('');
             } catch(e) { console.error(e); }
         }
-        function renderSuperInvestorBuys(items) {
+
+        async function fetch13F(investorKey) {
+            if (!investorKey) return;
             const tbody = document.getElementById('superInvBody');
-            const summary = document.getElementById('siSummary');
+            const meta = document.getElementById('si13fMeta');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-dim); padding:30px;">Loading 13F data from SEC EDGAR...</td></tr>';
+            if (meta) { meta.style.display = 'none'; meta.innerHTML = ''; }
+            try {
+                const data = await fetch(`/api/super-investors/13f/${encodeURIComponent(investorKey)}`).then(r => r.json());
+                if (data.error) {
+                    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#f87171; padding:30px;">${data.error}</td></tr>`;
+                    return;
+                }
+                _si13fCurrentData = data;
+                render13FHoldings(data);
+            } catch(e) {
+                console.error(e);
+                if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#f87171; padding:30px;">Error: ${e.message}</td></tr>`;
+            }
+        }
+
+        function render13FHoldings(data) {
+            const tbody = document.getElementById('superInvBody');
+            const meta = document.getElementById('si13fMeta');
             if (!tbody) return;
-            // Summary stats
-            const yieldAbove1 = items.filter(s => s.dividendYield >= 0.01).length;
-            const yieldAbove2 = items.filter(s => s.dividendYield >= 0.02).length;
-            const yieldAbove3 = items.filter(s => s.dividendYield >= 0.03).length;
-            const avgROIC = items.reduce((s, i) => s + (i.roic || 0), 0) / items.length;
-            const avgPayout = items.filter(i => i.payoutRatio > 0).reduce((s, i) => s + i.payoutRatio, 0) / items.filter(i => i.payoutRatio > 0).length;
-            // Sector count
-            const sectors = {};
-            items.forEach(i => { sectors[i.sector] = (sectors[i.sector] || 0) + 1; });
-            if (summary) {
-                summary.innerHTML = `
-                    <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Yield ≥1%: <strong>${yieldAbove1}</strong></div>
-                    <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Yield ≥2%: <strong>${yieldAbove2}</strong></div>
-                    <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Yield ≥3%: <strong>${yieldAbove3}</strong></div>
-                    <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Avg ROIC: <strong>${(avgROIC*100).toFixed(1)}%</strong></div>
-                    <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Avg Payout: <strong>${(avgPayout*100).toFixed(1)}%</strong></div>
-                    ${Object.entries(sectors).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([s,c]) => 
-                        `<div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">${s}: <strong>${c}</strong></div>`
-                    ).join('')}
+            // Meta info
+            if (meta) {
+                const tv = data.totalValue || 0;
+                meta.style.display = 'flex';
+                meta.innerHTML = `
+                    <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Filing: <strong>${data.quarter || '—'}</strong> (${data.filingDate || '—'})</div>
+                    <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Holdings: <strong>${data.holdingsCount || 0}</strong></div>
+                    <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Total Value: <strong>$${(tv/1e9).toFixed(1)}B</strong></div>
+                    <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Fund: <strong>${data.fund || '—'}</strong></div>
                 `;
             }
-            tbody.innerHTML = items.map(s => {
-                const yld = s.dividendYield ? (s.dividendYield * 100).toFixed(2) + '%' : '—';
-                const pr = s.payoutRatio ? (s.payoutRatio * 100).toFixed(1) + '%' : '—';
-                const dg = s.fiveYrDividendGrowth ? (s.fiveYrDividendGrowth > 1 ? (s.fiveYrDividendGrowth*100).toFixed(0)+'%' : (s.fiveYrDividendGrowth*100).toFixed(1)+'%') : '—';
-                const roic = s.roic ? (s.roic * 100).toFixed(1) + '%' : '—';
+            // Holdings table
+            const holdings = data.holdings || [];
+            tbody.innerHTML = holdings.map((h, i) => {
+                const valM = (h.value / 1e6).toFixed(0);
+                const sharesStr = h.shares >= 1e6 ? (h.shares / 1e6).toFixed(1) + 'M' : h.shares >= 1e3 ? (h.shares / 1e3).toFixed(0) + 'K' : h.shares.toLocaleString();
+                const pct = h.pctPortfolio || 0;
+                const pctColor = pct >= 10 ? '#4ade80' : pct >= 5 ? '#22d3ee' : 'var(--text)';
+                const putCallTag = h.putCall ? ` <span style="font-size:0.7rem; color:#f59e0b;">${h.putCall}</span>` : '';
                 return `<tr>
-                    <td style="text-align:center; font-weight:700; color: var(--accent);">${s.rank}</td>
-                    <td><strong>${s.ticker}</strong></td>
-                    <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis;">${s.name || ''}</td>
-                    <td>${s.sector || ''}</td>
-                    <td style="text-align:right;">${s.dividend ? '$'+s.dividend.toFixed(2) : '—'}</td>
-                    <td style="text-align:right; color: ${s.dividendYield >= 0.02 ? '#4ade80' : 'var(--text)'};">${yld}</td>
-                    <td style="text-align:right;">${pr}</td>
-                    <td style="text-align:right; color: ${s.fiveYrDividendGrowth > 0 ? '#4ade80' : s.fiveYrDividendGrowth < 0 ? '#f87171' : 'var(--text-dim)'};">${dg}</td>
-                    <td style="text-align:right; color: ${s.roic > 0.15 ? '#4ade80' : 'var(--text)'};">${roic}</td>
+                    <td style="text-align:center; color:var(--text-dim);">${i+1}</td>
+                    <td><strong>${h.ticker || h.cusip}</strong>${putCallTag}</td>
+                    <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis;">${h.name || ''}</td>
+                    <td style="text-align:right; font-family:monospace;">$${Number(valM).toLocaleString()}</td>
+                    <td style="text-align:right; font-family:monospace;">${sharesStr}</td>
+                    <td style="text-align:right; color:${pctColor}; font-weight:600;">${pct.toFixed(1)}%</td>
                 </tr>`;
             }).join('');
+        }
+
+        async function refreshAll13F() {
+            const progress = document.getElementById('si13fProgress');
+            if (progress) { progress.style.display = 'block'; progress.textContent = 'Starting...'; }
+            try {
+                const res = await fetch('/api/super-investors/13f-all', {method:'POST'}).then(r => r.json());
+                if (res.status === 'already_running' || res.status === 'started') {
+                    // Poll progress
+                    const poll = setInterval(async () => {
+                        const p = await fetch('/api/super-investors/13f-progress').then(r => r.json());
+                        if (progress) progress.textContent = `Fetching ${p.current || '...'}  (${p.done}/${p.total})`;
+                        if (!p.running) {
+                            clearInterval(poll);
+                            if (progress) { progress.textContent = `Done! Loaded ${p.done} investors.`; setTimeout(() => { progress.style.display = 'none'; }, 3000); }
+                            // Refresh dropdown to show cached status
+                            await fetchSuperInvestors();
+                            // Compute overlap
+                            await computeOverlap();
+                        }
+                    }, 2000);
+                }
+            } catch(e) { console.error(e); if (progress) progress.textContent = 'Error: ' + e.message; }
+        }
+
+        async function computeOverlap() {
+            const card = document.getElementById('siOverlapCard');
+            const content = document.getElementById('siOverlapContent');
+            if (!card || !content) return;
+            try {
+                const investors = Object.keys(await fetch('/api/super-investors').then(r => r.json()).then(list => {
+                    const cached = {};
+                    list.forEach(inv => { if (inv.cached) cached[inv.key] = true; });
+                    return cached;
+                }));
+                if (investors.length < 2) { card.style.display = 'none'; return; }
+                const overlap = await fetch('/api/super-investors/overlap', {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({investors})
+                }).then(r => r.json());
+                if (!overlap.length) { card.style.display = 'none'; return; }
+                card.style.display = 'block';
+                content.innerHTML = `<div class="table-wrapper"><table style="font-size:0.82rem;">
+                    <thead><tr><th>Ticker</th><th>Company</th><th style="text-align:right;">Held By</th><th>Investors</th><th style="text-align:right;">Combined Value</th></tr></thead>
+                    <tbody>${overlap.map(o => `<tr>
+                        <td><strong>${o.ticker}</strong></td>
+                        <td style="max-width:180px; overflow:hidden; text-overflow:ellipsis;">${o.name || ''}</td>
+                        <td style="text-align:right; font-weight:700; color:var(--accent);">${o.heldByCount}</td>
+                        <td style="font-size:0.78rem; color:var(--text-dim);">${o.heldBy.join(', ')}</td>
+                        <td style="text-align:right; font-family:monospace;">$${(o.combinedValue/1e9).toFixed(1)}B</td>
+                    </tr>`).join('')}</tbody>
+                </table></div>`;
+            } catch(e) { console.error(e); card.style.display = 'none'; }
+        }
+
+        function exportSuperInvCSV() {
+            if (!_si13fCurrentData || !_si13fCurrentData.holdings) return;
+            const h = _si13fCurrentData.holdings;
+            const header = 'Ticker,Company,Value,Shares,% Portfolio,Put/Call\n';
+            const rows = h.map(r => `${r.ticker || r.cusip},"${(r.name||'').replace(/"/g,'""')}",${r.value},${r.shares},${r.pctPortfolio || 0},${r.putCall || ''}`).join('\n');
+            const blob = new Blob([header + rows], {type: 'text/csv'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `13f_${_si13fCurrentData.investor.replace(/\s+/g,'_')}_${_si13fCurrentData.quarter || 'unknown'}.csv`;
+            a.click();
         }
 
         // ── Salary & Cost of Living ──────────────────────────────────
