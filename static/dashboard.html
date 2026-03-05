@@ -6105,7 +6105,7 @@
 
         async function refreshAll13F() {
             const progress = document.getElementById('si13fProgress');
-            if (progress) { progress.style.display = 'block'; progress.textContent = 'Starting...'; }
+            if (progress) { progress.style.display = 'block'; progress.textContent = 'Fetching 13F filings from SEC EDGAR — this may take a few minutes due to API rate limits...'; }
             try {
                 const res = await fetch('/api/super-investors/13f-all', {method:'POST'}).then(r => r.json());
                 if (res.status === 'already_running' || res.status === 'started') {
