@@ -1381,9 +1381,6 @@ def api_super_investor_13f_all():
                     "ok": "error" not in (result or {}),
                     "holdingsCount": (result or {}).get("holdingsCount", 0),
                 }
-                # Append to history if we have a new quarter
-                if result and "error" not in result:
-                    _append_to_history(key, result)
             except Exception as e:
                 _13f_progress["results"][key] = {"ok": False, "error": str(e)}
             _13f_progress["done"] = i + 1
@@ -2003,6 +2000,7 @@ SUPER_INVESTORS = {
 _13F_HISTORY_FILE = DATA_DIR / "13f_history.json"
 _13f_history = {}  # investor_key -> {fund, cik, quarters: [{quarter, filingDate, totalValue, ...}]}
 _13f_progress = {"done": 0, "total": 0, "current": "", "results": {}, "running": False}
+_cusip_ticker_cache = {}  # CUSIP -> ticker, shared across investors to avoid redundant OpenFIGI calls
 
 
 def _load_13f_history():
@@ -2037,11 +2035,12 @@ def _sanitize_13f_history():
             continue
         median_count = counts[len(counts) // 2]
         median_value = values[len(values) // 2]
-        # Remove quarters that are clearly amendment filings (1-4 holdings when median is 20+)
-        # or have wildly wrong values (>100x median, i.e. not normalized)
+        # Remove quarters that are clearly amendment filings (< 10% of median holdings
+        # when median is at least 10) or have wildly wrong values (>100x median)
+        count_threshold = max(4, int(median_count * 0.1))
         original_len = len(quarters)
         quarters[:] = [q for q in quarters
-                       if not (q.get("holdingsCount", 0) <= 4 and median_count >= 20)
+                       if not (q.get("holdingsCount", 0) <= count_threshold and median_count >= 10)
                        and not (q.get("totalValue", 0) > median_value * 100)]
         removed = original_len - len(quarters)
         if removed:
@@ -2088,48 +2087,90 @@ def _save_13f_history():
 
 
 def _append_to_history(investor_key, result):
-    """Append a quarter to history if not already present."""
+    """Append a quarter to history, or update it if the new filing has more holdings."""
     quarter = result.get("quarter", "")
     if not quarter:
         return
     inv = SUPER_INVESTORS.get(investor_key, {})
     if investor_key not in _13f_history:
         _13f_history[investor_key] = {"fund": inv.get("fund", ""), "cik": inv.get("cik", ""), "quarters": []}
-    existing = {q["quarter"] for q in _13f_history[investor_key]["quarters"]}
-    if quarter not in existing:
-        _13f_history[investor_key]["quarters"].insert(0, {
-            "quarter": quarter,
-            "filingDate": result.get("filingDate", ""),
-            "totalValue": result.get("totalValue", 0),
-            "holdingsCount": result.get("holdingsCount", 0),
-            "top10pct": result.get("top10pct", 0),
-            "holdings": result.get("holdings", []),
-        })
+    new_entry = {
+        "quarter": quarter,
+        "filingDate": result.get("filingDate", ""),
+        "totalValue": result.get("totalValue", 0),
+        "holdingsCount": result.get("holdingsCount", 0),
+        "top10pct": result.get("top10pct", 0),
+        "holdings": result.get("holdings", []),
+    }
+    # Check if quarter already exists
+    for i, q in enumerate(_13f_history[investor_key]["quarters"]):
+        if q["quarter"] == quarter:
+            # Update if new data has more holdings (better filing replaces amendment)
+            if result.get("holdingsCount", 0) > q.get("holdingsCount", 0):
+                _13f_history[investor_key]["quarters"][i] = new_entry
+                print(f"[13F] Updated {investor_key} {quarter}: {q.get('holdingsCount', 0)} → {result.get('holdingsCount', 0)} holdings")
+            return
+    _13f_history[investor_key]["quarters"].insert(0, new_entry)
+
+
+def _edgar_request(url, timeout=15):
+    """HTTP GET to SEC EDGAR with retry and rate-limit compliance."""
+    for attempt in range(3):
+        try:
+            time.sleep(0.15)  # SEC fair access: max 10 req/sec
+            r = http_requests.get(url, headers={"User-Agent": EDGAR_USER_AGENT}, timeout=timeout)
+            if r.status_code == 429:
+                time.sleep(10)
+                continue
+            r.raise_for_status()
+            return r
+        except http_requests.exceptions.RequestException:
+            if attempt == 2:
+                raise
+            time.sleep(2)
+    return None
 
 
 def _fetch_13f_latest(cik):
-    """Get the most recent 13F-HR filing accession number and date."""
+    """Get the most recent 13F-HR filing accession number and date.
+    Uses reportDate (period of report) for accurate quarter derivation,
+    falling back to filingDate if reportDate is unavailable."""
     url = f"https://data.sec.gov/submissions/CIK{cik}.json"
-    r = http_requests.get(url, headers={"User-Agent": EDGAR_USER_AGENT}, timeout=15)
-    r.raise_for_status()
+    r = _edgar_request(url)
     data = r.json()
     recent = data.get("filings", {}).get("recent", {})
     forms = recent.get("form", [])
     accessions = recent.get("accessionNumber", [])
     dates = recent.get("filingDate", [])
+    report_dates = recent.get("reportDate", [])
+    # Prefer original 13F-HR over amendments; take the first (most recent) of each
+    original_idx = None
+    amendment_idx = None
     for i, form in enumerate(forms):
-        if form in ("13F-HR", "13F-HR/A"):
-            acc = accessions[i].replace("-", "")
-            return {"accession": accessions[i], "accessionClean": acc, "filingDate": dates[i]}
-    return None
+        if form == "13F-HR" and original_idx is None:
+            original_idx = i
+            break  # originals are what we want
+        elif form == "13F-HR/A" and amendment_idx is None:
+            amendment_idx = i
+    idx = original_idx if original_idx is not None else amendment_idx
+    if idx is None:
+        return None
+    acc = accessions[idx].replace("-", "")
+    report_date = report_dates[idx] if idx < len(report_dates) else ""
+    return {
+        "accession": accessions[idx], "accessionClean": acc,
+        "filingDate": dates[idx],
+        "reportDate": report_date,  # actual quarter-end date (e.g. 2025-12-31)
+    }
 
 
 def _fetch_13f_infotable(cik, accession_clean, accession_raw):
     """Download the infoTable XML from a 13F filing."""
     cik_num = cik.lstrip("0")
     index_url = f"https://www.sec.gov/Archives/edgar/data/{cik_num}/{accession_clean}/"
-    r = http_requests.get(index_url, headers={"User-Agent": EDGAR_USER_AGENT}, timeout=15)
-    r.raise_for_status()
+    r = _edgar_request(index_url)
+    if not r:
+        return None
     # Find XML filename — prefer infotable or holding files, skip primary_doc.xml
     matches = re.findall(r'href="([^"]*(?:infotable|holding)[^"]*\.xml)"', r.text, re.IGNORECASE)
     if not matches:
@@ -2146,8 +2187,9 @@ def _fetch_13f_infotable(cik, accession_clean, accession_raw):
         xml_url = f"https://www.sec.gov{xml_filename}"
     else:
         xml_url = f"https://www.sec.gov/Archives/edgar/data/{cik_num}/{accession_clean}/{xml_filename}"
-    r2 = http_requests.get(xml_url, headers={"User-Agent": EDGAR_USER_AGENT}, timeout=30)
-    r2.raise_for_status()
+    r2 = _edgar_request(xml_url, timeout=30)
+    if not r2:
+        return None
     return r2.text
 
 
@@ -2223,18 +2265,25 @@ def _openfigi_batch(cusip_list, id_type="ID_CUSIP"):
 
 
 def _resolve_cusips_to_tickers(holdings):
-    """Batch resolve CUSIPs to tickers via OpenFIGI (free, no key, 10/batch, 25 req/min)."""
+    """Batch resolve CUSIPs to tickers via OpenFIGI (free, no key, 10/batch, 25 req/min).
+    Uses module-level _cusip_ticker_cache to avoid redundant API calls across investors."""
+    global _cusip_ticker_cache
     cusips = list(dict.fromkeys(h["cusip"] for h in holdings if h.get("cusip")))
     if not cusips:
         return holdings
-    ticker_map = _openfigi_batch(cusips, "ID_CUSIP")
-    # Retry unresolved international CUSIPs (CINS codes starting with letter)
-    unresolved_cins = [c for c in cusips if c not in ticker_map and c[0:1].isalpha()]
-    if unresolved_cins:
-        cins_map = _openfigi_batch(unresolved_cins, "ID_CINS")
-        ticker_map.update(cins_map)
+    # Check cache first — only resolve unknown CUSIPs
+    uncached = [c for c in cusips if c not in _cusip_ticker_cache]
+    if uncached:
+        ticker_map = _openfigi_batch(uncached, "ID_CUSIP")
+        # Retry unresolved international CUSIPs (CINS codes starting with letter)
+        unresolved_cins = [c for c in uncached if c not in ticker_map and c[0:1].isalpha()]
+        if unresolved_cins:
+            cins_map = _openfigi_batch(unresolved_cins, "ID_CINS")
+            ticker_map.update(cins_map)
+        _cusip_ticker_cache.update(ticker_map)
+        print(f"[13F] CUSIP cache: {len(_cusip_ticker_cache)} total, {len(uncached)} resolved this batch")
     for h in holdings:
-        h["ticker"] = ticker_map.get(h["cusip"], h["cusip"])
+        h["ticker"] = _cusip_ticker_cache.get(h["cusip"], h["cusip"])
     return holdings
 
 
@@ -2262,15 +2311,14 @@ def _fetch_investor_13f(investor_key):
     # Add portfolio percentage
     for h in holdings:
         h["pctPortfolio"] = round(h["value"] / total_value * 100, 2) if total_value else 0
-    # Derive quarter from filing date
-    filing_date = filing["filingDate"]
-    quarter = _derive_quarter(filing_date)
+    # Derive quarter from reportDate (actual period-end), falling back to filingDate
+    quarter = _derive_quarter(filing.get("reportDate", ""), filing["filingDate"])
     top10pct = round(sum(h["pctPortfolio"] for h in holdings[:10]), 1)
     result = {
         "investor": investor_key,
         "fund": inv["fund"],
         "note": inv.get("note", ""),
-        "filingDate": filing_date,
+        "filingDate": filing["filingDate"],
         "quarter": quarter,
         "holdings": holdings,
         "totalValue": total_value,
@@ -2283,25 +2331,44 @@ def _fetch_investor_13f(investor_key):
     return result
 
 
-def _derive_quarter(filing_date):
-    """Derive the reporting quarter from the filing date (filings are ~45 days after quarter end)."""
-    try:
-        dt = datetime.strptime(filing_date, "%Y-%m-%d")
-        # 13F is due 45 days after quarter end, so filing in Feb = Q4 prev year, May = Q1, Aug = Q2, Nov = Q3
-        month = dt.month
-        year = dt.year
-        if month <= 2:
-            return f"Q4 {year - 1}"
-        elif month <= 5:
-            return f"Q1 {year}"
-        elif month <= 8:
-            return f"Q2 {year}"
-        elif month <= 11:
-            return f"Q3 {year}"
-        else:
-            return f"Q4 {year}"
-    except:
-        return ""
+def _derive_quarter(report_date, filing_date=""):
+    """Derive the reporting quarter from reportDate (period of report).
+    Falls back to filing date heuristic if reportDate is unavailable."""
+    # Prefer reportDate — it's the actual quarter-end (e.g. 2025-12-31 → Q4 2025)
+    if report_date:
+        try:
+            dt = datetime.strptime(report_date, "%Y-%m-%d")
+            month = dt.month
+            year = dt.year
+            if month <= 3:
+                return f"Q1 {year}"
+            elif month <= 6:
+                return f"Q2 {year}"
+            elif month <= 9:
+                return f"Q3 {year}"
+            else:
+                return f"Q4 {year}"
+        except (ValueError, TypeError):
+            pass
+    # Fallback: derive from filing date (filings are ~45 days after quarter end)
+    if filing_date:
+        try:
+            dt = datetime.strptime(filing_date, "%Y-%m-%d")
+            month = dt.month
+            year = dt.year
+            if month <= 2:
+                return f"Q4 {year - 1}"
+            elif month <= 5:
+                return f"Q1 {year}"
+            elif month <= 8:
+                return f"Q2 {year}"
+            elif month <= 11:
+                return f"Q3 {year}"
+            else:
+                return f"Q4 {year}"
+        except (ValueError, TypeError):
+            pass
+    return ""
 
 
 # ── FMP API (fallback) ─────────────────────────────────────────────────
