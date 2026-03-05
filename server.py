@@ -2019,32 +2019,6 @@ def _load_13f_history():
             _13f_history = {}
 
 
-def _backfill_cache_from_history():
-    """If an investor has history but no cache entry, populate cache from latest quarter."""
-    backfilled = 0
-    for key, inv in SUPER_INVESTORS.items():
-        if key in _13f_cache:
-            continue
-        hist = _13f_history.get(key)
-        if not hist or not hist.get("quarters"):
-            continue
-        latest = hist["quarters"][0]
-        _13f_cache[key] = {
-            "investor": key, "fund": inv.get("fund", ""), "note": inv.get("note", ""),
-            "filingDate": latest.get("filingDate", ""),
-            "quarter": latest.get("quarter", ""),
-            "holdings": latest.get("holdings", []),
-            "totalValue": latest.get("totalValue", 0),
-            "holdingsCount": latest.get("holdingsCount", 0),
-            "top10pct": latest.get("top10pct", 0),
-            "fetchedAt": "backfilled-from-history",
-        }
-        backfilled += 1
-    if backfilled:
-        _save_13f_cache()
-        print(f"[13F] Backfilled {backfilled} investors from history into cache")
-
-
 def _save_13f_cache():
     """Persist 13F data to disk."""
     try:
@@ -4694,7 +4668,6 @@ if __name__ == "__main__":
     load_disk_cache()
     _load_13f_cache()
     _load_13f_history()
-    _backfill_cache_from_history()
     print("\n" + "=" * 55)
     print("  InvToolkit — Investment Dashboard")
     print("=" * 55)
