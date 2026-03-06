@@ -4262,11 +4262,47 @@
             }
         }
 
+        // Per-category chart definitions matching Excel layout
+        const INVT_CHART_DEFS = {
+            growth: [
+                { key: 'revenue', title: 'Revenue', unit: '$', type: 'bar' },
+                { key: 'eps', title: 'Earnings per Share', unit: '$', type: 'bar' },
+                { key: 'fcfPerShare', title: 'FCF per Share', unit: '$', type: 'bar' },
+            ],
+            profitability: [
+                { key: 'gpm', title: 'Gross Profit Margin', unit: '%', type: 'bar' },
+                { key: 'npm', title: 'Net Profit Margin', unit: '%', type: 'bar' },
+                { key: 'fcfMargin', title: 'FCF Margin', unit: '%', type: 'bar' },
+            ],
+            debt: [
+                { key: 'netDebt', title: 'Net Debt', unit: '$', type: 'bar' },
+                { key: 'netDebtFcf', title: 'Net Debt / FCF', unit: 'x', type: 'bar' },
+                { key: 'interestCov', title: 'Interest Coverage', unit: 'x', type: 'bar' },
+            ],
+            dividends: [
+                { key: 'dps', title: 'Dividends per Share', unit: '$', type: 'bar' },
+                { key: 'divGrowth', title: 'Dividend Growth', unit: '%', type: 'bar' },
+                { key: 'payoutRatio', title: 'Payout Ratio', unit: '%', type: 'bar' },
+                { key: 'fcfPayout', title: 'FCF Payout Ratio', unit: '%', type: 'bar' },
+                { key: 'sharesOut', title: 'Shares Outstanding', unit: '#', type: 'bar' },
+            ],
+            efficiency: [
+                { key: 'roa', title: 'Return on Assets', unit: '%', type: 'bar' },
+                { key: 'roe', title: 'Return on Equity', unit: '%', type: 'bar' },
+                { key: 'roic', title: 'Return on Invested Capital', unit: '%', type: 'bar' },
+            ],
+        };
+        const INVT_CAT_COLORS = {
+            growth: '#4ade80', profitability: '#3b82f6', debt: '#f59e0b',
+            dividends: '#a78bfa', efficiency: '#f97316',
+        };
+
         function renderInvtScore(data) {
             const c = _invtScoreColor(data.score);
             const catOrder = INVT_CAT_ORDER;
             const updatedStr = data.lastUpdated ? new Date(data.lastUpdated).toLocaleString() : '';
-            // Section 1: Hero Banner + Refresh
+
+            // Section 1: Hero Banner
             let html = `
             <div style="display:flex; align-items:center; gap:24px; margin-bottom:24px; flex-wrap:wrap;">
                 <div style="position:relative; width:110px; height:110px; flex-shrink:0;">
@@ -4297,7 +4333,7 @@
                 </div>
             </div>`;
 
-            // Section 2: Radar Chart + Category Bars (responsive)
+            // Section 2: Radar Chart (1yr/5yr only) + Category Score Bars
             html += `<div class="invt-grid-2col" style="margin-bottom:24px;">
                 <div class="analyzer-section" style="padding:16px;">
                     <canvas id="invt-radar-chart" height="280"></canvas>
@@ -4313,7 +4349,7 @@
                                     <span style="color:var(--text);">${cat.label}</span>
                                     <span style="font-size:0.72rem; color:var(--text-dim);">${cat.note}</span>
                                 </div>
-                                <div style="background:rgba(255,255,255,0.06); border-radius:6px; height:10px; overflow:hidden;"></div>
+                                <div style="background:rgba(255,255,255,0.06); border-radius:6px; height:10px;"></div>
                             </div>`;
                         }
                         const sc = cat.score ?? 0;
@@ -4334,19 +4370,43 @@
                 </div>
             </div>`;
 
-            // Section 3: Metric Breakdown Cards (responsive)
-            html += '<div class="invt-grid-2col">';
+            // Section 3: Per-category chart rows (3 charts per row, matching Excel)
             catOrder.forEach(k => {
                 const cat = data.categories[k];
                 if (!cat) return;
-                // Non-dividend payer: show muted card
+                const charts = INVT_CHART_DEFS[k];
+                if (!charts) return;
+                const col = INVT_CAT_COLORS[k] || '#6366f1';
+                const sc = cat.score;
+                const scCol = sc != null ? _invtScoreColor(sc) : 'var(--text-dim)';
+                const scoreLabel = cat.note ? `<span style="color:var(--text-dim); font-size:0.72rem;">${cat.note}</span>` : `<span style="color:${scCol};">${sc}/10</span>`;
+
                 if (cat.note) {
-                    html += `<div class="analyzer-section" style="grid-column:1/-1; opacity:0.45;">
-                        <div class="analyzer-section-title">${cat.label}</div>
-                        <p style="color:var(--text-dim); font-size:0.85rem; padding:12px 0;">${cat.note} — category excluded from score</p>
+                    html += `<div class="analyzer-section" style="margin-bottom:16px; opacity:0.45;">
+                        <div class="analyzer-section-title" style="color:${col};">${cat.label} — ${scoreLabel}</div>
+                        <p style="color:var(--text-dim); font-size:0.85rem; padding:8px 0;">${cat.note} — category excluded from score</p>
                     </div>`;
                     return;
                 }
+
+                html += `<div class="analyzer-section" style="margin-bottom:16px;">
+                    <div class="analyzer-section-title" style="color:${col};">${cat.label} — ${scoreLabel}</div>
+                    <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px;">
+                        ${charts.map(ch => `<div>
+                            <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:6px; text-align:center; font-weight:600;">${ch.title}</div>
+                            <div style="position:relative; height:180px;"><canvas id="invt-mc-${ch.key}"></canvas></div>
+                        </div>`).join('')}
+                    </div>
+                </div>`;
+            });
+
+            // Collapsible metric details
+            html += `<details style="margin-top:8px;">
+                <summary style="cursor:pointer; color:var(--text-dim); font-size:0.8rem; padding:8px 0;">Show metric details</summary>
+                <div class="invt-grid-2col" style="margin-top:12px;">`;
+            catOrder.forEach(k => {
+                const cat = data.categories[k];
+                if (!cat || cat.note) return;
                 html += `<div class="analyzer-section" style="${k === 'dividends' ? 'grid-column:1/-1;' : ''}">
                     <div class="analyzer-section-title">${cat.label} — <span style="color:${_invtScoreColor(cat.score)};">${cat.score}/10</span></div>
                     <table class="fcf-table">
@@ -4356,48 +4416,26 @@
                     const s5 = m.score5yr ?? m.score1yr ?? 0;
                     const s1 = m.score1yr ?? m.score5yr ?? 0;
                     const avg = Math.round((s5 * 0.7 + s1 * 0.3) * 10) / 10;
-                    const col = _invtScoreColor(avg);
+                    const mcol = _invtScoreColor(avg);
                     const fmt = v => v == null ? '—' : (m.unit === '%' ? v.toFixed(2) + '%' : m.unit === 'x' ? v.toFixed(2) + 'x' : v.toFixed(2));
                     html += `<tr>
                         <td>${m.name}</td>
                         <td>${fmt(m.value5yr)}</td>
                         <td>${fmt(m.value1yr)}</td>
-                        <td><span style="display:inline-block; padding:3px 10px; border-radius:10px; font-size:0.8rem; font-weight:700; background:${col}20; color:${col};">${avg}</span></td>
+                        <td><span style="display:inline-block; padding:3px 10px; border-radius:10px; font-size:0.8rem; font-weight:700; background:${mcol}20; color:${mcol};">${avg}</span></td>
                     </tr>`;
                 });
-                html += `</tbody></table>
-                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-top:14px;">
-                        ${cat.metrics.map(m => `<div style="text-align:center;">
-                            <div style="font-size:0.7rem; color:var(--text-dim); margin-bottom:4px;">${m.name}</div>
-                            <div style="position:relative; height:120px;"><canvas id="invt-mc-${m.key}"></canvas></div>
-                        </div>`).join('')}
-                    </div>
-                </div>`;
+                html += '</tbody></table></div>';
             });
-            html += '</div>';
+            html += '</div></details>';
             return html;
         }
-
-        // Mapping from metric key → yearlyData field for per-metric charts
-        const INVT_METRIC_YEARLY_KEY = {
-            revenue_cagr: 'revenue', eps_cagr: 'eps', fcf_share_cagr: 'fcfPerShare',
-            gpm: 'gpm', npm: 'npm', fcf_margin: 'fcfMargin',
-            net_debt_cagr: 'netDebt', net_debt_fcf: 'netDebtFcf', interest_cov: 'interestCov',
-            div_yield: null, dps_cagr: 'dps', payout_ratio: 'payoutRatio',
-            fcf_payout: 'fcfPayout', shares_cagr: 'sharesOut',
-            roa: 'roa', roe: 'roe', roic: 'roic',
-        };
-        const INVT_CAT_COLORS = {
-            growth: '#4ade80', profitability: '#3b82f6', debt: '#f59e0b',
-            dividends: '#a78bfa', efficiency: '#f97316',
-        };
 
         function renderInvtMetricCharts(data) {
             if (!data.yearlyData || !data.yearlyData.length) return;
             const yd = data.yearlyData;
             const years = yd.map(d => d.year);
 
-            // Format helpers for large numbers
             const fmtVal = (v, key) => {
                 if (v == null) return '';
                 if (key === 'revenue' || key === 'netDebt' || key === 'sharesOut') {
@@ -4410,18 +4448,19 @@
             };
 
             for (const catKey of INVT_CAT_ORDER) {
+                const charts = INVT_CHART_DEFS[catKey];
+                if (!charts) continue;
                 const cat = data.categories[catKey];
                 if (!cat || cat.note) continue;
                 const color = INVT_CAT_COLORS[catKey] || '#6366f1';
 
-                for (const m of cat.metrics) {
-                    const yKey = INVT_METRIC_YEARLY_KEY[m.key];
-                    if (!yKey) continue;
-                    const canvas = document.getElementById('invt-mc-' + m.key);
+                for (const ch of charts) {
+                    const canvas = document.getElementById('invt-mc-' + ch.key);
                     if (!canvas) continue;
-                    const vals = yd.map(d => d[yKey]);
+                    const vals = yd.map(d => d[ch.key]);
+                    const suffix = ch.unit === '%' ? '%' : ch.unit === 'x' ? 'x' : '';
                     new Chart(canvas.getContext('2d'), {
-                        type: 'bar',
+                        type: ch.type || 'bar',
                         data: {
                             labels: years,
                             datasets: [{
@@ -4438,15 +4477,15 @@
                             plugins: {
                                 legend: { display: false },
                                 tooltip: {
-                                    callbacks: { label: ctx => fmtVal(ctx.raw, yKey) + (m.unit === '%' ? '%' : m.unit === 'x' ? 'x' : '') }
+                                    callbacks: { label: ctx => fmtVal(ctx.raw, ch.key) + suffix }
                                 }
                             },
                             scales: {
                                 x: { ticks: { color: 'rgba(255,255,255,0.4)', font: { size: 10 } }, grid: { display: false } },
                                 y: {
                                     ticks: {
-                                        color: 'rgba(255,255,255,0.3)', font: { size: 9 },
-                                        callback: v => fmtVal(v, yKey) + (m.unit === '%' ? '%' : m.unit === 'x' ? 'x' : '')
+                                        color: 'rgba(255,255,255,0.3)', font: { size: 9 }, maxTicksLimit: 5,
+                                        callback: v => fmtVal(v, ch.key) + suffix
                                     },
                                     grid: { color: 'rgba(255,255,255,0.05)' }
                                 }
@@ -4463,7 +4502,6 @@
             // Filter out N/A categories (non-dividend payers) from radar
             const catOrder = INVT_CAT_ORDER.filter(k => data.categories[k] && !data.categories[k].note);
             const labels = catOrder.map(k => data.categories[k].label);
-            const hybrid = catOrder.map(k => data.categories[k].score ?? 0);
             const fiveYr = catOrder.map(k => data.categories[k].score5yr ?? 0);
             const oneYr = catOrder.map(k => data.categories[k].score1yr ?? 0);
             new Chart(canvas.getContext('2d'), {
@@ -4471,9 +4509,8 @@
                 data: {
                     labels: labels,
                     datasets: [
-                        { label: 'Hybrid', data: hybrid, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.15)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#6366f1' },
-                        { label: '5yr', data: fiveYr, borderColor: '#4ade80', backgroundColor: 'transparent', borderWidth: 1.5, borderDash: [5, 3], pointRadius: 3, pointBackgroundColor: '#4ade80' },
-                        { label: '1yr', data: oneYr, borderColor: '#f59e0b', backgroundColor: 'transparent', borderWidth: 1.5, borderDash: [5, 3], pointRadius: 3, pointBackgroundColor: '#f59e0b' },
+                        { label: '5yr', data: fiveYr, borderColor: '#4ade80', backgroundColor: 'rgba(74,222,128,0.12)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#4ade80' },
+                        { label: '1yr', data: oneYr, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#f59e0b' },
                     ]
                 },
                 options: {

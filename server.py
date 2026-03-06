@@ -3206,47 +3206,47 @@ def _fetch_invt_data(ticker):
         rev = _edgar_with_fallbacks(facts, [
             "RevenueFromContractWithCustomerExcludingAssessedTax",
             "Revenues", "SalesRevenueNet",
-        ], max_years=6)
+        ], max_years=11)
         if rev:
-            gp = _edgar_annual_values(facts, "GrossProfit", max_years=6)
+            gp = _edgar_annual_values(facts, "GrossProfit", max_years=11)
             if not gp:
                 cor = _edgar_with_fallbacks(facts, [
                     "CostOfGoodsAndServicesSold", "CostOfGoodsSold", "CostOfRevenue",
-                ], max_years=6)
+                ], max_years=11)
                 if cor:
                     gp = {y: rev.get(y, 0) - cor.get(y, 0) for y in cor if y in rev}
-            ni = _edgar_annual_values(facts, "NetIncomeLoss", max_years=6)
-            ebit = _edgar_annual_values(facts, "OperatingIncomeLoss", max_years=6)
-            eps = _edgar_annual_values(facts, "EarningsPerShareDiluted", unit="USD/shares", max_years=6)
-            ocf = _edgar_annual_values(facts, "NetCashProvidedByUsedInOperatingActivities", max_years=6)
-            capex = _edgar_annual_values(facts, "PaymentsToAcquirePropertyPlantAndEquipment", max_years=6)
-            debt_nc = _edgar_annual_values(facts, "LongTermDebtNoncurrent", max_years=6)
-            debt_c = _edgar_annual_values(facts, "LongTermDebtCurrent", max_years=6)
-            debt_fb = _edgar_annual_values(facts, "LongTermDebt", max_years=6)
+            ni = _edgar_annual_values(facts, "NetIncomeLoss", max_years=11)
+            ebit = _edgar_annual_values(facts, "OperatingIncomeLoss", max_years=11)
+            eps = _edgar_annual_values(facts, "EarningsPerShareDiluted", unit="USD/shares", max_years=11)
+            ocf = _edgar_annual_values(facts, "NetCashProvidedByUsedInOperatingActivities", max_years=11)
+            capex = _edgar_annual_values(facts, "PaymentsToAcquirePropertyPlantAndEquipment", max_years=11)
+            debt_nc = _edgar_annual_values(facts, "LongTermDebtNoncurrent", max_years=11)
+            debt_c = _edgar_annual_values(facts, "LongTermDebtCurrent", max_years=11)
+            debt_fb = _edgar_annual_values(facts, "LongTermDebt", max_years=11)
             debt = {}
             for y in set(debt_nc) | set(debt_c) | set(debt_fb):
                 d = debt_nc.get(y, 0) + debt_c.get(y, 0)
                 debt[y] = d if d else debt_fb.get(y, 0)
-            cash = _edgar_annual_values(facts, "CashAndCashEquivalentsAtCarryingValue", max_years=6)
-            equity = _edgar_annual_values(facts, "StockholdersEquity", max_years=6)
-            assets = _edgar_annual_values(facts, "Assets", max_years=6)
-            interest = _edgar_annual_values(facts, "InterestExpense", max_years=6)
+            cash = _edgar_annual_values(facts, "CashAndCashEquivalentsAtCarryingValue", max_years=11)
+            equity = _edgar_annual_values(facts, "StockholdersEquity", max_years=11)
+            assets = _edgar_annual_values(facts, "Assets", max_years=11)
+            interest = _edgar_annual_values(facts, "InterestExpense", max_years=11)
             pretax_tags = [
                 "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
                 "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
             ]
-            pretax = _edgar_with_fallbacks(facts, pretax_tags, max_years=6)
-            tax = _edgar_annual_values(facts, "IncomeTaxExpenseBenefit", max_years=6)
+            pretax = _edgar_with_fallbacks(facts, pretax_tags, max_years=11)
+            tax = _edgar_annual_values(facts, "IncomeTaxExpenseBenefit", max_years=11)
             divs = _edgar_with_fallbacks(facts, [
                 "PaymentsOfDividends", "PaymentsOfDividendsCommonStock",
                 "PaymentsOfOrdinaryDividends",
-            ], max_years=6)
+            ], max_years=11)
             shares = _edgar_with_fallbacks(facts, [
                 "CommonStockSharesOutstanding",
-            ], unit="shares", max_years=6)
+            ], unit="shares", max_years=11)
             if not shares:
                 shares = _edgar_annual_values(facts, "EntityCommonStockSharesOutstanding",
-                                              unit="shares", ns="dei", max_years=6)
+                                              unit="shares", ns="dei", max_years=11)
             yearly = _build_yearly(rev.keys(), rev, gp, ni, ebit, eps, ocf, capex,
                                    debt, cash, equity, assets, interest, pretax, tax,
                                    divs, shares)
@@ -3275,7 +3275,7 @@ def _fetch_invt_data(ticker):
         if inc_rows:
             rev, gp, ni, ebit, eps_d = {}, {}, {}, {}, {}
             interest, pretax, tax = {}, {}, {}
-            for row in inc_rows[:6]:
+            for row in inc_rows[:11]:
                 y = row.get("date", "")[:4]
                 if not y: continue
                 rev[y] = row.get("revenue", 0)
@@ -3287,14 +3287,14 @@ def _fetch_invt_data(ticker):
                 pretax[y] = row.get("incomeBeforeTax", 0)
                 tax[y] = row.get("incomeTaxExpense", 0)
             ocf, capex_d, divs = {}, {}, {}
-            for row in cf_rows[:6]:
+            for row in cf_rows[:11]:
                 y = row.get("date", "")[:4]
                 if not y: continue
                 ocf[y] = row.get("operatingCashFlow", 0)
                 capex_d[y] = row.get("capitalExpenditure", 0)
                 divs[y] = row.get("dividendsPaid", 0)
             debt, cash_d, equity, assets = {}, {}, {}, {}
-            for row in bal_rows[:6]:
+            for row in bal_rows[:11]:
                 y = row.get("date", "")[:4]
                 if not y: continue
                 debt[y] = row.get("totalDebt", 0)
@@ -3302,7 +3302,7 @@ def _fetch_invt_data(ticker):
                 equity[y] = row.get("totalStockholdersEquity", 0)
                 assets[y] = row.get("totalAssets", 0)
             shares = {}
-            for row in ev_rows[:6]:
+            for row in ev_rows[:11]:
                 y = row.get("date", "")[:4]
                 if not y: continue
                 shares[y] = row.get("numberOfShares", 0)
@@ -3541,6 +3541,7 @@ def api_invt_score(ticker):
 
         # Yearly data for per-metric charts (compact: only fields needed for charting)
         yearly_data = []
+        prev_dps = None
         for d in yearly:
             s = d.get("sharesOutstanding", 0) or 1
             nd = d.get("totalDebt", 0) - d.get("cash", 0)
@@ -3548,6 +3549,9 @@ def api_invt_score(ticker):
             tax_rate = d.get("taxProvision", 0) / d["pretaxIncome"] if d.get("pretaxIncome") and d["pretaxIncome"] > 0 else 0.21
             invested = d.get("totalDebt", 0) + d.get("equity", 0) - d.get("cash", 0)
             nopat = d.get("ebit", 0) * (1 - tax_rate)
+            dps = round(d.get("dividendsPaid", 0) / s, 2) if s else 0
+            div_growth = round((dps - prev_dps) / prev_dps * 100, 2) if prev_dps and prev_dps > 0 and dps else None
+            prev_dps = dps
             yearly_data.append({
                 "year": d["year"],
                 "revenue": d.get("revenue", 0),
@@ -3559,7 +3563,8 @@ def api_invt_score(ticker):
                 "netDebt": nd,
                 "netDebtFcf": round(nd / d["fcf"], 2) if d.get("fcf") and d["fcf"] > 0 else None,
                 "interestCov": round(d["ebit"] / d["interestExpense"], 2) if d.get("ebit") and d.get("interestExpense") and d["interestExpense"] > 0 else None,
-                "dps": round(d.get("dividendsPaid", 0) / s, 2) if s else 0,
+                "dps": dps,
+                "divGrowth": div_growth,
                 "payoutRatio": round(d["dividendsPaid"] / d["netIncome"] * 100, 2) if d.get("dividendsPaid") and d.get("netIncome") and d["netIncome"] > 0 else None,
                 "fcfPayout": round(d["dividendsPaid"] / d["fcf"] * 100, 2) if d.get("dividendsPaid") and d.get("fcf") and d["fcf"] > 0 else None,
                 "sharesOut": d.get("sharesOutstanding", 0),
