@@ -21,6 +21,9 @@ desktop.ini
 .vscode/
 .idea/
 
+# Sphinx docs build output
+docs/_build/
+
 # Uploads / temp
 *.xlsx
 *.csv
