@@ -1,0 +1,312 @@
+        /* Stock Analyzer */
+        .analyzer-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        .analyzer-header h2 { margin: 0; font-size: 1.4rem; }
+        .analyzer-header .ticker-badge {
+            background: var(--accent);
+            color: #fff;
+            padding: 4px 12px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+        .analyzer-header .rec-badge {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .analyzer-sections {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 20px;
+        }
+        .invt-grid-2col {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 16px;
+        }
+        .analyzer-section {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+        }
+        .analyzer-section-title {
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: var(--accent);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .analyzer-stat {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(42,46,66,0.5);
+            font-size: 13px;
+        }
+        .analyzer-stat:last-child { border-bottom: none; }
+        .analyzer-stat-label { color: var(--text-dim); }
+        .analyzer-stat-value { font-weight: 600; color: var(--text); }
+        .analyzer-price-range {
+            background: var(--card-hover);
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin: 8px 0;
+            position: relative;
+            height: 28px;
+        }
+        .analyzer-price-bar {
+            position: absolute;
+            top: 50%;
+            left: 12px;
+            right: 12px;
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            transform: translateY(-50%);
+        }
+        .analyzer-price-dot {
+            position: absolute;
+            top: 50%;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent);
+            transform: translate(-50%, -50%);
+            border: 2px solid #fff;
+        }
+
+        /* Analyzer sub-tabs & valuation */
+        .analyzer-subtabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid var(--border);
+            margin: 16px 0;
+        }
+        .analyzer-subtab {
+            padding: 10px 20px;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .analyzer-subtab:hover { color: var(--text); }
+        .analyzer-subtab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+        .analyzer-subview { display: none; }
+        .analyzer-subview.active { display: block; }
+        .valuation-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+        .valuation-card-title {
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: var(--accent);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .iv-result-box {
+            background: var(--card-hover);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-top: 16px;
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+        .iv-result-item {
+            text-align: center;
+        }
+        .iv-result-item .label {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .iv-result-item .value {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--text);
+            margin-top: 2px;
+        }
+        .iv-result-item .value.green { color: #22c55e; }
+        .iv-result-item .value.red { color: #ef4444; }
+        .model-result-banner {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            background: var(--card-hover);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px 24px;
+            margin-bottom: 16px;
+        }
+        .model-result-signal {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            min-width: 120px;
+        }
+        .model-result-metrics {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+            flex: 1;
+            justify-content: space-around;
+        }
+        .model-result-metric { text-align: center; }
+        .model-result-metric .label {
+            display: block;
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .model-result-metric .value {
+            display: block;
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--text);
+            margin-top: 2px;
+        }
+        .e2-collapsed { display: none; }
+        .fcf-table {
+            width: 100%;
+            font-size: 0.82rem;
+            border-collapse: collapse;
+            margin: 8px 0;
+        }
+        .fcf-table th, .fcf-table td {
+            padding: 6px 10px;
+            text-align: right;
+            border-bottom: 1px solid rgba(42,46,66,0.5);
+        }
+        .fcf-table th {
+            color: var(--text-dim);
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+        .fcf-table td:first-child, .fcf-table th:first-child { text-align: left; }
+        .iv-comparison {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .iv-model-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+        .iv-model-card .model-name {
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+        .iv-model-card .model-iv {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+        .iv-model-card .model-upside {
+            font-size: 0.85rem;
+            margin-top: 4px;
+        }
+        .signal-badge {
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .formula-display {
+            background: var(--card-hover);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-family: monospace;
+            font-size: 0.95rem;
+            color: var(--accent);
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        .wacc-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px 24px;
+        }
+        .wacc-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 0.85rem;
+            border-bottom: 1px solid rgba(42,46,66,0.3);
+        }
+        .wacc-item .wlabel { color: var(--text-dim); }
+        .wacc-item .wvalue { font-weight: 600; }
+
+        /* Rule 4% Calculator */
+        .fire-calculator {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .fire-inputs {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .fire-result {
+            background: var(--card);
+            border: 2px solid var(--accent);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .fire-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+        }
+
+        .fire-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--accent);
+        }

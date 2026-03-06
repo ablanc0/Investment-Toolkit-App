@@ -1,0 +1,57 @@
+        /* Responsive */
+        @media (max-width: 768px) {
+            body {
+                padding: 12px;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 16px;
+            }
+
+            .header-left h1 {
+                font-size: 24px;
+            }
+
+            .kpi-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .nav-groups {
+                gap: 4px;
+            }
+            .group-btn {
+                min-width: 50px;
+                padding: 8px 6px;
+                font-size: 12px;
+            }
+            .tab-btn {
+                font-size: 12px;
+                padding: 6px 8px;
+            }
+
+            .search-filter-bar {
+                flex-direction: column;
+            }
+
+            .search-input, .filter-select {
+                width: 100%;
+            }
+
+            .chart-container {
+                height: 250px;
+            }
+
+            table {
+                font-size: 12px;
+            }
+
+            th, td {
+                padding: 8px;
+            }
+
+            .fire-calculator {
+                grid-template-columns: 1fr;
+            }
+        }
