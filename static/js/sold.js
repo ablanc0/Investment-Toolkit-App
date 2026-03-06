@@ -1,6 +1,7 @@
 // ── Sold Positions ──
 async function fetchSoldPositions() {
     try {
+        populateCategorySelect('spCategory');
         const data = await fetch('/api/sold-positions').then(r => r.json());
         renderSoldPositions(data.soldPositions || []);
     } catch(e) { console.error(e); }

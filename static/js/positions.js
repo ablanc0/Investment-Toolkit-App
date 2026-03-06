@@ -19,6 +19,7 @@ function populatePositions() {
         sectors.map(s => `<option value="${s}">${s}</option>`).join('');
 
     renderPositionsTable(positions);
+    populateCategorySelect('newCategory');
 
     const searchInput = document.getElementById('positionSearch');
     searchInput.addEventListener('input', () => filterPositionsTable(positions));
@@ -29,7 +30,7 @@ function populatePositions() {
 
 function renderPositionsTable(positions) {
     const tbody = document.getElementById('positionsBody');
-    const categories = ['Growth', 'Value Stocks', 'Foundational', 'International', 'US Bonds'];
+    const categories = getCategoryOptions();
     const mode = document.getElementById('signalMode').value;
     const useIV = mode === 'iv';
 

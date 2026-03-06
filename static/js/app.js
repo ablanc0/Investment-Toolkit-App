@@ -130,6 +130,10 @@ function switchTab(tabId) {
                 row.style.display = row.dataset.group === groupId ? 'flex' : 'none';
             });
         }
+    } else {
+        // Standalone tab (e.g. Settings) — deactivate nav
+        document.querySelectorAll('.group-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-row').forEach(row => row.style.display = 'none');
     }
 
     // Update tab buttons
@@ -168,6 +172,7 @@ function loadTabData(tabId) {
         rule4pct: fetchRule4Pct,
         costOfLiving: fetchCostOfLiving,
         projections: fetchProjections,
+        settingsCategories: fetchSettingsData,
     };
     if (loaders[tabId]) loaders[tabId]();
 }
@@ -187,6 +192,7 @@ async function fetchAllData(retryCount = 0) {
     setLoadingState(true);
     try {
         const safeFetch = (url) => fetch(url).then(r => r.json()).catch(() => null);
+        await loadCategorySettings();
         const [portfolio, watchlist, dividends, status] = await Promise.all([
             safeFetch('/api/portfolio'),
             safeFetch('/api/watchlist'),
