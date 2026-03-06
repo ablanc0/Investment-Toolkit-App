@@ -4381,12 +4381,11 @@
                         <span style="font-size:0.65rem; color:var(--text-dim);">/ 10</span>
                     </div>
                 </div>
-                <div style="flex:1;">
+                <div style="flex:1; min-width:200px;">
                     <div style="display:flex; align-items:center; gap:10px;">
                         <div style="font-size:1.1rem; font-weight:700; color:${c}; margin-bottom:4px;">${data.label}</div>
                         <button onclick="loadInvtScore(true)" title="Refresh" style="background:none; border:1px solid var(--border); border-radius:6px; padding:4px 8px; cursor:pointer; color:var(--text-dim); font-size:0.75rem; line-height:1;">&#x21bb;</button>
                     </div>
-                    <div style="font-size:0.78rem; color:var(--text-dim); margin-bottom:6px; max-width:520px; line-height:1.4;">${INVT_SCORE_DESC[data.label] || ''}</div>
                     <div style="display:flex; gap:16px; font-size:0.82rem; color:var(--text-dim);">
                         <span>5yr: <b style="color:var(--text);">${data.score5yr}</b></span>
                         <span>1yr: <b style="color:var(--text);">${data.score1yr}</b></span>
@@ -4397,6 +4396,9 @@
                         <span>Source: <strong style="color:var(--text);">${data.dataSource}</strong></span>
                         ${updatedStr ? `<span>Updated: ${updatedStr}</span>` : ''}
                     </div>
+                </div>
+                <div style="flex:1; min-width:240px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px; padding:12px 16px;">
+                    <div style="font-size:0.78rem; color:var(--text-dim); line-height:1.5;">${INVT_SCORE_DESC[data.label] || ''}</div>
                 </div>
             </div>`;
 
