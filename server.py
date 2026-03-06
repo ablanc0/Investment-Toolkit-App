@@ -3471,12 +3471,14 @@ def api_invt_score(ticker):
         metrics_1yr = _compute_invt_metrics(yearly, mode="1yr")
 
         # Fill dividend yield from yfinance (historical yield unavailable from EDGAR/FMP)
+        yf_trailing_pe = None
         try:
             yf_info = yf.Ticker(ticker).info or {}
             div_yield = yf_info.get("dividendYield") or 0  # yfinance 1.2+: already % (0.9 = 0.9%)
             avg_div_yield = yf_info.get("fiveYearAvgDividendYield") or div_yield
             metrics_5yr["div_yield"] = round(avg_div_yield, 2)
             metrics_1yr["div_yield"] = round(div_yield, 2)
+            yf_trailing_pe = yf_info.get("trailingPE")
         except Exception:
             metrics_5yr["div_yield"] = 0
             metrics_1yr["div_yield"] = 0
@@ -3540,6 +3542,7 @@ def api_invt_score(ticker):
             categories[cat_key] = cat_entry
 
         # Yearly data for per-metric charts (compact: only fields needed for charting)
+        est_pe = yf_trailing_pe or 20  # Fallback P/E for estimating historical yield
         yearly_data = []
         prev_dps = None
         for d in yearly:
@@ -3552,10 +3555,15 @@ def api_invt_score(ticker):
             dps = round(d.get("dividendsPaid", 0) / s, 2) if s else 0
             div_growth = round((dps - prev_dps) / prev_dps * 100, 2) if prev_dps and prev_dps > 0 and dps else None
             prev_dps = dps
+            # Estimate historical dividend yield: DPS / (EPS * P/E) * 100
+            eps_val = d.get("eps", 0)
+            est_price = abs(eps_val) * est_pe if eps_val else 0
+            div_yield_est = round(dps / est_price * 100, 2) if dps and est_price > 0 else None
+            shares_raw = d.get("sharesOutstanding", 0)
             yearly_data.append({
                 "year": d["year"],
                 "revenue": d.get("revenue", 0),
-                "eps": d.get("eps", 0),
+                "eps": eps_val,
                 "fcfPerShare": round(d.get("fcf", 0) / s, 2) if s else 0,
                 "gpm": round(d.get("grossProfit", 0) / r * 100, 2) if d.get("grossProfit") else None,
                 "npm": round(d.get("netIncome", 0) / r * 100, 2) if d.get("netIncome") else None,
@@ -3563,11 +3571,12 @@ def api_invt_score(ticker):
                 "netDebt": nd,
                 "netDebtFcf": round(nd / d["fcf"], 2) if d.get("fcf") and d["fcf"] > 0 else None,
                 "interestCov": round(d["ebit"] / d["interestExpense"], 2) if d.get("ebit") and d.get("interestExpense") and d["interestExpense"] > 0 else None,
+                "divYield": div_yield_est,
                 "dps": dps,
                 "divGrowth": div_growth,
                 "payoutRatio": round(d["dividendsPaid"] / d["netIncome"] * 100, 2) if d.get("dividendsPaid") and d.get("netIncome") and d["netIncome"] > 0 else None,
                 "fcfPayout": round(d["dividendsPaid"] / d["fcf"] * 100, 2) if d.get("dividendsPaid") and d.get("fcf") and d["fcf"] > 0 else None,
-                "sharesOut": d.get("sharesOutstanding", 0),
+                "sharesOut": shares_raw if shares_raw else None,
                 "roa": round(d["netIncome"] / d["totalAssets"] * 100, 2) if d.get("netIncome") and d.get("totalAssets") and d["totalAssets"] > 0 else None,
                 "roe": round(d["netIncome"] / d["equity"] * 100, 2) if d.get("netIncome") and d.get("equity") and d["equity"] > 0 else None,
                 "roic": round(nopat / invested * 100, 2) if invested > 0 else None,

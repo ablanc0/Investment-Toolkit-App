@@ -4280,6 +4280,7 @@
                 { key: 'interestCov', title: 'Interest Coverage', unit: 'x', type: 'bar' },
             ],
             dividends: [
+                { key: 'divYield', title: 'Dividend Yield', unit: '%', type: 'line' },
                 { key: 'dps', title: 'Dividends per Share', unit: '$', type: 'bar' },
                 { key: 'divGrowth', title: 'Dividend Growth', unit: '%', type: 'bar' },
                 { key: 'payoutRatio', title: 'Payout Ratio', unit: '%', type: 'bar' },
@@ -4407,7 +4408,7 @@
             catOrder.forEach(k => {
                 const cat = data.categories[k];
                 if (!cat || cat.note) return;
-                html += `<div class="analyzer-section" style="${k === 'dividends' ? 'grid-column:1/-1;' : ''}">
+                html += `<div class="analyzer-section">
                     <div class="analyzer-section-title">${cat.label} — <span style="color:${_invtScoreColor(cat.score)};">${cat.score}/10</span></div>
                     <table class="fcf-table">
                         <thead><tr><th>Metric</th><th>5yr</th><th>1yr</th><th>Score</th></tr></thead>
@@ -4458,18 +4459,18 @@
                     const canvas = document.getElementById('invt-mc-' + ch.key);
                     if (!canvas) continue;
                     const vals = yd.map(d => d[ch.key]);
+                    // Skip chart if all values are null/0
+                    if (vals.every(v => !v && v !== 0)) continue;
                     const suffix = ch.unit === '%' ? '%' : ch.unit === 'x' ? 'x' : '';
+                    const isLine = ch.type === 'line';
+                    const dsProps = isLine
+                        ? { fill: false, borderColor: color, borderWidth: 2, pointBackgroundColor: color, pointRadius: 3, tension: 0.3 }
+                        : { backgroundColor: color + '80', borderColor: color, borderWidth: 1, borderRadius: 3 };
                     new Chart(canvas.getContext('2d'), {
                         type: ch.type || 'bar',
                         data: {
                             labels: years,
-                            datasets: [{
-                                data: vals,
-                                backgroundColor: color + '80',
-                                borderColor: color,
-                                borderWidth: 1,
-                                borderRadius: 3,
-                            }]
+                            datasets: [{ data: vals, ...dsProps }]
                         },
                         options: {
                             responsive: true,
@@ -4509,8 +4510,8 @@
                 data: {
                     labels: labels,
                     datasets: [
-                        { label: '5yr', data: fiveYr, borderColor: '#4ade80', backgroundColor: 'rgba(74,222,128,0.12)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#4ade80' },
-                        { label: '1yr', data: oneYr, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#f59e0b' },
+                        { label: '5yr', data: fiveYr, borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.12)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#f87171' },
+                        { label: '1yr', data: oneYr, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#3b82f6' },
                     ]
                 },
                 options: {
