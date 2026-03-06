@@ -333,7 +333,7 @@ def api_portfolio():
             "totalDivsReceived": round(divs_received, 2),
             "annualSharesPurch": round(annual_shares_purch, 3),
             "intrinsicValue": round(intrinsic_value, 2),
-            "invtScore": round(invt_score, 2),
+            "invtScore": round(invt_score, 1),
             "distFromIV": round(dist_from_iv * 100, 2),
             "ivSignal": iv_signal,
             "distFromAvgCost": round(dist_from_avg * 100, 2),
@@ -471,13 +471,20 @@ def api_watchlist():
 
     quotes = fetch_all_quotes(tickers)
 
+    # Build IV lookup for enrichment
+    iv_list = portfolio.get("intrinsicValues", [])
+    iv_map = {}
+    for iv in iv_list:
+        t = iv.get("ticker", "")
+        if t:
+            iv_map[t] = iv
+
     result = []
     for ticker in tickers:
         q = quotes.get(ticker, {})
         price = q.get("price", 0)
         prev_close = q.get("previousClose", price)
         target_price = q.get("targetMeanPrice", 0)
-        dist_pct = round(((price - target_price) / target_price * 100) if target_price > 0 else 0, 2)
         div_rate = q.get("divRate", 0) or 0
         div_yield = q.get("divYield", 0) or 0
         if div_rate == 0 and div_yield > 0 and price > 0:
@@ -489,19 +496,33 @@ def api_watchlist():
         # EPS = Price / PE
         eps_val = round(price / pe, 2) if pe and pe > 0 else 0
 
+        # Enrich with IV list data if available
+        iv_entry = iv_map.get(ticker, {})
+        iv_val = iv_entry.get("intrinsicValue", 0) or 0
+        if iv_val > 0:
+            intrinsic = iv_val
+        else:
+            intrinsic = target_price
+        dist_pct = round(((price - intrinsic) / intrinsic * 100) if intrinsic > 0 else 0, 2)
+
+        # InvT Score from IV list
+        invt_score_data = iv_entry.get("invtScore")
+        invt_score = invt_score_data.get("score", 0) if isinstance(invt_score_data, dict) else 0
+
         result.append({
             "ticker": ticker,
             "company": q.get("name", ticker),
             "name": q.get("name", ticker),
             "price": round(price, 2),
-            "intrinsicValue": round(target_price, 2),
-            "iv": round(target_price, 2),
+            "intrinsicValue": round(intrinsic, 2),
+            "iv": round(intrinsic, 2),
             "pe": pe,
             "eps": eps_val,
             "marketCap": q.get("marketCap", 0),
             "priority": priorities.get(ticker, "Low"),
             "distance": dist_pct,
             "dist": dist_pct,
+            "invtScore": round(invt_score, 1),
             "dayChangeShare": round(price - prev_close, 2),
             "dayChange": q.get("changePercent", 0),
             "dayChangePct": q.get("changePercent", 0),
@@ -3134,7 +3155,7 @@ def _invt_cagr(start_val, end_val, years):
 def _invt_safe_avg(values):
     """Average of non-None values."""
     valid = [v for v in values if v is not None]
-    return round(sum(valid) / len(valid), 2) if valid else None
+    return round(sum(valid) / len(valid), 1) if valid else None
 
 
 _INVT_INVERTED = {"net_debt_cagr", "net_debt_fcf", "fcf_payout", "shares_cagr"}

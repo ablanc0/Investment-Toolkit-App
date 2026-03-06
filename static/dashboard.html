@@ -1294,6 +1294,7 @@
                             <th onclick="sortTable(this)">% of Income</th>
                             <th onclick="sortTable(this)">Ann. Sh Purch</th>
                             <th onclick="sortTable(this)">Intrinsic Val</th>
+                            <th onclick="sortTable(this)">InvT Score</th>
                             <th onclick="sortTable(this)">Distance</th>
                             <th onclick="sortTable(this)">Signal</th>
                             <th>Category</th>
@@ -1391,9 +1392,10 @@
                             <th onclick="sortTable(this)">Day Chg %</th>
                             <th onclick="sortTable(this)">52W Low</th>
                             <th onclick="sortTable(this)">52W High</th>
-                            <th onclick="sortTable(this)">Target Price</th>
+                            <th onclick="sortTable(this)">Intrinsic Val</th>
                             <th onclick="sortTable(this)">Distance %</th>
                             <th onclick="sortTable(this)">Signal</th>
+                            <th onclick="sortTable(this)">InvT Score</th>
                             <th onclick="sortTable(this)">P/E</th>
                             <th onclick="sortTable(this)">EPS</th>
                             <th onclick="sortTable(this)">Div Yield</th>
@@ -2533,6 +2535,7 @@
                     <td>${p.pctOfTotalIncome ? p.pctOfTotalIncome.toFixed(1) + '%' : '—'}</td>
                     <td>${p.annualSharesPurch ? p.annualSharesPurch.toFixed(3) : '—'}</td>
                     <td>${p.intrinsicValue ? formatMoney(p.intrinsicValue) : '—'}</td>
+                    <td style="text-align:right;">${p.invtScore ? `<span style="color:${_invtScoreColor(p.invtScore)};font-weight:600">${Number(p.invtScore).toFixed(1)}</span>` : '—'}</td>
                     <td class="${distClass}">${distDisplay}</td>
                     <td>${getSignalBadge(signal)}</td>
                     <td class="editable" onclick="editCellSelect(this, '${p.ticker}', 'category', '${p.category}', ${JSON.stringify(categories).replace(/"/g, '&quot;')})">${getCategoryBadge(p.category)}</td>
@@ -2541,7 +2544,7 @@
                 </tr>`;
             }).join('');
 
-            // Cash row (26 columns total)
+            // Cash row (27 columns total)
             const cash = portfolioData?.summary?.cash || 0;
             const totalPortfolio = portfolioData?.summary?.totalPortfolio || 1;
             const cashWeight = (cash / totalPortfolio * 100);
@@ -2554,7 +2557,7 @@
                 <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
                 <td>${formatPercent(cashWeight)}</td>
                 <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
-                <td>—</td><td>—</td><td>—</td>
+                <td>—</td><td>—</td><td>—</td><td>—</td>
                 <td>${getCategoryBadge('Cash')}</td>
                 <td>—</td>
                 <td></td>
@@ -2791,6 +2794,7 @@
                         <td>${formatMoney(item.intrinsicValue)}</td>
                         <td class="${distance <= 0 ? 'positive' : 'negative'}">${formatPercent(distance)}</td>
                         <td>${getSignalBadge(signal)}</td>
+                        <td style="text-align:right;">${item.invtScore ? `<span style="color:${_invtScoreColor(item.invtScore)};font-weight:600">${Number(item.invtScore).toFixed(1)}</span>` : '—'}</td>
                         <td>${item.pe ? item.pe.toFixed(1) : '—'}</td>
                         <td>${item.eps ? formatMoney(item.eps) : '—'}</td>
                         <td>${item.divYield ? item.divYield.toFixed(2) + '%' : '—'}</td>
@@ -3697,6 +3701,34 @@
 
         let _analyzerData = null; // stored for client-side recalculation
         let _invtScoreLoaded = false;
+        let _invtScoreCache = null; // {score, label} from last InvT Score fetch
+
+        async function _fetchSummaryInvtScore(ticker) {
+            if (_invtScoreCache) {
+                _updateSummaryInvtScoreTile(_invtScoreCache.score, _invtScoreCache.label);
+                return;
+            }
+            try {
+                const data = await fetch(`/api/invt-score/${ticker}`).then(r => r.json());
+                _invtScoreCache = { score: data.score, label: data.label };
+                _updateSummaryInvtScoreTile(data.score, data.label);
+            } catch(e) { _updateSummaryInvtScoreTile(null, null); }
+        }
+
+        function _updateSummaryInvtScoreTile(score, label) {
+            const el = document.getElementById('summary-invt-score-value');
+            if (!el) return;
+            if (score != null) {
+                const c = _invtScoreColor(score);
+                el.textContent = Number(score).toFixed(1);
+                el.style.color = c;
+                const lbl = document.getElementById('summary-invt-score-label');
+                if (lbl) { lbl.textContent = label || ''; lbl.style.color = c; }
+            } else {
+                el.textContent = 'N/A';
+                el.style.color = 'var(--text-dim)';
+            }
+        }
 
         function recalcGraham() {
             if (!_analyzerData || !_analyzerData.valuation || !_analyzerData.valuation.graham) return;
@@ -3972,6 +4004,7 @@
                 annualDividend: d.dividendRate || 0,
                 dividendYield: d.dividendYield || 0,
                 signal: signal,
+                invtScore: _invtScoreCache || '',
             };
             try {
                 const resp = await fetch('/api/intrinsic-values/upsert', {
@@ -4253,6 +4286,7 @@
                 if (!resp.ok) throw new Error('API error');
                 const data = await resp.json();
                 _invtScoreLoaded = true;
+                _invtScoreCache = { score: data.score, label: data.label };
                 container.innerHTML = renderInvtScore(data);
                 renderInvtRadarChart(data);
                 renderInvtMetricCharts(data);
@@ -4387,12 +4421,12 @@
                         <button onclick="loadInvtScore(true)" title="Refresh" style="background:none; border:1px solid var(--border); border-radius:6px; padding:4px 8px; cursor:pointer; color:var(--text-dim); font-size:0.75rem; line-height:1;">&#x21bb;</button>
                     </div>
                     <div style="display:flex; gap:16px; font-size:0.82rem; color:var(--text-dim);">
-                        <span>10yr: <b style="color:var(--text);">${data.score10yr ?? '—'}</b></span>
-                        <span>5yr: <b style="color:var(--text);">${data.score5yr ?? '—'}</b></span>
-                        <span>Hybrid (70/30): <b style="color:${c};">${data.score}</b></span>
+                        <span>10yr: <b style="color:var(--text);">${data.score10yr != null ? Number(data.score10yr).toFixed(1) : '—'}</b></span>
+                        <span>5yr: <b style="color:var(--text);">${data.score5yr != null ? Number(data.score5yr).toFixed(1) : '—'}</b></span>
+                        <span>Hybrid (70/30): <b style="color:${c};">${Number(data.score).toFixed(1)}</b></span>
                     </div>
                     ${data.shareholderReturnsScore != null ? `<div style="font-size:0.78rem; color:var(--text-dim); margin-top:4px;">
-                        Dividend & Buyback: <b style="color:#a78bfa;">${data.shareholderReturnsScore}/10</b>
+                        Dividend & Buyback: <b style="color:#a78bfa;">${Number(data.shareholderReturnsScore).toFixed(1)}</b>
                         <span style="font-size:0.68rem; opacity:0.7;">(informational, not in overall)</span>
                     </div>` : ''}
                     <div style="font-size:0.75rem; color:var(--text-dim); margin-top:6px; display:flex; gap:12px; flex-wrap:wrap;">
@@ -4440,13 +4474,13 @@
                         return prefix + `<div style="margin-bottom:14px;${isInfo ? ' opacity:0.75;' : ''}">
                             <div style="display:flex; justify-content:space-between; font-size:0.82rem; margin-bottom:4px;">
                                 <span style="color:var(--text);">${cat.label}${infoNote}</span>
-                                <span style="font-weight:700; color:${col};">${sc} / 10</span>
+                                <span style="font-weight:700; color:${col};">${Number(sc).toFixed(1)}</span>
                             </div>
                             <div style="background:rgba(255,255,255,0.06); border-radius:6px; height:10px; overflow:hidden;${barStyle}">
                                 <div style="width:${sc * 10}%; height:100%; background:${col}; border-radius:6px; transition:width 0.4s;"></div>
                             </div>
                             <div style="display:flex; gap:12px; font-size:0.7rem; color:var(--text-dim); margin-top:2px;">
-                                <span>10yr: ${cat.score10yr ?? '—'}</span><span>5yr: ${cat.score5yr ?? '—'}</span>
+                                <span>10yr: ${cat.score10yr != null ? Number(cat.score10yr).toFixed(1) : '—'}</span><span>5yr: ${cat.score5yr != null ? Number(cat.score5yr).toFixed(1) : '—'}</span>
                             </div>
                             ${noteStr}
                         </div>`;
@@ -4464,7 +4498,7 @@
                 const sc = cat.score;
                 const scCol = sc != null ? _invtScoreColor(sc) : 'var(--text-dim)';
                 const isInfo = cat.scored === false;
-                const scoreLabel = sc != null ? `<span style="color:${scCol};">${sc}/10</span>` : `<span style="color:var(--text-dim);">—</span>`;
+                const scoreLabel = sc != null ? `<span style="color:${scCol};">${Number(sc).toFixed(1)}</span>` : `<span style="color:var(--text-dim);">—</span>`;
                 const infoTag = isInfo ? ` <span style="font-size:0.68rem; color:var(--text-dim); font-weight:400;">(informational)</span>` : '';
                 const sectionBorder = isInfo ? ' border-style:dashed;' : '';
                 const noteStr = cat.note ? `<p style="color:var(--text-dim); font-size:0.8rem; padding:4px 0 0;">${cat.note}</p>` : '';
@@ -4497,7 +4531,7 @@
                 if (k === 'shareholder_returns') styles.push('grid-column: span 2');
                 if (isInfo) styles.push('border-style:dashed');
                 const styleAttr = styles.length ? ` style="${styles.join('; ')};"` : '';
-                const scDisplay = cat.score != null ? `<span style="color:${_invtScoreColor(cat.score)};">${cat.score}/10</span>` : `<span style="color:var(--text-dim);">—</span>`;
+                const scDisplay = cat.score != null ? `<span style="color:${_invtScoreColor(cat.score)};">${Number(cat.score).toFixed(1)}</span>` : `<span style="color:var(--text-dim);">—</span>`;
                 const infoTag = isInfo ? ' <span style="font-size:0.68rem; color:var(--text-dim);">(informational)</span>' : '';
                 html += `<div class="analyzer-section"${styleAttr}>
                     <div class="analyzer-section-title">${cat.label}${infoTag} — ${scDisplay}</div>
@@ -5422,7 +5456,12 @@
 
                 <div id="summary-number-line">${_ivNumberLine(nlPoints, nlMin, nlMax)}</div>
 
-                <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-top:8px;">
+                <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:8px; margin-top:8px;">
+                    <div style="text-align:center; padding:8px; background:var(--bg); border-radius:8px;">
+                        <div style="font-size:0.68rem; color:var(--text-dim); text-transform:uppercase;">InvT Score</div>
+                        <div id="summary-invt-score-value" style="font-size:1.1rem; font-weight:700; color:var(--text-dim);">...</div>
+                        <div id="summary-invt-score-label" style="font-size:0.62rem; color:var(--text-dim);"></div>
+                    </div>
                     <div style="text-align:center; padding:8px; background:var(--bg); border-radius:8px;">
                         <div style="font-size:0.68rem; color:var(--text-dim); text-transform:uppercase;">Altman Z</div>
                         <div style="font-size:1.1rem; font-weight:700; color:${zColor};">${fmpAltmanZ > 0 ? fmpAltmanZ.toFixed(2) : 'N/A'}</div>
@@ -5470,6 +5509,7 @@
 
                 const hasValuation = d.valuation && (d.valuation.dcf || d.valuation.graham || d.valuation.relative);
                 _invtScoreLoaded = false;
+                _invtScoreCache = null;
                 const tabs = [
                     {id: 'overview', label: 'Overview'},
                     {id: 'invtScore', label: 'InvT Score'},
@@ -5501,6 +5541,7 @@
                 resultsDiv.innerHTML = html;
                 recalcRelative();
                 _renderE2Chart(d);
+                _fetchSummaryInvtScore(ticker);
             } catch (e) {
                 resultsDiv.innerHTML = '<p style="color: var(--red); padding: 20px;">Error fetching data. Check console.</p>';
                 console.error('Analyzer error:', e);
@@ -6426,7 +6467,7 @@
                     <td style="text-align:right;">${formatMoney(iv.currentPrice)}</td>
                     <td style="text-align:right; font-weight:600;">${iv.intrinsicValue ? formatMoney(iv.intrinsicValue) : '—'}</td>
                     <td style="text-align:right; color: ${distColor}; font-weight:600;">${distStr}</td>
-                    <td style="text-align:right;">${iv.invtScore || '—'}</td>
+                    <td style="text-align:right;">${(() => { const s = typeof iv.invtScore === 'object' && iv.invtScore ? iv.invtScore.score : iv.invtScore; if (!s && s !== 0) return '—'; return '<span style="color:' + _invtScoreColor(s) + '; font-weight:600;">' + Number(s).toFixed(1) + '</span>'; })()}</td>
                     <td style="font-size:0.78rem;">${iv.sector || '—'}</td>
                     <td>${iv.category || '—'}</td>
                     <td style="text-align:right; color: ${yld !== '—' ? '#4ade80' : 'var(--text-dim)'};">${yld}</td>
