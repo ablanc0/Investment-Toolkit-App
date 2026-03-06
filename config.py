@@ -85,6 +85,26 @@ SECTOR_AVERAGES = {
     "Basic Materials":     {"pe": 15, "evEbitda": 9,  "pb": 2.5},
 }
 
+# ── Default User Settings ──────────────────────────────────────────────
+
+DEFAULT_SETTINGS = {
+    "categories": [
+        {"name": "Growth", "color": "#8b5cf6"},
+        {"name": "Value Stocks", "color": "#3b82f6"},
+        {"name": "Foundational", "color": "#22c55e"},
+        {"name": "International", "color": "#f59e0b"},
+        {"name": "US Bonds", "color": "#64748b"},
+    ],
+    "defaultCategory": "Growth",
+    "signalMode": "avgCost",
+    "signalThresholds": {
+        "strongBuy": -5,
+        "buy": 5,
+        "expensive": 20,
+        "overrated": 50,
+    },
+}
+
 # ── SEC EDGAR API ───────────────────────────────────────────────────────
 
 EDGAR_USER_AGENT  = "InvToolkit ale.blancoglez91@gmail.com"

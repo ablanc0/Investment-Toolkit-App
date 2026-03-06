@@ -29,6 +29,7 @@ from routes.projections import bp as projections_bp
 from routes.analysis import bp as analysis_bp
 from routes.salary import bp as salary_bp
 from routes.planning import bp as planning_bp
+from routes.settings import bp as settings_bp
 
 app.register_blueprint(portfolio_bp)
 app.register_blueprint(dividends_bp)
@@ -39,6 +40,7 @@ app.register_blueprint(projections_bp)
 app.register_blueprint(analysis_bp)
 app.register_blueprint(salary_bp)
 app.register_blueprint(planning_bp)
+app.register_blueprint(settings_bp)
 
 
 # ── Main ───────────────────────────────────────────────────────────────
