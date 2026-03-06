@@ -8,7 +8,7 @@ from datetime import datetime
 
 from flask import jsonify
 
-from config import PORTFOLIO_FILE
+from config import PORTFOLIO_FILE, DEFAULT_SETTINGS
 
 
 def load_portfolio():
@@ -21,6 +21,34 @@ def save_portfolio(data):
     PORTFOLIO_FILE.write_text(json.dumps(data, indent=2))
     from services.backup import notify_backup
     notify_backup()
+
+
+# ── Settings ─────────────────────────────────────────────────────────────
+
+def get_settings():
+    """Return settings dict, injecting defaults for missing keys."""
+    saved = load_portfolio().get("settings", {})
+    merged = {}
+    for key, default in DEFAULT_SETTINGS.items():
+        if key in saved:
+            merged[key] = saved[key]
+        elif isinstance(default, dict):
+            merged[key] = dict(default)
+        elif isinstance(default, list):
+            merged[key] = [dict(item) if isinstance(item, dict) else item for item in default]
+        else:
+            merged[key] = default
+    return merged
+
+
+def save_settings(updates):
+    """Shallow-merge updates into settings and persist."""
+    portfolio = load_portfolio()
+    current = portfolio.get("settings", {})
+    current.update(updates)
+    portfolio["settings"] = current
+    save_portfolio(portfolio)
+    return get_settings()
 
 
 # ── Generic CRUD helper ─────────────────────────────────────────────────
