@@ -219,12 +219,31 @@ When working on complex tasks, dispatch specialized sub-agents for parallel work
 - Code review before PR → invt-reviewer
 - Browser testing → invt-browser-tester
 
+### Independent domains (safe to parallelize)
+
+These domains have no shared files — agents can work simultaneously without conflicts:
+
+| Domain | Files | Agent |
+|--------|-------|-------|
+| Backend (routes, models, services) | `routes/`, `models/`, `services/`, `config.py` | invt-engineer |
+| Frontend (JS, CSS, HTML) | `static/js/`, `static/css/`, `static/dashboard.html` | invt-frontend |
+| Data layer | `portfolio.json` (runtime only, not in repo) | — |
+
+**Exception**: if a new feature adds a backend endpoint AND a frontend consumer, the endpoint JSON schema must be agreed first (engineer defines it, frontend consumes it).
+
+### Sequential dependencies (do NOT parallelize)
+
+- New tab feature: HTML container first → JS module → CSS styling (single agent or sequential)
+- Endpoint + consumer: backend endpoint must exist before frontend can call it
+- Review/test: implementation must finish before reviewer or browser-tester starts
+- Build verification: syntax checks after all edits are done
+
 ### Dispatch patterns
-- **Feature work**: invt-engineer (backend) + invt-frontend (frontend) in parallel
-- **Pre-PR review**: invt-reviewer (read-only, plan mode)
-- **Browser verification**: invt-browser-tester (after implementation, uses Chrome MCP tools)
-- Background automatically: reviewer, browser-tester (results not needed immediately)
-- Run sequentially: engineer/frontend must finish before reviewer starts
+- **Feature work (both sides)**: invt-engineer (backend) + invt-frontend (frontend) in parallel. Engineer defines the API response shape; frontend consumes it.
+- **Feature work (one side)**: dispatch only the relevant agent
+- **Pre-PR review**: invt-reviewer (read-only, plan mode) — run in background
+- **Browser verification**: invt-browser-tester (after implementation) — run in background
+- **Docs / config only**: main session, no sub-agents needed
 
 ### Agent Workflow Per Issue
 

@@ -29,6 +29,11 @@ model: opus
 - yfinance `dividendYield` returns percentage directly — do NOT multiply by 100
 - Data source cascade: EDGAR XBRL → FMP API → yfinance (fallback chain)
 
+## Boundary — do NOT touch
+- Frontend files (`static/`) — leave to invt-frontend
+- `dashboard.html`, any `.css` or `.js` file — never modify
+- Browser testing — leave to invt-browser-tester
+
 ## Before reporting done
 - Run `python -m py_compile` on all modified files
 - Verify imports resolve: `python -c "from routes.X import bp"` for new routes

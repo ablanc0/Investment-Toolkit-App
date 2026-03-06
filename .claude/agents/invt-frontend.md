@@ -34,6 +34,11 @@ model: opus
 - Signal badges: Strong Buy (#4ade80), Buy (#22d3ee), Expensive (#f59e0b), Overrated (#f87171)
 - Category badges: `.cat-growth` (green), `.cat-value` (blue), `.cat-foundational` (purple)
 
+## Boundary — do NOT touch
+- Backend files (`server.py`, `config.py`, `services/`, `models/`, `routes/`) — leave to invt-engineer
+- Never modify Python files
+- Browser testing — leave to invt-browser-tester
+
 ## Before reporting done
 - Run `node -c` on all modified JS files to verify syntax
 - Check that no function name conflicts with existing functions in other JS files
