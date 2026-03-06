@@ -1669,6 +1669,23 @@ def _edgar_with_fallbacks(facts, tags, **kw):
     return {}
 
 
+def _edgar_merge_tags(facts, tags, **kw):
+    """Merge data from multiple XBRL tags, filling gaps from later tags.
+    Useful when companies change XBRL tags across years (e.g. REITs).
+    Trims to max_years most recent entries."""
+    max_years = kw.get("max_years", 11)
+    merged = {}
+    for tag in tags:
+        result = _edgar_annual_values(facts, tag, **kw)
+        for year, val in result.items():
+            if year not in merged:
+                merged[year] = val
+    if len(merged) > max_years:
+        keep = sorted(merged.keys())[-max_years:]
+        merged = {y: merged[y] for y in keep}
+    return merged
+
+
 def _edgar_to_info(facts, yf_info):
     """Build unified info dict from EDGAR + yfinance. Mirrors _fmp_to_info()."""
     ocf = _edgar_latest(facts, "NetCashProvidedByUsedInOperatingActivities")
@@ -3201,14 +3218,14 @@ def _fetch_invt_data(ticker):
     # Primary: SEC EDGAR
     facts = _fetch_edgar_facts(ticker)
     if facts:
-        rev = _edgar_with_fallbacks(facts, [
+        rev = _edgar_merge_tags(facts, [
             "RevenueFromContractWithCustomerExcludingAssessedTax",
-            "Revenues", "SalesRevenueNet",
+            "Revenues", "SalesRevenueNet", "RealEstateRevenueNet",
         ], max_years=11)
         if rev:
             gp = _edgar_annual_values(facts, "GrossProfit", max_years=11)
             if not gp:
-                cor = _edgar_with_fallbacks(facts, [
+                cor = _edgar_merge_tags(facts, [
                     "CostOfGoodsAndServicesSold", "CostOfGoodsSold", "CostOfRevenue",
                 ], max_years=11)
                 if cor:
@@ -3225,14 +3242,14 @@ def _fetch_invt_data(ticker):
             for y in set(debt_nc) | set(debt_c) | set(debt_fb):
                 d = debt_nc.get(y, 0) + debt_c.get(y, 0)
                 debt[y] = d if d else debt_fb.get(y, 0)
-            cash = _edgar_with_fallbacks(facts, [
+            cash = _edgar_merge_tags(facts, [
                 "CashAndCashEquivalentsAtCarryingValue",
                 "CashCashEquivalentsAndShortTermInvestments",
                 "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
             ], max_years=11)
             equity = _edgar_annual_values(facts, "StockholdersEquity", max_years=11)
             assets = _edgar_annual_values(facts, "Assets", max_years=11)
-            interest = _edgar_with_fallbacks(facts, [
+            interest = _edgar_merge_tags(facts, [
                 "InterestExpense", "InterestExpenseDebt",
                 "InterestPaidNet",  # Cash flow fallback
                 "InterestIncomeExpenseNonoperatingNet",
@@ -3241,13 +3258,13 @@ def _fetch_invt_data(ticker):
                 "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
                 "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
             ]
-            pretax = _edgar_with_fallbacks(facts, pretax_tags, max_years=11)
+            pretax = _edgar_merge_tags(facts, pretax_tags, max_years=11)
             tax = _edgar_annual_values(facts, "IncomeTaxExpenseBenefit", max_years=11)
-            divs = _edgar_with_fallbacks(facts, [
+            divs = _edgar_merge_tags(facts, [
                 "PaymentsOfDividends", "PaymentsOfDividendsCommonStock",
                 "PaymentsOfOrdinaryDividends",
             ], max_years=11)
-            shares = _edgar_with_fallbacks(facts, [
+            shares = _edgar_merge_tags(facts, [
                 "CommonStockSharesOutstanding",
                 "WeightedAverageNumberOfShareOutstandingBasicAndDiluted",
                 "WeightedAverageNumberOfDilutedSharesOutstanding",
