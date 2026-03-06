@@ -19,6 +19,8 @@ def load_portfolio():
 
 def save_portfolio(data):
     PORTFOLIO_FILE.write_text(json.dumps(data, indent=2))
+    from services.backup import notify_backup
+    notify_backup()
 
 
 # ── Generic CRUD helper ─────────────────────────────────────────────────

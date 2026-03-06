@@ -27,3 +27,8 @@ docs/_build/
 # Uploads / temp
 *.xlsx
 *.csv
+
+# Allow backups directory (repo-tracked secondary copies)
+!backups/
+!backups/*.json
+!backups/*.xlsx
