@@ -3225,10 +3225,18 @@ def _fetch_invt_data(ticker):
             for y in set(debt_nc) | set(debt_c) | set(debt_fb):
                 d = debt_nc.get(y, 0) + debt_c.get(y, 0)
                 debt[y] = d if d else debt_fb.get(y, 0)
-            cash = _edgar_annual_values(facts, "CashAndCashEquivalentsAtCarryingValue", max_years=11)
+            cash = _edgar_with_fallbacks(facts, [
+                "CashAndCashEquivalentsAtCarryingValue",
+                "CashCashEquivalentsAndShortTermInvestments",
+                "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
+            ], max_years=11)
             equity = _edgar_annual_values(facts, "StockholdersEquity", max_years=11)
             assets = _edgar_annual_values(facts, "Assets", max_years=11)
-            interest = _edgar_annual_values(facts, "InterestExpense", max_years=11)
+            interest = _edgar_with_fallbacks(facts, [
+                "InterestExpense", "InterestExpenseDebt",
+                "InterestPaidNet",  # Cash flow fallback
+                "InterestIncomeExpenseNonoperatingNet",
+            ], max_years=11)
             pretax_tags = [
                 "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
                 "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
@@ -3241,6 +3249,8 @@ def _fetch_invt_data(ticker):
             ], max_years=11)
             shares = _edgar_with_fallbacks(facts, [
                 "CommonStockSharesOutstanding",
+                "WeightedAverageNumberOfShareOutstandingBasicAndDiluted",
+                "WeightedAverageNumberOfDilutedSharesOutstanding",
             ], unit="shares", max_years=11)
             if not shares:
                 shares = _edgar_annual_values(facts, "EntityCommonStockSharesOutstanding",

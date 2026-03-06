@@ -4553,8 +4553,12 @@
                     const canvas = document.getElementById('invt-mc-' + ch.key);
                     if (!canvas) continue;
                     const vals = yd.map(d => d[ch.key]);
-                    // Skip chart if all values are null/0
-                    if (vals.every(v => !v && v !== 0)) continue;
+                    // Show placeholder if all values are null/0
+                    if (vals.every(v => !v && v !== 0)) {
+                        const parent = canvas.parentElement;
+                        parent.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--text-dim); font-size:0.78rem; opacity:0.5; text-align:center; padding:12px;">No data reported</div>`;
+                        continue;
+                    }
                     const suffix = ch.unit === '%' ? '%' : ch.unit === 'x' ? 'x' : '';
                     const isLine = ch.type === 'line';
                     const dsProps = isLine
