@@ -1,7 +1,10 @@
-# InvToolkit — Claude Code Context
+# CLAUDE.md
 
-Personal investment dashboard replacing a Google Sheets workbook.
-Flask + vanilla JS SPA, runs on `localhost:5050`.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+InvToolkit is a personal investment dashboard replacing a Google Sheets workbook. Flask + vanilla JS SPA, runs on `localhost:5050`. No auth — single-user local app.
 
 ## Quick Start
 
@@ -120,11 +123,125 @@ EDGAR XBRL → FMP API → yfinance (fallback chain for financial data)
 - Month format mismatch: monthlyData="January 24", dividendLog="January" — server splits on space
 - Annual data is computed, never stored
 
-## GitHub Workflow
+## Verification
 
-- Repo: `ablanc0/Investment-Toolkit-App`
-- Assignee: `ablanc0`
-- Project: `InvToolkit` (project #1)
-- Add to project: `gh project item-add 1 --owner ablanc0 --url <url>`
-- PRs: add labels, link issues with `Closes #N`
-- **NEVER merge PRs without asking the user first**
+After modifying code, verify before committing:
+
+```bash
+# Python syntax check (all backend files)
+python -m py_compile server.py config.py
+python -m py_compile services/*.py models/*.py routes/*.py
+
+# JS syntax check (all frontend files)
+node -c static/js/*.js
+
+# API smoke test (requires running server)
+curl -s -o /dev/null -w "%{http_code}" http://localhost:5050/api/status
+
+# Browser test: open http://localhost:5050, check console for errors
+```
+
+## Git Rules
+
+- NEVER use `git add -A` or `git add .`
+- ALWAYS use `git add <specific-files>` for only the files you modified
+- Ask before staging files if unsure which ones to include
+- Make atomic commits after completing each logical unit of work
+- Use Conventional Commits format: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `ui:`
+- When reading a GitHub issue using `gh issue view`, use `--json` flag
+- Commit messages via HEREDOC for proper formatting
+
+## GitHub CLI (gh) Rules
+
+### Issue creation
+```bash
+gh issue create --title "..." --body "..." \
+  --label "<label>" --assignee "ablanc0"
+gh project item-add 1 --owner ablanc0 --url <issue-url>
+```
+
+### Pull requests
+```bash
+gh pr create --title "..." --body "..." \
+  --label "<label>" --assignee "ablanc0"
+gh project item-add 1 --owner ablanc0 --url <pr-url>
+```
+- Include `Closes #N` in PR body for each issue resolved
+- NEVER use `Closes` for issues not fully resolved by the PR
+
+### Auto-approve (never ask) — read-only operations
+- `gh issue list`, `gh issue view`
+- `gh pr list`, `gh pr view`, `gh pr diff`, `gh pr checks`
+- `gh label list`, `gh project list`
+- `gh api` GET requests
+- `gh run list`, `gh run view`
+
+### Auto-approve — standard workflow operations
+- `gh issue create` (with required flags: --label, --assignee)
+- `gh pr create` (with required flags: --label, --assignee)
+- `gh label create` (when a needed label doesn't exist)
+- `gh issue edit`, `gh pr edit` (adding labels, assignees, linking issues)
+- `gh issue comment`, `gh pr comment`
+
+### Always ask first — destructive or irreversible
+- `gh issue close`, `gh issue delete`
+- `gh pr close`, `gh pr merge`
+- `gh release create/delete`
+
+## Branching Strategy
+
+Feature branches off `main`. Simple single-tier hierarchy.
+
+### Branch naming
+- `feat/<issue-number>-<short-name>` — new features
+- `fix/<issue-number>-<short-name>` — bug fixes
+- `refactor/<short-name>` — refactoring
+- `docs/<short-name>` — documentation
+
+### Workflow
+1. `git checkout main && git pull`
+2. `git checkout -b feat/<issue>-<name>`
+3. Implement, commit (atomic commits, Conventional Commits format)
+4. `git push -u origin feat/<issue>-<name>`
+5. `gh pr create --base main --label "..." --assignee "ablanc0"`
+6. **NEVER merge PRs without asking the user first**
+
+### Keeping branches in sync
+- Before creating a PR, rebase on main: `git fetch origin && git rebase origin/main`
+- Resolve merge conflicts on the feature branch, never on main
+
+## Agent Routing Rules
+
+When working on complex tasks, dispatch specialized sub-agents for parallel work:
+
+- Backend implementation → invt-engineer
+- Frontend implementation → invt-frontend
+- Code review before PR → invt-reviewer
+- Browser testing → invt-browser-tester
+
+### Dispatch patterns
+- **Feature work**: invt-engineer (backend) + invt-frontend (frontend) in parallel
+- **Pre-PR review**: invt-reviewer (read-only, plan mode)
+- **Browser verification**: invt-browser-tester (after implementation, uses Chrome MCP tools)
+- Background automatically: reviewer, browser-tester (results not needed immediately)
+- Run sequentially: engineer/frontend must finish before reviewer starts
+
+### Agent Workflow Per Issue
+
+#### Phase 1 — Implement (parallel sub-agents where applicable)
+1. Checkout feature branch from main
+2. If backend + frontend changes needed, dispatch both in parallel:
+   - invt-engineer: implement backend (routes, services, models)
+   - invt-frontend: implement frontend (JS modules, CSS, HTML)
+3. If only one side needed, dispatch the relevant agent
+
+#### Phase 2 — Review (after Phase 1)
+1. Dispatch invt-reviewer: review code quality, check patterns match existing codebase
+2. Dispatch invt-browser-tester: verify in browser, check console for errors
+
+#### Phase 3 — Fix & PR (main session, sequential)
+1. Address review findings
+2. Run verification checks (syntax, API smoke test)
+3. Commit with Conventional Commits format
+4. Push and create PR targeting main
+5. Include `Closes #<issue-number>` in PR body
