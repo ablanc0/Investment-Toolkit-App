@@ -3058,27 +3058,26 @@ INVT_THRESHOLDS = {
     "roic":           [(0, 0), (5, 1), (8, 3), (10, 5), (12, 7), (15, 9)],
 }
 
-INVT_CATEGORIES = {
+# Categories that contribute to the overall InvT Score
+INVT_CATEGORIES_SCORED = {
     "growth":        {"metrics": ["revenue_cagr", "eps_cagr", "fcf_share_cagr"],
                       "weights": [1/3, 1/3, 1/3], "label": "Growth"},
     "profitability": {"metrics": ["gpm", "npm", "fcf_margin"],
                       "weights": [1/3, 1/3, 1/3], "label": "Profitability"},
     "debt":          {"metrics": ["net_debt_cagr", "net_debt_fcf", "interest_cov"],
                       "weights": [1/3, 1/3, 1/3], "label": "Debt"},
-    "dividends":     {"metrics": ["div_yield", "dps_cagr", "payout_ratio", "fcf_payout", "shares_cagr"],
-                      "weights": [0.25, 0.25, 0.20, 0.20, 0.10], "label": "Dividends & Buybacks"},
     "efficiency":    {"metrics": ["roa", "roe", "roic"],
                       "weights": [1/3, 1/3, 1/3], "label": "Capital Efficiency"},
 }
 
-# Alternate categories for non-dividend payers: shares_cagr moves to efficiency
-INVT_CATEGORIES_NO_DIV = {
-    "growth":        INVT_CATEGORIES["growth"],
-    "profitability": INVT_CATEGORIES["profitability"],
-    "debt":          INVT_CATEGORIES["debt"],
-    "efficiency":    {"metrics": ["roa", "roe", "roic", "shares_cagr"],
-                      "weights": [0.25, 0.25, 0.25, 0.25], "label": "Capital Efficiency"},
+# Informational category — always computed, never in overall score
+INVT_CATEGORIES_INFO = {
+    "shareholder_returns": {"metrics": ["div_yield", "dps_cagr", "payout_ratio", "fcf_payout", "shares_cagr"],
+                            "weights": [0.15, 0.25, 0.15, 0.25, 0.20], "label": "Dividend & Buyback"},
 }
+
+# Combined for iteration (display all 5)
+INVT_CATEGORIES = {**INVT_CATEGORIES_SCORED, **INVT_CATEGORIES_INFO}
 
 INVT_METRIC_NAMES = {
     "revenue_cagr": "Revenue CAGR", "eps_cagr": "EPS CAGR", "fcf_share_cagr": "FCF/Share CAGR",
@@ -3131,21 +3130,20 @@ def _invt_score_metric(value, key):
     # Custom scorers for non-monotonic metrics
     if key == "div_yield":
         if value <= 0: return 0
-        if value < 1: return 1
-        if value < 2: return 3
-        if value < 4: return 5
-        if value < 6: return 7
-        if value < 8: return 9
-        if value < 10: return 10
-        return 7  # Very high yield → sustainability concern
+        if value < 1: return 3    # Low but paying
+        if value < 2: return 5    # Moderate
+        if value < 4: return 7    # Sweet spot
+        if value < 6: return 5    # Getting high
+        if value < 8: return 3    # Yield trap risk
+        return 1                  # Distressed
     if key == "payout_ratio":
         if value >= 120: return 0
         if value >= 100: return 1
         if value >= 80: return 3
         if value >= 60: return 5
-        if value >= 40: return 10  # Sweet spot
-        if value >= 30: return 9
-        if value >= 20: return 7
+        if value >= 40: return 7
+        if value >= 20: return 9   # Sweet spot
+        if value >= 10: return 7
         return 5
     # Generic threshold scoring
     thresholds = INVT_THRESHOLDS.get(key)
@@ -3164,11 +3162,11 @@ def _invt_label(score):
     """Map overall score to classification label."""
     if score is None:
         return "Insufficient Data"
-    if score >= 9: return "Elite"
-    if score >= 8: return "High Quality"
-    if score >= 6: return "Above Average"
-    if score >= 4: return "Below Average"
-    return "Poor Quality"
+    if score >= 9: return "Elite \U0001f680"
+    if score >= 8: return "High Quality \u2705"
+    if score >= 6: return "Above Average \U0001f44d"
+    if score >= 4: return "Below Average \U0001f4c9"
+    return "Poor Quality \U0001f6a8"
 
 
 def _fetch_invt_data(ticker):
@@ -3320,14 +3318,14 @@ def _fetch_invt_data(ticker):
 
 def _compute_invt_metrics(yearly, mode="5yr"):
     """Compute all 16 InvT metric values from yearly data.
-    mode='5yr': CAGR across full range, averages over all years.
+    mode='5yr': last 5 data points (4 CAGR periods).
     mode='1yr': YoY growth (last 2 years), latest year for ratios."""
     if not yearly or len(yearly) < 2:
         return {}
     if mode == "1yr":
         data = yearly[-2:]  # Last 2 years for YoY
     else:
-        data = yearly  # Full range
+        data = yearly[-5:] if len(yearly) >= 5 else yearly  # Last 5 years
 
     first, last = data[0], data[-1]
     n = len(data) - 1  # Number of growth periods
@@ -3352,8 +3350,13 @@ def _compute_invt_metrics(yearly, mode="5yr"):
 
     # ── Debt ──
     net_debts = [(d["totalDebt"] - d["cash"]) for d in data if d.get("totalDebt") is not None]
-    if len(net_debts) >= 2 and net_debts[0] and net_debts[-1]:
-        metrics["net_debt_cagr"] = _invt_cagr(net_debts[0], net_debts[-1], n)
+    if len(net_debts) >= 2 and net_debts[0]:
+        if net_debts[0] > 0 and net_debts[-1] <= 0:
+            metrics["net_debt_cagr"] = -100  # Went from debt to net cash → best outcome
+        elif net_debts[-1]:
+            metrics["net_debt_cagr"] = _invt_cagr(net_debts[0], net_debts[-1], n)
+        else:
+            metrics["net_debt_cagr"] = None
     else:
         metrics["net_debt_cagr"] = None
     nd_fcf = []
@@ -3430,10 +3433,16 @@ def _compute_invt_metrics(yearly, mode="5yr"):
 
 
 def _compute_invt_category_scores(metric_scores, categories=None):
-    """Compute category scores from individual metric scores."""
+    """Compute category scores from individual metric scores.
+    Requires ≥2 valid metrics for categories with 3+ metrics to prevent single-metric distortion."""
     cats = categories or INVT_CATEGORIES
     result = {}
     for cat_key, cat_def in cats.items():
+        min_required = 2 if len(cat_def["metrics"]) >= 3 else 1
+        valid_count = sum(1 for m in cat_def["metrics"] if metric_scores.get(m) is not None)
+        if valid_count < min_required:
+            result[cat_key] = None
+            continue
         weighted_sum = 0
         weight_sum = 0
         for i, m_key in enumerate(cat_def["metrics"]):
@@ -3457,7 +3466,7 @@ def api_invt_score(ticker):
     if not refresh:
         store = _load_analyzer_store()
         cached = store.get(ticker, {}).get("invtScore")
-        if cached:
+        if cached and cached.get("version") == 2:
             return jsonify(cached)
 
     try:
@@ -3483,21 +3492,24 @@ def api_invt_score(ticker):
             metrics_5yr["div_yield"] = 0
             metrics_1yr["div_yield"] = 0
 
-        # 3. Detect non-dividend payers
+        # 3. Detect non-dividend payers (for informational note only)
         is_dividend_payer = any(d.get("dividendsPaid", 0) > 0 for d in yearly)
-        active_cats = INVT_CATEGORIES if is_dividend_payer else INVT_CATEGORIES_NO_DIV
 
         # 4. Score each metric
         scores_5yr = {k: _invt_score_metric(v, k) for k, v in metrics_5yr.items() if not k.startswith("_")}
         scores_1yr = {k: _invt_score_metric(v, k) for k, v in metrics_1yr.items() if not k.startswith("_")}
 
-        # 5. Category scores (only active categories count toward overall)
-        cats_5yr = _compute_invt_category_scores(scores_5yr, active_cats)
-        cats_1yr = _compute_invt_category_scores(scores_1yr, active_cats)
+        # 5. Category scores — scored categories for overall, info categories separate
+        cats_5yr_scored = _compute_invt_category_scores(scores_5yr, INVT_CATEGORIES_SCORED)
+        cats_1yr_scored = _compute_invt_category_scores(scores_1yr, INVT_CATEGORIES_SCORED)
+        cats_5yr_info = _compute_invt_category_scores(scores_5yr, INVT_CATEGORIES_INFO)
+        cats_1yr_info = _compute_invt_category_scores(scores_1yr, INVT_CATEGORIES_INFO)
+        cats_5yr = {**cats_5yr_scored, **cats_5yr_info}
+        cats_1yr = {**cats_1yr_scored, **cats_1yr_info}
 
-        # 6. Hybrid category scores
+        # 6. Hybrid category scores (all categories)
         hybrid_cats = {}
-        for cat_key in active_cats:
+        for cat_key in INVT_CATEGORIES:
             s5 = cats_5yr.get(cat_key)
             s1 = cats_1yr.get(cat_key)
             if s5 is not None and s1 is not None:
@@ -3505,17 +3517,18 @@ def api_invt_score(ticker):
             else:
                 hybrid_cats[cat_key] = s5 if s5 is not None else s1
 
-        # 7. Overall scores
-        overall_5yr = _invt_safe_avg([v for v in cats_5yr.values() if v is not None])
-        overall_1yr = _invt_safe_avg([v for v in cats_1yr.values() if v is not None])
+        # 7. Overall scores — ONLY scored categories (Growth, Profitability, Debt, Efficiency)
+        overall_5yr = _invt_safe_avg([v for v in cats_5yr_scored.values() if v is not None])
+        overall_1yr = _invt_safe_avg([v for v in cats_1yr_scored.values() if v is not None])
         if overall_5yr is not None and overall_1yr is not None:
             overall = round(0.7 * overall_5yr + 0.3 * overall_1yr, 1)
         else:
             overall = overall_5yr if overall_5yr is not None else overall_1yr
 
-        # 8. Build response — always include all 5 categories for display
+        # 8. Build response — all 5 categories for display
         categories = {}
         for cat_key, cat_def in INVT_CATEGORIES.items():
+            is_scored = cat_key in INVT_CATEGORIES_SCORED
             cat_metrics = []
             for m_key in cat_def["metrics"]:
                 cat_metrics.append({
@@ -3533,11 +3546,9 @@ def api_invt_score(ticker):
                 "score5yr": cats_5yr.get(cat_key),
                 "score1yr": cats_1yr.get(cat_key),
                 "metrics": cat_metrics,
+                "scored": is_scored,
             }
-            if cat_key == "dividends" and not is_dividend_payer:
-                cat_entry["score"] = None
-                cat_entry["score5yr"] = None
-                cat_entry["score1yr"] = None
+            if cat_key == "shareholder_returns" and not is_dividend_payer:
                 cat_entry["note"] = "Non-dividend payer"
             categories[cat_key] = cat_entry
 
@@ -3588,11 +3599,13 @@ def api_invt_score(ticker):
             "label": _invt_label(overall),
             "score5yr": overall_5yr,
             "score1yr": overall_1yr,
+            "shareholderReturnsScore": hybrid_cats.get("shareholder_returns"),
             "categories": categories,
             "years": [d["year"] for d in yearly],
             "yearlyData": yearly_data,
             "dataSource": data_source,
             "lastUpdated": datetime.now().isoformat(),
+            "version": 2,
         }
 
         # 8. Cache

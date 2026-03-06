@@ -4239,7 +4239,7 @@
             return '#f87171';
         }
 
-        const INVT_CAT_ORDER = ['growth', 'profitability', 'debt', 'efficiency', 'dividends'];
+        const INVT_CAT_ORDER = ['growth', 'profitability', 'debt', 'efficiency', 'shareholder_returns'];
 
         async function loadInvtScore(refresh = false) {
             const ticker = _analyzerData && _analyzerData.ticker;
@@ -4264,11 +4264,11 @@
 
         // Score label descriptions (from Excel)
         const INVT_SCORE_DESC = {
-            'Elite': 'A top-tier company with outstanding fundamentals. Strong growth, profitability, and financial efficiency, with a well-managed balance sheet.',
-            'High Quality': 'A strong company with excellent fundamentals and few weaknesses. Reliable growth, profitability, and shareholder returns.',
-            'Above Average': 'A good business with positive attributes but some weaknesses, such as inconsistent profitability or moderate growth challenges.',
-            'Below Average': 'A company with mixed fundamentals and notable concerns. Potential weaknesses in debt, profitability, or growth.',
-            'Poor Quality': 'A struggling business with significant weaknesses. High risk due to declining revenue, excessive debt, or poor profitability.',
+            'Elite \u{1F680}': 'A top-tier company with outstanding fundamentals. Strong growth, profitability, and financial efficiency, with a well-managed balance sheet.',
+            'High Quality \u2705': 'A strong company with excellent fundamentals and few weaknesses. Reliable growth, profitability, and shareholder returns.',
+            'Above Average \u{1F44D}': 'A good business with positive attributes but some weaknesses, such as inconsistent profitability or moderate growth challenges.',
+            'Below Average \u{1F4C9}': 'A company with mixed fundamentals and notable concerns. Potential weaknesses in debt, profitability, or growth.',
+            'Poor Quality \u{1F6A8}': 'A struggling business with significant weaknesses. High risk due to declining revenue, excessive debt, or poor profitability.',
             'Insufficient Data': 'Relatively new company and/or not enough data reported.',
         };
 
@@ -4343,7 +4343,7 @@
                 { key: 'netDebtFcf', title: 'Net Debt / FCF', unit: 'x', type: 'bar' },
                 { key: 'interestCov', title: 'Interest Coverage', unit: 'x', type: 'bar' },
             ],
-            dividends: [
+            shareholder_returns: [
                 { key: 'divYield', title: 'Dividend Yield', unit: '%', type: 'line' },
                 { key: 'dps', title: 'Dividends per Share', unit: '$', type: 'bar' },
                 { key: 'divGrowth', title: 'Dividend Growth', unit: '%', type: 'bar' },
@@ -4359,7 +4359,7 @@
         };
         const INVT_CAT_COLORS = {
             growth: '#4ade80', profitability: '#3b82f6', debt: '#f59e0b',
-            dividends: '#a78bfa', efficiency: '#f97316',
+            efficiency: '#f97316', shareholder_returns: '#a78bfa',
         };
 
         function renderInvtScore(data) {
@@ -4391,6 +4391,10 @@
                         <span>1yr: <b style="color:var(--text);">${data.score1yr}</b></span>
                         <span>Hybrid (70/30): <b style="color:${c};">${data.score}</b></span>
                     </div>
+                    ${data.shareholderReturnsScore != null ? `<div style="font-size:0.78rem; color:var(--text-dim); margin-top:4px;">
+                        Dividend & Buyback: <b style="color:#a78bfa;">${data.shareholderReturnsScore}/10</b>
+                        <span style="font-size:0.68rem; opacity:0.7;">(informational, not in overall)</span>
+                    </div>` : ''}
                     <div style="font-size:0.75rem; color:var(--text-dim); margin-top:6px; display:flex; gap:12px; flex-wrap:wrap;">
                         <span>${data.years ? data.years[0] + '–' + data.years[data.years.length - 1] : ''} (${data.years ? data.years.length : 0} yr)</span>
                         <span>Source: <strong style="color:var(--text);">${data.dataSource}</strong></span>
@@ -4412,28 +4416,39 @@
                     ${catOrder.map(k => {
                         const cat = data.categories[k];
                         if (!cat) return '';
-                        if (cat.note) {
-                            return `<div style="margin-bottom:14px; opacity:0.4;">
+                        const isInfo = cat.scored === false;
+                        const sc = cat.score;
+                        let prefix = '';
+                        if (isInfo) {
+                            prefix = `<div style="border-top:1px dashed rgba(255,255,255,0.15); margin:8px 0 12px; padding-top:6px;">
+                                <span style="font-size:0.68rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em;">\u2139\uFE0F Informational</span>
+                            </div>`;
+                        }
+                        if (sc == null) {
+                            return prefix + `<div style="margin-bottom:14px; opacity:0.4;">
                                 <div style="display:flex; justify-content:space-between; font-size:0.82rem; margin-bottom:4px;">
                                     <span style="color:var(--text);">${cat.label}</span>
-                                    <span style="font-size:0.72rem; color:var(--text-dim);">${cat.note}</span>
+                                    <span style="font-size:0.72rem; color:var(--text-dim);">${cat.note || 'Insufficient data'}</span>
                                 </div>
                                 <div style="background:rgba(255,255,255,0.06); border-radius:6px; height:10px;"></div>
                             </div>`;
                         }
-                        const sc = cat.score ?? 0;
                         const col = _invtScoreColor(sc);
-                        return `<div style="margin-bottom:14px;">
+                        const infoNote = isInfo ? ` <span style="font-size:0.68rem; color:var(--text-dim); font-weight:400;">(not in overall)</span>` : '';
+                        const noteStr = cat.note ? `<div style="font-size:0.68rem; color:var(--text-dim); margin-top:1px;">${cat.note}</div>` : '';
+                        const barStyle = isInfo ? 'border:1px dashed rgba(255,255,255,0.15);' : '';
+                        return prefix + `<div style="margin-bottom:14px;${isInfo ? ' opacity:0.75;' : ''}">
                             <div style="display:flex; justify-content:space-between; font-size:0.82rem; margin-bottom:4px;">
-                                <span style="color:var(--text);">${cat.label}</span>
+                                <span style="color:var(--text);">${cat.label}${infoNote}</span>
                                 <span style="font-weight:700; color:${col};">${sc} / 10</span>
                             </div>
-                            <div style="background:rgba(255,255,255,0.06); border-radius:6px; height:10px; overflow:hidden;">
+                            <div style="background:rgba(255,255,255,0.06); border-radius:6px; height:10px; overflow:hidden;${barStyle}">
                                 <div style="width:${sc * 10}%; height:100%; background:${col}; border-radius:6px; transition:width 0.4s;"></div>
                             </div>
                             <div style="display:flex; gap:12px; font-size:0.7rem; color:var(--text-dim); margin-top:2px;">
                                 <span>5yr: ${cat.score5yr ?? '—'}</span><span>1yr: ${cat.score1yr ?? '—'}</span>
                             </div>
+                            ${noteStr}
                         </div>`;
                     }).join('')}
                 </div>
@@ -4448,18 +4463,15 @@
                 const col = INVT_CAT_COLORS[k] || '#6366f1';
                 const sc = cat.score;
                 const scCol = sc != null ? _invtScoreColor(sc) : 'var(--text-dim)';
-                const scoreLabel = cat.note ? `<span style="color:var(--text-dim); font-size:0.72rem;">${cat.note}</span>` : `<span style="color:${scCol};">${sc}/10</span>`;
+                const isInfo = cat.scored === false;
+                const scoreLabel = sc != null ? `<span style="color:${scCol};">${sc}/10</span>` : `<span style="color:var(--text-dim);">—</span>`;
+                const infoTag = isInfo ? ` <span style="font-size:0.68rem; color:var(--text-dim); font-weight:400;">(informational)</span>` : '';
+                const sectionBorder = isInfo ? ' border-style:dashed;' : '';
+                const noteStr = cat.note ? `<p style="color:var(--text-dim); font-size:0.8rem; padding:4px 0 0;">${cat.note}</p>` : '';
 
-                if (cat.note) {
-                    html += `<div class="analyzer-section" style="margin-bottom:16px; opacity:0.45;">
-                        <div class="analyzer-section-title" style="color:${col};">${cat.label} — ${scoreLabel}</div>
-                        <p style="color:var(--text-dim); font-size:0.85rem; padding:8px 0;">${cat.note} — category excluded from score</p>
-                    </div>`;
-                    return;
-                }
-
-                html += `<div class="analyzer-section" style="margin-bottom:16px;">
-                    <div class="analyzer-section-title" style="color:${col};">${cat.label} — ${scoreLabel}</div>
+                html += `<div class="analyzer-section" style="margin-bottom:16px;${sectionBorder}">
+                    <div class="analyzer-section-title" style="color:${col};">${cat.label}${infoTag} — ${scoreLabel}</div>
+                    ${noteStr}
                     <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px;">
                         ${charts.map(ch => {
                             const desc = INVT_CHART_DESC[ch.key] || '';
@@ -4479,10 +4491,16 @@
                 <div class="invt-grid-2col" style="margin-top:12px;">`;
             catOrder.forEach(k => {
                 const cat = data.categories[k];
-                if (!cat || cat.note) return;
-                const wide = k === 'dividends' ? ' style="grid-column: span 2;"' : '';
-                html += `<div class="analyzer-section"${wide}>
-                    <div class="analyzer-section-title">${cat.label} — <span style="color:${_invtScoreColor(cat.score)};">${cat.score}/10</span></div>
+                if (!cat) return;
+                const isInfo = cat.scored === false;
+                const styles = [];
+                if (k === 'shareholder_returns') styles.push('grid-column: span 2');
+                if (isInfo) styles.push('border-style:dashed');
+                const styleAttr = styles.length ? ` style="${styles.join('; ')};"` : '';
+                const scDisplay = cat.score != null ? `<span style="color:${_invtScoreColor(cat.score)};">${cat.score}/10</span>` : `<span style="color:var(--text-dim);">—</span>`;
+                const infoTag = isInfo ? ' <span style="font-size:0.68rem; color:var(--text-dim);">(informational)</span>' : '';
+                html += `<div class="analyzer-section"${styleAttr}>
+                    <div class="analyzer-section-title">${cat.label}${infoTag} — ${scDisplay}</div>
                     <table class="fcf-table">
                         <thead><tr><th>Metric</th><th>5yr</th><th>1yr</th><th>Score</th></tr></thead>
                         <tbody>`;
@@ -4528,7 +4546,7 @@
                 const charts = INVT_CHART_DEFS[catKey];
                 if (!charts) continue;
                 const cat = data.categories[catKey];
-                if (!cat || cat.note) continue;
+                if (!cat) continue;
                 const color = INVT_CAT_COLORS[catKey] || '#6366f1';
 
                 for (const ch of charts) {
@@ -4577,7 +4595,7 @@
             const canvas = document.getElementById('invt-radar-chart');
             if (!canvas) return;
             // Filter out N/A categories (non-dividend payers) from radar
-            const catOrder = INVT_CAT_ORDER.filter(k => data.categories[k] && !data.categories[k].note);
+            const catOrder = INVT_CAT_ORDER.filter(k => data.categories[k] && data.categories[k].score != null);
             const labels = catOrder.map(k => data.categories[k].label);
             const fiveYr = catOrder.map(k => data.categories[k].score5yr ?? 0);
             const oneYr = catOrder.map(k => data.categories[k].score1yr ?? 0);
