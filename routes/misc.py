@@ -129,6 +129,23 @@ def api_super_investor_buys_delete():
     return crud_delete("superInvestorBuys", int(b.get("index", -1)))
 
 
+# ── Backup ─────────────────────────────────────────────────────────────
+@bp.route("/api/backup/status")
+def api_backup_status():
+    """Return current backup state."""
+    from services.backup import get_backup_status
+    return jsonify(get_backup_status())
+
+@bp.route("/api/backup/now", methods=["POST"])
+def api_backup_now():
+    """Force an immediate backup in a daemon thread."""
+    import threading
+    from services.backup import run_backup
+    t = threading.Thread(target=run_backup, daemon=True)
+    t.start()
+    return jsonify({"ok": True, "message": "Backup started"})
+
+
 # ── Status ─────────────────────────────────────────────────────────────
 @bp.route("/api/status")
 def api_status():

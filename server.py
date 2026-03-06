@@ -50,12 +50,16 @@ if __name__ == "__main__":
     load_disk_cache()
     _load_13f_history()
 
+    from services.backup import run_backup
+    backup_result = run_backup()
+
     print("\n" + "=" * 55)
     print("  InvToolkit — Investment Dashboard")
     print("=" * 55)
     print("  Data source: Yahoo Finance (yfinance)")
     print(f"  Data dir:    {DATA_DIR}")
     print(f"  Portfolio:   {PORTFOLIO_FILE}")
+    print(f"  Backups:     {backup_result['filesCopied']} copied, {backup_result['filesSkipped']} skipped")
     print(f"  Dashboard:   http://localhost:5050")
     print("=" * 55 + "\n")
 

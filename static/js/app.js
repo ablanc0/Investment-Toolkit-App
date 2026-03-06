@@ -261,4 +261,35 @@ function updateTimestamp() {
         second: '2-digit'
     });
     document.getElementById('lastUpdated').textContent = time;
+    fetchBackupStatus();
 }
+
+// ── Backup Status ────────────────────────────────────────────────
+async function fetchBackupStatus() {
+    try {
+        const resp = await fetch('/api/backup/status');
+        const data = await resp.json();
+        const el = document.getElementById('lastBackup');
+        if (!el) return;
+        if (data.lastBackup) {
+            const d = new Date(data.lastBackup);
+            el.textContent = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            el.title = `${data.filesCopied} copied, ${data.filesSkipped} skipped`;
+        } else if (data.error) {
+            el.textContent = 'Error';
+        }
+    } catch { /* silent */ }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const backupEl = document.getElementById('backupStatus');
+    if (backupEl) {
+        backupEl.addEventListener('click', async () => {
+            const span = document.getElementById('lastBackup');
+            span.textContent = '...';
+            await fetch('/api/backup/now', { method: 'POST' });
+            setTimeout(fetchBackupStatus, 2000);
+        });
+    }
+    setInterval(fetchBackupStatus, 60000);
+});
