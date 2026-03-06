@@ -3,16 +3,30 @@
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request
 
-from services.data_store import load_portfolio, save_portfolio
+from services.data_store import load_portfolio, save_portfolio, get_settings
 from services.yfinance_svc import fetch_ticker_data, fetch_all_quotes, fetch_dividends
 
 bp = Blueprint('portfolio', __name__)
+
+
+def _get_signal(dist_pct, thresholds):
+    """Return signal label from configurable thresholds. dist_pct is a ratio (0.05 = 5%)."""
+    sb = thresholds.get("strongBuy", -5) / 100
+    b  = thresholds.get("buy", 5) / 100
+    e  = thresholds.get("expensive", 20) / 100
+    o  = thresholds.get("overrated", 50) / 100
+    if dist_pct > o: return "Overrated"
+    if dist_pct > e: return "Expensive"
+    if dist_pct < sb: return "Strong Buy"
+    if dist_pct < b: return "Buy"
+    return "Hold"
 
 
 @bp.route("/api/portfolio")
 def api_portfolio():
     """Main endpoint: returns enriched portfolio data with live prices."""
     portfolio = load_portfolio()
+    thresholds = get_settings().get("signalThresholds", {})
     pos_list = portfolio.get("positions", [])
     tickers = [p["ticker"] for p in pos_list]
 
@@ -80,31 +94,10 @@ def api_portfolio():
         dist_from_avg = ((price - avg_cost) / avg_cost) if avg_cost > 0 else 0
 
         # IV Signal
-        if intrinsic_value > 0:
-            if dist_from_iv > 0.50:
-                iv_signal = "Overrated"
-            elif dist_from_iv > 0.20:
-                iv_signal = "Expensive"
-            elif dist_from_iv < -0.05:
-                iv_signal = "Strong Buy"
-            elif dist_from_iv < 0.05:
-                iv_signal = "Buy"
-            else:
-                iv_signal = "Hold"
-        else:
-            iv_signal = ""
+        iv_signal = _get_signal(dist_from_iv, thresholds) if intrinsic_value > 0 else ""
 
         # Avg Cost Signal
-        if dist_from_avg > 0.50:
-            avg_cost_signal = "Overrated"
-        elif dist_from_avg > 0.20:
-            avg_cost_signal = "Expensive"
-        elif dist_from_avg < -0.05:
-            avg_cost_signal = "Strong Buy"
-        elif dist_from_avg < 0.05:
-            avg_cost_signal = "Buy"
-        else:
-            avg_cost_signal = "Hold"
+        avg_cost_signal = _get_signal(dist_from_avg, thresholds)
 
         total_market_value += market_value
         total_cost_basis += cost_basis
@@ -188,17 +181,7 @@ def api_portfolio():
 
     # Signals based on valuation
     for pos in enriched:
-        ret_pct = pos["returnPercent"]
-        if ret_pct > 50:
-            pos["signal"] = "Overrated"
-        elif ret_pct > 20:
-            pos["signal"] = "Expensive"
-        elif ret_pct < -5:
-            pos["signal"] = "Strong Buy"
-        elif ret_pct < 5:
-            pos["signal"] = "Buy"
-        else:
-            pos["signal"] = "Hold"
+        pos["signal"] = _get_signal(pos["returnPercent"] / 100, thresholds)
 
     # Percent of total dividend income
     for pos in enriched:

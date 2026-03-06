@@ -25,15 +25,19 @@ function getSignalBadge(signal) {
     return `<span class="badge ${className}">${signal.toUpperCase()}</span>`;
 }
 
-// ── Category Settings (loaded from /api/settings) ───────────────
+// ── Settings (loaded from /api/settings) ─────────────────────────
 let _categorySettings = null;
+let _signalThresholds = null;
+let _defaultSignalMode = 'avgCost';
 
 async function loadCategorySettings() {
     try {
         const resp = await fetch('/api/settings');
         const data = await resp.json();
         _categorySettings = data.categories || [];
-    } catch { _categorySettings = []; }
+        _signalThresholds = data.signalThresholds || {};
+        _defaultSignalMode = data.signalMode || 'avgCost';
+    } catch { _categorySettings = []; _signalThresholds = {}; }
 }
 
 function getCategoryBadge(category) {
