@@ -4478,7 +4478,7 @@
             catOrder.forEach(k => {
                 const cat = data.categories[k];
                 if (!cat || cat.note) return;
-                const wide = k === 'dividends' ? ' style="grid-column:1/-1;"' : '';
+                const wide = k === 'dividends' ? ' style="grid-column: span 2;"' : '';
                 html += `<div class="analyzer-section"${wide}>
                     <div class="analyzer-section-title">${cat.label} — <span style="color:${_invtScoreColor(cat.score)};">${cat.score}/10</span></div>
                     <table class="fcf-table">
