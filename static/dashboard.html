@@ -4387,8 +4387,8 @@
                         <button onclick="loadInvtScore(true)" title="Refresh" style="background:none; border:1px solid var(--border); border-radius:6px; padding:4px 8px; cursor:pointer; color:var(--text-dim); font-size:0.75rem; line-height:1;">&#x21bb;</button>
                     </div>
                     <div style="display:flex; gap:16px; font-size:0.82rem; color:var(--text-dim);">
-                        <span>5yr: <b style="color:var(--text);">${data.score5yr}</b></span>
-                        <span>1yr: <b style="color:var(--text);">${data.score1yr}</b></span>
+                        <span>10yr: <b style="color:var(--text);">${data.score10yr ?? '—'}</b></span>
+                        <span>5yr: <b style="color:var(--text);">${data.score5yr ?? '—'}</b></span>
                         <span>Hybrid (70/30): <b style="color:${c};">${data.score}</b></span>
                     </div>
                     ${data.shareholderReturnsScore != null ? `<div style="font-size:0.78rem; color:var(--text-dim); margin-top:4px;">
@@ -4446,7 +4446,7 @@
                                 <div style="width:${sc * 10}%; height:100%; background:${col}; border-radius:6px; transition:width 0.4s;"></div>
                             </div>
                             <div style="display:flex; gap:12px; font-size:0.7rem; color:var(--text-dim); margin-top:2px;">
-                                <span>5yr: ${cat.score5yr ?? '—'}</span><span>1yr: ${cat.score1yr ?? '—'}</span>
+                                <span>10yr: ${cat.score10yr ?? '—'}</span><span>5yr: ${cat.score5yr ?? '—'}</span>
                             </div>
                             ${noteStr}
                         </div>`;
@@ -4502,12 +4502,12 @@
                 html += `<div class="analyzer-section"${styleAttr}>
                     <div class="analyzer-section-title">${cat.label}${infoTag} — ${scDisplay}</div>
                     <table class="fcf-table">
-                        <thead><tr><th>Metric</th><th>5yr</th><th>1yr</th><th>Score</th></tr></thead>
+                        <thead><tr><th>Metric</th><th>10yr</th><th>5yr</th><th>Score</th></tr></thead>
                         <tbody>`;
                 cat.metrics.forEach(m => {
-                    const s5 = m.score5yr ?? m.score1yr ?? 0;
-                    const s1 = m.score1yr ?? m.score5yr ?? 0;
-                    const avg = Math.round((s5 * 0.7 + s1 * 0.3) * 10) / 10;
+                    const s10 = m.score10yr ?? m.score5yr ?? 0;
+                    const s5 = m.score5yr ?? m.score10yr ?? 0;
+                    const avg = Math.round((s10 * 0.7 + s5 * 0.3) * 10) / 10;
                     const mcol = _invtScoreColor(avg);
                     const fmt = v => v == null ? '—' : (m.unit === '%' ? v.toFixed(2) + '%' : m.unit === 'x' ? v.toFixed(2) + 'x' : v.toFixed(2));
                     const shortName = INVT_METRIC_SHORT[m.name] || m.name;
@@ -4515,8 +4515,8 @@
                     const tip = desc ? ` title="${desc}"` : '';
                     html += `<tr>
                         <td${tip} style="cursor:${desc ? 'help' : 'default'};">${shortName}</td>
+                        <td>${fmt(m.value10yr)}</td>
                         <td>${fmt(m.value5yr)}</td>
-                        <td>${fmt(m.value1yr)}</td>
                         <td><span style="display:inline-block; padding:3px 10px; border-radius:10px; font-size:0.8rem; font-weight:700; background:${mcol}20; color:${mcol};">${avg}</span></td>
                     </tr>`;
                 });
@@ -4597,15 +4597,15 @@
             // Filter out N/A categories (non-dividend payers) from radar
             const catOrder = INVT_CAT_ORDER.filter(k => data.categories[k] && data.categories[k].score != null);
             const labels = catOrder.map(k => data.categories[k].label);
-            const fiveYr = catOrder.map(k => data.categories[k].score5yr ?? 0);
-            const oneYr = catOrder.map(k => data.categories[k].score1yr ?? 0);
+            const fiveYr = catOrder.map(k => data.categories[k].score10yr ?? 0);
+            const oneYr = catOrder.map(k => data.categories[k].score5yr ?? 0);
             new Chart(canvas.getContext('2d'), {
                 type: 'radar',
                 data: {
                     labels: labels,
                     datasets: [
-                        { label: '5yr', data: fiveYr, borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.12)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#f87171' },
-                        { label: '1yr', data: oneYr, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#3b82f6' },
+                        { label: '10yr', data: fiveYr, borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.12)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#f87171' },
+                        { label: '5yr', data: oneYr, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#3b82f6' },
                     ]
                 },
                 options: {

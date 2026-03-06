@@ -3318,14 +3318,14 @@ def _fetch_invt_data(ticker):
 
 def _compute_invt_metrics(yearly, mode="5yr"):
     """Compute all 16 InvT metric values from yearly data.
-    mode='5yr': last 5 data points (4 CAGR periods).
-    mode='1yr': YoY growth (last 2 years), latest year for ratios."""
+    mode='10yr': all available data (up to 10 years).
+    mode='5yr': last 5 data points (4 CAGR periods)."""
     if not yearly or len(yearly) < 2:
         return {}
-    if mode == "1yr":
-        data = yearly[-2:]  # Last 2 years for YoY
+    if mode == "5yr":
+        data = yearly[-5:] if len(yearly) >= 5 else yearly
     else:
-        data = yearly[-5:] if len(yearly) >= 5 else yearly  # Last 5 years
+        data = yearly  # Full range (10yr)
 
     first, last = data[0], data[-1]
     n = len(data) - 1  # Number of growth periods
@@ -3457,7 +3457,7 @@ def _compute_invt_category_scores(metric_scores, categories=None):
 @app.route("/api/invt-score/<ticker>")
 def api_invt_score(ticker):
     """InvT Score: 0-10 company quality score across 5 categories.
-    Uses 5yr historical data with 70/30 hybrid (5yr/1yr) weighting.
+    Uses 10yr/5yr historical data with 70/30 hybrid weighting.
     Pass ?refresh=true to re-fetch from APIs."""
     ticker = ticker.upper().strip()
     refresh = request.args.get("refresh", "").lower() in ("true", "1", "yes")
@@ -3466,7 +3466,7 @@ def api_invt_score(ticker):
     if not refresh:
         store = _load_analyzer_store()
         cached = store.get(ticker, {}).get("invtScore")
-        if cached and cached.get("version") == 2:
+        if cached and cached.get("version") == 3:
             return jsonify(cached)
 
     try:
@@ -3475,9 +3475,9 @@ def api_invt_score(ticker):
         if not yearly or len(yearly) < 2:
             return jsonify({"error": "Insufficient financial data", "ticker": ticker}), 404
 
-        # 2. Compute metrics for 5yr and 1yr modes
+        # 2. Compute metrics for 10yr and 5yr modes
+        metrics_10yr = _compute_invt_metrics(yearly, mode="10yr")
         metrics_5yr = _compute_invt_metrics(yearly, mode="5yr")
-        metrics_1yr = _compute_invt_metrics(yearly, mode="1yr")
 
         # Fill dividend yield from yfinance (historical yield unavailable from EDGAR/FMP)
         yf_trailing_pe = None
@@ -3485,45 +3485,48 @@ def api_invt_score(ticker):
             yf_info = yf.Ticker(ticker).info or {}
             div_yield = yf_info.get("dividendYield") or 0  # yfinance 1.2+: already % (0.9 = 0.9%)
             avg_div_yield = yf_info.get("fiveYearAvgDividendYield") or div_yield
-            metrics_5yr["div_yield"] = round(avg_div_yield, 2)
-            metrics_1yr["div_yield"] = round(div_yield, 2)
+            metrics_10yr["div_yield"] = round(avg_div_yield, 2)
+            metrics_5yr["div_yield"] = round(div_yield, 2)
             yf_trailing_pe = yf_info.get("trailingPE")
         except Exception:
+            metrics_10yr["div_yield"] = 0
             metrics_5yr["div_yield"] = 0
-            metrics_1yr["div_yield"] = 0
 
         # 3. Detect non-dividend payers (for informational note only)
         is_dividend_payer = any(d.get("dividendsPaid", 0) > 0 for d in yearly)
 
         # 4. Score each metric
+        scores_10yr = {k: _invt_score_metric(v, k) for k, v in metrics_10yr.items() if not k.startswith("_")}
         scores_5yr = {k: _invt_score_metric(v, k) for k, v in metrics_5yr.items() if not k.startswith("_")}
-        scores_1yr = {k: _invt_score_metric(v, k) for k, v in metrics_1yr.items() if not k.startswith("_")}
 
         # 5. Category scores — scored categories for overall, info categories separate
+        cats_10yr_scored = _compute_invt_category_scores(scores_10yr, INVT_CATEGORIES_SCORED)
         cats_5yr_scored = _compute_invt_category_scores(scores_5yr, INVT_CATEGORIES_SCORED)
-        cats_1yr_scored = _compute_invt_category_scores(scores_1yr, INVT_CATEGORIES_SCORED)
+        cats_10yr_info = _compute_invt_category_scores(scores_10yr, INVT_CATEGORIES_INFO)
         cats_5yr_info = _compute_invt_category_scores(scores_5yr, INVT_CATEGORIES_INFO)
-        cats_1yr_info = _compute_invt_category_scores(scores_1yr, INVT_CATEGORIES_INFO)
+        cats_10yr = {**cats_10yr_scored, **cats_10yr_info}
         cats_5yr = {**cats_5yr_scored, **cats_5yr_info}
-        cats_1yr = {**cats_1yr_scored, **cats_1yr_info}
 
-        # 6. Hybrid category scores (all categories)
+        # 6. Hybrid category scores (all categories) — 70% 10yr + 30% 5yr
         hybrid_cats = {}
         for cat_key in INVT_CATEGORIES:
+            s10 = cats_10yr.get(cat_key)
             s5 = cats_5yr.get(cat_key)
-            s1 = cats_1yr.get(cat_key)
-            if s5 is not None and s1 is not None:
-                hybrid_cats[cat_key] = round(0.7 * s5 + 0.3 * s1, 1)
+            if s10 is not None and s5 is not None:
+                hybrid_cats[cat_key] = round(0.7 * s10 + 0.3 * s5, 1)
             else:
-                hybrid_cats[cat_key] = s5 if s5 is not None else s1
+                hybrid_cats[cat_key] = s10 if s10 is not None else s5
 
         # 7. Overall scores — ONLY scored categories (Growth, Profitability, Debt, Efficiency)
-        overall_5yr = _invt_safe_avg([v for v in cats_5yr_scored.values() if v is not None])
-        overall_1yr = _invt_safe_avg([v for v in cats_1yr_scored.values() if v is not None])
-        if overall_5yr is not None and overall_1yr is not None:
-            overall = round(0.7 * overall_5yr + 0.3 * overall_1yr, 1)
+        #    Require ≥3 of 4 scored categories to compute overall (refuse truncated scores)
+        scored_10yr = [v for v in cats_10yr_scored.values() if v is not None]
+        scored_5yr = [v for v in cats_5yr_scored.values() if v is not None]
+        overall_10yr = _invt_safe_avg(scored_10yr) if len(scored_10yr) >= 3 else None
+        overall_5yr = _invt_safe_avg(scored_5yr) if len(scored_5yr) >= 3 else None
+        if overall_10yr is not None and overall_5yr is not None:
+            overall = round(0.7 * overall_10yr + 0.3 * overall_5yr, 1)
         else:
-            overall = overall_5yr if overall_5yr is not None else overall_1yr
+            overall = overall_10yr if overall_10yr is not None else overall_5yr
 
         # 8. Build response — all 5 categories for display
         categories = {}
@@ -3534,17 +3537,17 @@ def api_invt_score(ticker):
                 cat_metrics.append({
                     "name": INVT_METRIC_NAMES.get(m_key, m_key),
                     "key": m_key,
+                    "value10yr": round(metrics_10yr.get(m_key, 0) or 0, 2) if metrics_10yr.get(m_key) is not None else None,
                     "value5yr": round(metrics_5yr.get(m_key, 0) or 0, 2) if metrics_5yr.get(m_key) is not None else None,
-                    "value1yr": round(metrics_1yr.get(m_key, 0) or 0, 2) if metrics_1yr.get(m_key) is not None else None,
+                    "score10yr": scores_10yr.get(m_key),
                     "score5yr": scores_5yr.get(m_key),
-                    "score1yr": scores_1yr.get(m_key),
                     "unit": INVT_METRIC_UNITS.get(m_key, ""),
                 })
             cat_entry = {
                 "label": cat_def["label"],
                 "score": hybrid_cats.get(cat_key),
+                "score10yr": cats_10yr.get(cat_key),
                 "score5yr": cats_5yr.get(cat_key),
-                "score1yr": cats_1yr.get(cat_key),
                 "metrics": cat_metrics,
                 "scored": is_scored,
             }
@@ -3597,15 +3600,15 @@ def api_invt_score(ticker):
             "ticker": ticker,
             "score": overall,
             "label": _invt_label(overall),
+            "score10yr": overall_10yr,
             "score5yr": overall_5yr,
-            "score1yr": overall_1yr,
             "shareholderReturnsScore": hybrid_cats.get("shareholder_returns"),
             "categories": categories,
             "years": [d["year"] for d in yearly],
             "yearlyData": yearly_data,
             "dataSource": data_source,
             "lastUpdated": datetime.now().isoformat(),
-            "version": 2,
+            "version": 3,
         }
 
         # 8. Cache
