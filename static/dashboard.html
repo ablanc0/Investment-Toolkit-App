@@ -840,6 +840,23 @@
                     <select id="defaultCategorySelect" style="margin-left: 8px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px;"></select>
                 </div>
             </div>
+            <!-- Signal Thresholds -->
+            <div class="card" style="margin-top: 16px;">
+                <div class="card-title">📊 Signal Thresholds</div>
+                <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 16px;">Configure distance thresholds for buy/sell signals. Values are percentages.</p>
+                <div id="signalThresholdEditor" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;"></div>
+                <div id="signalPreview" style="margin-top: 12px;"></div>
+                <div style="margin-top: 16px; display: flex; align-items: center; gap: 16px;">
+                    <div>
+                        <label style="font-size: 13px; color: var(--text-dim);">Default Signal Mode:</label>
+                        <select id="defaultSignalMode" style="margin-left: 8px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px;">
+                            <option value="avgCost">Avg Cost</option>
+                            <option value="iv">Intrinsic Value</option>
+                        </select>
+                    </div>
+                    <button class="add-row-btn" onclick="saveSignalThresholds()" style="border-color: var(--green); color: var(--green);">💾 Save Thresholds</button>
+                </div>
+            </div>
         </div>
 
     </div><!-- /tabContainer -->

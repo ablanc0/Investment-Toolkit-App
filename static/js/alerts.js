@@ -4,8 +4,10 @@ function populateAlerts() {
     if (!portfolioData) return;
 
     const positions = portfolioData.positions || [];
+    const sb = _signalThresholds?.strongBuy ?? -5;
+    const o  = _signalThresholds?.overrated ?? 50;
 
-    const strongBuys = positions.filter(p => p.returnPercent < -5);
+    const strongBuys = positions.filter(p => p.returnPercent < sb);
     document.getElementById('strongBuyAlerts').innerHTML = strongBuys.length > 0 ?
         strongBuys.map(p => `
             <div class="alert success">
@@ -13,7 +15,7 @@ function populateAlerts() {
             </div>
         `).join('') : '<p style="color: var(--text-dim);">No strong buy signals detected</p>';
 
-    const overvalued = positions.filter(p => p.returnPercent > 50);
+    const overvalued = positions.filter(p => p.returnPercent > o);
     document.getElementById('overvaluedAlerts').innerHTML = overvalued.length > 0 ?
         overvalued.map(p => `
             <div class="alert warning">

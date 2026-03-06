@@ -1,4 +1,4 @@
-// ── Settings Tab: Category Management ────────────────────────────
+// ── Settings Tab: Category Management + Signal Thresholds ────────
 
 let _settingsCache = null;
 
@@ -7,6 +7,7 @@ async function fetchSettingsData() {
         const resp = await fetch('/api/settings');
         _settingsCache = await resp.json();
         renderCategoryEditor();
+        renderSignalThresholdEditor();
     } catch (e) {
         console.error('Error loading settings:', e);
     }
@@ -97,5 +98,78 @@ async function saveCategories() {
         showSaveToast('Categories saved');
     } catch (e) {
         showAlert('Failed to save categories', 'error');
+    }
+}
+
+// ── Signal Thresholds ────────────────────────────────────────────
+
+function renderSignalThresholdEditor() {
+    const t = _settingsCache?.signalThresholds || {};
+    const container = document.getElementById('signalThresholdEditor');
+    if (!container) return;
+
+    const fields = [
+        { key: 'strongBuy', label: 'Strong Buy', hint: 'below %', color: '#4ade80', default: -5 },
+        { key: 'buy', label: 'Buy', hint: 'below %', color: '#22d3ee', default: 5 },
+        { key: 'expensive', label: 'Expensive', hint: 'above %', color: '#fb923c', default: 20 },
+        { key: 'overrated', label: 'Overrated', hint: 'above %', color: '#f87171', default: 50 },
+    ];
+
+    container.innerHTML = fields.map(f => `
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="badge" style="background:${f.color}20; color:${f.color}; min-width: 90px; text-align: center;">${f.label}</span>
+            <input type="number" id="thresh_${f.key}" value="${t[f.key] ?? f.default}" step="1"
+                   style="width: 80px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; text-align: right;">
+            <span style="color: var(--text-dim); font-size: 12px;">${f.hint}</span>
+        </div>
+    `).join('');
+
+    // Signal mode dropdown
+    const modeSelect = document.getElementById('defaultSignalMode');
+    if (modeSelect) modeSelect.value = _settingsCache?.signalMode || 'avgCost';
+
+    // Live preview
+    updateSignalPreview();
+    container.querySelectorAll('input').forEach(el => el.addEventListener('input', updateSignalPreview));
+}
+
+function updateSignalPreview() {
+    const preview = document.getElementById('signalPreview');
+    if (!preview) return;
+    const sb = document.getElementById('thresh_strongBuy')?.value ?? -5;
+    const b = document.getElementById('thresh_buy')?.value ?? 5;
+    const e = document.getElementById('thresh_expensive')?.value ?? 20;
+    const o = document.getElementById('thresh_overrated')?.value ?? 50;
+    preview.innerHTML = `<span style="font-size: 12px; color: var(--text-dim);">
+        <strong style="color:#4ade80">Strong Buy</strong> &lt; ${sb}%
+        &middot; <strong style="color:#22d3ee">Buy</strong> &lt; ${b}%
+        &middot; <strong style="color:#f59e0b">Hold</strong>
+        &middot; <strong style="color:#fb923c">Expensive</strong> &gt; ${e}%
+        &middot; <strong style="color:#f87171">Overrated</strong> &gt; ${o}%
+    </span>`;
+}
+
+async function saveSignalThresholds() {
+    const signalThresholds = {
+        strongBuy: parseFloat(document.getElementById('thresh_strongBuy').value),
+        buy: parseFloat(document.getElementById('thresh_buy').value),
+        expensive: parseFloat(document.getElementById('thresh_expensive').value),
+        overrated: parseFloat(document.getElementById('thresh_overrated').value),
+    };
+    const signalMode = document.getElementById('defaultSignalMode')?.value || 'avgCost';
+
+    try {
+        const resp = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ signalThresholds, signalMode })
+        });
+        _settingsCache = await resp.json();
+        _signalThresholds = _settingsCache.signalThresholds;
+        _defaultSignalMode = _settingsCache.signalMode;
+        renderSignalThresholdEditor();
+        showSaveToast('Signal thresholds saved');
+    } catch (e) {
+        showAlert('Failed to save thresholds', 'error');
     }
 }

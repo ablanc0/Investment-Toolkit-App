@@ -18,6 +18,10 @@ function populatePositions() {
     sectorFilter.innerHTML = '<option value="">All Sectors</option>' +
         sectors.map(s => `<option value="${s}">${s}</option>`).join('');
 
+    // Set default signal mode from settings
+    const signalModeSelect = document.getElementById('signalMode');
+    if (_defaultSignalMode) signalModeSelect.value = _defaultSignalMode === 'iv' ? 'iv' : 'avgCost';
+
     renderPositionsTable(positions);
     populateCategorySelect('newCategory');
 
