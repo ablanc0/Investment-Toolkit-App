@@ -130,6 +130,10 @@ function switchTab(tabId) {
                 row.style.display = row.dataset.group === groupId ? 'flex' : 'none';
             });
         }
+    } else {
+        // Standalone tab (e.g. Settings) — deactivate nav
+        document.querySelectorAll('.group-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-row').forEach(row => row.style.display = 'none');
     }
 
     // Update tab buttons

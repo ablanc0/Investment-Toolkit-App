@@ -26,6 +26,7 @@
                 <span id="statusText">LOADING...</span>
             </div>
             <button class="refresh-btn" id="refreshBtn">🔄 Refresh</button>
+            <button class="refresh-btn" id="settingsBtn" title="Settings" onclick="switchTab('settingsCategories')">⚙</button>
             <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
                 <div class="timestamp">
                     Last updated: <span id="lastUpdated">-</span>
@@ -45,7 +46,6 @@
         <button class="group-btn" data-group="research" style="--group-color: #993333">🔍 Research</button>
         <button class="group-btn" data-group="analysis" style="--group-color: #1BBC9D">🔬 Analysis</button>
         <button class="group-btn" data-group="planning" style="--group-color: #E69138">🏦 Planning</button>
-        <button class="group-btn" data-group="settings" style="--group-color: #9CA3AF">⚙ Settings</button>
     </div>
 
     <div class="nav-tabs" id="navTabs">
@@ -80,9 +80,6 @@
             <button class="tab-btn" data-tab="passive">Passive Income</button>
             <button class="tab-btn" data-tab="rule4pct">Rule 4%</button>
             <button class="tab-btn" data-tab="costOfLiving">Cost of Living</button>
-        </div>
-        <div class="tab-row" data-group="settings" style="display:none">
-            <button class="tab-btn" data-tab="settingsCategories">Categories</button>
         </div>
     </div>
 
