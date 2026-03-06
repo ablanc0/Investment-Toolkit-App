@@ -26,11 +26,13 @@
                 <span id="statusText">LOADING...</span>
             </div>
             <button class="refresh-btn" id="refreshBtn">🔄 Refresh</button>
-            <div class="timestamp">
-                Last updated: <span id="lastUpdated">-</span>
-            </div>
-            <div class="timestamp" id="backupStatus" title="Click to force backup" style="cursor: pointer;">
-                Backup: <span id="lastBackup">-</span>
+            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
+                <div class="timestamp">
+                    Last updated: <span id="lastUpdated">-</span>
+                </div>
+                <div class="timestamp" id="backupStatus" title="Click to force backup" style="cursor: pointer;">
+                    Backup: <span id="lastBackup">-</span>
+                </div>
             </div>
         </div>
     </div>
