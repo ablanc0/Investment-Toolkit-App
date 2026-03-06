@@ -3198,20 +3198,20 @@ def _fetch_invt_data(ticker):
         all_years = sorted(set(years) | set(rev.keys()))
         result = []
         for y in all_years:
-            r = rev.get(y, 0)
-            o = ocf.get(y, 0)
-            c = capex.get(y, 0)
-            fcf = o - abs(c)
+            r = rev.get(y) or 0
+            o = ocf.get(y) or 0
+            c = capex.get(y) or 0
+            fcf = (o - abs(c)) if y in ocf else None
             result.append({
-                "year": y, "revenue": r, "grossProfit": gp.get(y, 0),
-                "netIncome": ni.get(y, 0), "ebit": ebit.get(y, 0),
-                "eps": eps.get(y, 0), "ocf": o, "capex": c, "fcf": fcf,
-                "totalDebt": debt.get(y, 0), "cash": cash.get(y, 0),
-                "equity": equity.get(y, 0), "totalAssets": assets.get(y, 0),
-                "interestExpense": interest.get(y, 0),
-                "pretaxIncome": pretax.get(y, 0), "taxProvision": tax.get(y, 0),
-                "dividendsPaid": abs(divs_paid.get(y, 0)),  # Always positive
-                "sharesOutstanding": shares.get(y, 0),
+                "year": y, "revenue": r, "grossProfit": gp.get(y),
+                "netIncome": ni.get(y), "ebit": ebit.get(y),
+                "eps": eps.get(y), "ocf": o, "capex": c, "fcf": fcf,
+                "totalDebt": debt.get(y) or 0, "cash": cash.get(y) or 0,
+                "equity": equity.get(y), "totalAssets": assets.get(y),
+                "interestExpense": interest.get(y),
+                "pretaxIncome": pretax.get(y), "taxProvision": tax.get(y),
+                "dividendsPaid": abs(divs_paid.get(y) or 0),
+                "sharesOutstanding": shares.get(y),
             })
         return result
 
@@ -3363,8 +3363,8 @@ def _compute_invt_metrics(yearly, mode="5yr"):
     metrics["revenue_cagr"] = _invt_cagr(first["revenue"], last["revenue"], n)
     metrics["eps_cagr"] = _invt_cagr(first["eps"], last["eps"], n) if first["eps"] and last["eps"] else None
     # FCF per share CAGR
-    fcf_ps_first = first["fcf"] / first["sharesOutstanding"] if first.get("sharesOutstanding") else None
-    fcf_ps_last = last["fcf"] / last["sharesOutstanding"] if last.get("sharesOutstanding") else None
+    fcf_ps_first = first["fcf"] / first["sharesOutstanding"] if first.get("fcf") is not None and first.get("sharesOutstanding") else None
+    fcf_ps_last = last["fcf"] / last["sharesOutstanding"] if last.get("fcf") is not None and last.get("sharesOutstanding") else None
     metrics["fcf_share_cagr"] = _invt_cagr(fcf_ps_first, fcf_ps_last, n) if fcf_ps_first and fcf_ps_last else None
 
     # ── Profitability Averages ──
@@ -3388,7 +3388,7 @@ def _compute_invt_metrics(yearly, mode="5yr"):
         metrics["net_debt_cagr"] = None
     nd_fcf = []
     for d in data:
-        nd = d.get("totalDebt", 0) - d.get("cash", 0)
+        nd = (d.get("totalDebt") or 0) - (d.get("cash") or 0)
         if d.get("fcf") and d["fcf"] > 0:
             nd_fcf.append(nd / d["fcf"])
     metrics["net_debt_fcf"] = _invt_safe_avg(nd_fcf) if nd_fcf else None
@@ -3590,14 +3590,14 @@ def api_invt_score(ticker):
             s = d.get("sharesOutstanding", 0) or 1
             nd = d.get("totalDebt", 0) - d.get("cash", 0)
             r = d.get("revenue", 0) or 1
-            tax_rate = d.get("taxProvision", 0) / d["pretaxIncome"] if d.get("pretaxIncome") and d["pretaxIncome"] > 0 else 0.21
-            invested = d.get("totalDebt", 0) + d.get("equity", 0) - d.get("cash", 0)
-            nopat = d.get("ebit", 0) * (1 - tax_rate)
+            tax_rate = (d.get("taxProvision") or 0) / d["pretaxIncome"] if d.get("pretaxIncome") and d["pretaxIncome"] > 0 else 0.21
+            invested = (d.get("totalDebt") or 0) + (d.get("equity") or 0) - (d.get("cash") or 0)
+            nopat = (d.get("ebit") or 0) * (1 - tax_rate)
             dps = round(d.get("dividendsPaid", 0) / s, 2) if s else 0
             div_growth = round((dps - prev_dps) / prev_dps * 100, 2) if prev_dps and prev_dps > 0 and dps else None
             prev_dps = dps
             # Estimate historical dividend yield: DPS / (EPS * P/E) * 100
-            eps_val = d.get("eps", 0)
+            eps_val = d.get("eps") or 0
             est_price = abs(eps_val) * est_pe if eps_val else 0
             div_yield_est = round(dps / est_price * 100, 2) if dps and est_price > 0 else None
             shares_raw = d.get("sharesOutstanding", 0)
@@ -3605,7 +3605,7 @@ def api_invt_score(ticker):
                 "year": d["year"],
                 "revenue": d.get("revenue", 0),
                 "eps": eps_val,
-                "fcfPerShare": round(d["fcf"] / s, 2) if d.get("fcf") and s else None,
+                "fcfPerShare": round(d["fcf"] / s, 2) if d.get("fcf") is not None and s else None,
                 "gpm": round(d.get("grossProfit", 0) / r * 100, 2) if d.get("grossProfit") else None,
                 "npm": round(d.get("netIncome", 0) / r * 100, 2) if d.get("netIncome") else None,
                 "fcfMargin": round(d.get("fcf", 0) / r * 100, 2) if d.get("fcf") else None,
@@ -3620,7 +3620,7 @@ def api_invt_score(ticker):
                 "sharesOut": shares_raw if shares_raw else None,
                 "roa": round(d["netIncome"] / d["totalAssets"] * 100, 2) if d.get("netIncome") and d.get("totalAssets") and d["totalAssets"] > 0 else None,
                 "roe": round(d["netIncome"] / d["equity"] * 100, 2) if d.get("netIncome") and d.get("equity") and d["equity"] > 0 else None,
-                "roic": round(nopat / invested * 100, 2) if d.get("ebit") and invested > 0 else None,
+                "roic": round(nopat / invested * 100, 2) if d.get("ebit") is not None and invested > 0 else None,
             })
 
         result = {
