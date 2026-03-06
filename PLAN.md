@@ -8,10 +8,11 @@ A cross-platform personal investment dashboard that replaces a complex Google Sh
 
 ## Architecture
 
-### Current Stack (Phase 1 — Flask)
-- **Backend:** Python 3 + Flask, running on `localhost:5050`
-- **Data source:** Yahoo Finance via `yfinance` library
-- **Frontend:** Single-page HTML dashboard (`static/dashboard.html`) with vanilla JS + Chart.js 4.4.1
+### Current Stack (Phase 1 — Flask, Modular Architecture)
+- **Backend:** Python 3 + Flask Blueprints, running on `localhost:5050`
+  - `server.py` (62-line entry point) → `config.py` + `services/` (7 modules) + `models/` (5 modules) + `routes/` (9 Blueprints, 74 API routes)
+- **Data sources:** Yahoo Finance (yfinance), SEC EDGAR (XBRL + 13F), FMP API, Finviz
+- **Frontend:** Modular SPA — `dashboard.html` (845-line HTML shell) + `css/` (5 files) + `js/` (19 modules, 170 functions)
 - **Data storage:** `portfolio.json` (single JSON file, stored in Google Drive for cross-machine sync)
 - **Cache:** `cache.json` with 5-minute TTL + disk persistence
 - **Launchers:** `start.sh` (macOS/Linux), `start.bat` (Windows), `Portfolio Dashboard.command` (macOS double-click)
@@ -308,6 +309,19 @@ A cross-platform personal investment dashboard that replaces a complex Google Sh
 - Added config.json / env var override for custom data paths
 - Set up .gitignore, README, PLAN.md, LICENSE, CHANGELOG
 
+### Session 4+ — Feature Development
+- Stock Analyzer: DCF, Graham, Relative valuation models with EDGAR/FMP/yfinance cascade
+- InvT Score v2: Growth, Profitability, Debt, Efficiency scoring system
+- SEC EDGAR 13F: Super investor holdings integration (22 investors)
+- Persistent 13F cache, most popular stocks across investors
+- IV List integration across Portfolio, Watchlist, Summary tabs
+
+### Session N — Modular Architecture Refactoring (PR #82)
+- Split `server.py` (4,797 → 62 lines) into config + 7 services + 5 models + 9 Blueprints
+- Split `dashboard.html` (7,418 → 845 lines) into 5 CSS files + 19 JS modules
+- 51 files changed, 11,695 additions, 11,367 deletions
+- Zero console errors, all 74 API routes working, all 19 tabs verified
+
 ---
 
 ## Developer Guide
@@ -337,26 +351,73 @@ cd ~/Work/InvToolkit
 
 ```
 InvToolkit/
-├── server.py                  # Flask backend (~1350 lines, 60+ routes)
+├── server.py                  # 62-line entry point — registers Blueprints, starts Flask
+├── config.py                  # All constants, paths, API keys, tax brackets
+├── services/                  # Backend services (7 modules)
+│   ├── cache.py               # Thread-safe TTL cache + disk persistence
+│   ├── data_store.py          # portfolio.json I/O + generic CRUD helpers
+│   ├── yfinance_svc.py        # Yahoo Finance data fetching
+│   ├── edgar.py               # SEC EDGAR XBRL company facts
+│   ├── edgar_13f.py           # 13F pipeline, CUSIP resolution, history
+│   ├── fmp.py                 # FMP API + FRED AAA yield
+│   └── finviz_svc.py          # Finviz peer comparison
+├── models/                    # Business logic (5 modules)
+│   ├── valuation.py           # DCF, Graham, relative valuation, scenarios
+│   ├── invt_score.py          # InvT Score v2 scoring system
+│   ├── salary_calc.py         # Tax computation, salary breakdown
+│   ├── projections_calc.py    # Projection math
+│   └── simulation.py          # Rule 4% historical simulation
+├── routes/                    # Flask Blueprints (9 modules, 74 routes)
+│   ├── portfolio.py           # Positions, watchlist, cash, goals
+│   ├── dividends.py           # Sold positions, dividend log, monthly/annual data
+│   ├── lab.py                 # My Lab CRUD + research
+│   ├── misc.py                # IV list, super-investor buys (manual), status
+│   ├── super_investors.py     # SEC EDGAR 13F endpoints
+│   ├── projections.py         # Projections + risk scenarios
+│   ├── analysis.py            # Stock analyzer, InvT Score
+│   ├── salary.py              # Salary profiles, tax, history
+│   └── planning.py            # Cost of living, passive income, Rule 4%
 ├── static/
-│   └── dashboard.html         # Single-page frontend (~3500 lines, 70+ JS functions)
+│   ├── dashboard.html         # ~845-line HTML shell (structure only)
+│   ├── css/                   # 5 CSS modules
+│   │   ├── theme.css          # CSS variables, reset, body
+│   │   ├── layout.css         # Header, navigation, tab layout
+│   │   ├── components.css     # KPI cards, tables, badges, forms
+│   │   ├── analyzer.css       # Analyzer-specific styles
+│   │   └── responsive.css     # Media queries
+│   └── js/                    # 19 JS modules (170 functions)
+│       ├── utils.js           # Shared utilities (formatMoney, signals, etc.)
+│       ├── charts.js          # Chart.js instances
+│       ├── app.js             # Global state, CrudTable, tab navigation
+│       ├── overview.js        # Dashboard overview
+│       ├── positions.js       # Positions table
+│       ├── performance.js     # Performance tab
+│       ├── dividends.js       # Dividend log, monthly/annual data
+│       ├── watchlist.js       # Watchlist
+│       ├── rebalancing.js     # Rebalancing
+│       ├── alerts.js          # Alerts + bootstrap
+│       ├── projections.js     # Projections
+│       ├── analyzer.js        # Stock Analyzer + InvT Score (~1830 lines)
+│       ├── fire.js            # Rule 4% UI
+│       ├── sold.js            # Sold positions
+│       ├── lab.js             # My Lab
+│       ├── ivlist.js          # Intrinsic Values list
+│       ├── super-investors.js # 13F super investor UI
+│       ├── salary.js          # Salary tab
+│       └── planning.js        # Cost of living, passive income
 ├── requirements.txt           # flask, yfinance
-├── start.sh                   # macOS/Linux launcher
-├── start.bat                  # Windows launcher
-├── Portfolio Dashboard.command # macOS double-click launcher
-├── config.example.json        # Template for custom data dir
-├── .gitignore                 # Excludes portfolio.json, cache.json, config.json
-├── README.md
+├── CLAUDE.md                  # Claude Code context file
 ├── PLAN.md                    # This file
-├── CHANGELOG.md
-└── LICENSE                    # MIT
+└── start.sh / start.bat       # Launchers
 ```
 
-**NOT in repo** (lives in Google Drive, auto-detected by server.py):
+**NOT in repo** (lives in Google Drive, auto-detected by config.py):
 - `portfolio.json` — all user data
 - `cache.json` — yfinance price cache (5-min TTL)
+- `analyzer.json` — saved stock analyses
+- `13f_history.json` — SEC 13F filing history
 
-### Data Path Resolution (server.py `_resolve_data_dir()`)
+### Data Path Resolution (config.py `_resolve_data_dir()`)
 
 Priority order:
 1. `INVTOOLKIT_DATA_DIR` environment variable
@@ -367,93 +428,60 @@ Priority order:
    - Windows (mirror): `~/Google Drive/My Drive/Investments/portfolio-app`
 4. Fallback: app directory (for development)
 
-### Server Architecture (server.py)
+### Server Architecture (Modular)
 
-**Core patterns:**
+**Entry point** (`server.py`, 62 lines): Creates Flask app, registers 9 Blueprints, runs startup tasks.
 
+**Core services** (in `services/`):
 ```python
-# Loading/saving data — always via these two functions:
-def load_portfolio():   # Returns dict from portfolio.json (or empty default)
-def save_portfolio(data):  # Writes dict to portfolio.json (indent=2)
+# Data I/O (services/data_store.py):
+load_portfolio()                    # Returns dict from portfolio.json
+save_portfolio(data)                # Writes dict to portfolio.json
+crud_list/add/update/delete/replace(section, ...)  # Generic CRUD for any JSON array
 
-# Cache — in-memory dict + disk persistence, 300s TTL:
-cache_get(key)       # Returns data or None if expired
-cache_set(key, data) # Stores with timestamp, saves to disk
-# Keys: "yf_{ticker}", "divs_{ticker}", "analyzer_{ticker}"
+# Cache (services/cache.py):
+cache_get(key)                      # Returns data or None if expired (5-min TTL)
+cache_set(key, data)                # Stores with timestamp, persists to disk
 
-# yfinance data — fetches 20 fields per ticker:
-def fetch_ticker_data(ticker):
-    # Returns: {price, previousClose, name, marketCap, pe, forwardPE,
-    #           sector, industry, divYield (×100), divRate, beta,
-    #           fiftyTwoWeekHigh, fiftyTwoWeekLow, targetMeanPrice, changePercent}
+# Yahoo Finance (services/yfinance_svc.py):
+fetch_ticker_data(ticker)           # 20+ fields per ticker
+fetch_all_quotes(tickers)           # Batch quotes for portfolio/watchlist
 
-# Batch quotes — used by /api/portfolio and /api/watchlist:
-def fetch_all_quotes(tickers):  # Returns {ticker: {quote_data}, ...}
-
-# Generic CRUD helpers — for list sections in portfolio.json:
-def crud_list(section)              # GET: return list
-def crud_add(section, item)         # POST: append item
-def crud_update(section, index, updates) # POST: update by index
-def crud_delete(section, index)     # POST: delete by index
-def crud_replace(section, data)     # POST: replace entire list
+# Data source cascade (Stock Analyzer):
+# EDGAR XBRL → FMP API → yfinance (fallback chain for financial data)
 ```
 
-**Signal logic** (computed in /api/portfolio):
+**Signal logic** (computed in routes/portfolio.py):
 - Return % > 50% → "Overrated"
 - Return % > 20% → "Expensive"
 - Return % < -5% → "Strong Buy"
 - Return % < 5% → "Buy"
 - Else → "Hold"
 
-### Frontend Architecture (dashboard.html)
+### Frontend Architecture (Modular SPA)
 
-**Single-file SPA** — all HTML, CSS, and JS in one file (~3500 lines).
+**HTML shell** (`dashboard.html`, ~845 lines): Structure only, no inline CSS/JS.
+**CSS** (`static/css/`, 5 files): theme → layout → components → analyzer → responsive.
+**JS** (`static/js/`, 19 files): All global scope, no ES modules, no bundler.
 
-**Dark theme CSS variables:**
-```css
---bg: #0f1117;        --card: #1a1d2e;      --card-hover: #222640;
---border: #2a2e42;    --accent: #6366f1;     --accent-glow: rgba(99,102,241,0.15);
---green: #22c55e;     --red: #ef4444;        --gold: #f59e0b;
---blue: #60a5fa;      --purple: #a78bfa;
---text: #e0e6ed;      --text-dim: #8b92b2;
-```
+**Key JS modules:**
 
-**Chart.js colors** (always use hex, not CSS vars):
-```javascript
-['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#22c55e', '#60a5fa', '#f87171', '#a78bfa', '#fbbf24', '#34d399']
-```
+| Module | File | Functions |
+|--------|------|-----------|
+| Shared utilities | `utils.js` | `formatMoney`, `formatPercent`, `getSignalBadge`, `_invtScoreColor`, etc. |
+| Chart instances | `charts.js` | `createReturnsChart`, `createAllocationChart`, etc. |
+| App core | `app.js` | Global state, `CrudTable` class, tab navigation, `fetchAllData` |
+| Stock Analyzer | `analyzer.js` | ~1830 lines: all valuation, InvT Score, DCF scenarios |
+| Per-tab modules | `overview.js`, `positions.js`, `dividends.js`, etc. | One module per tab |
 
-**Tab system — lazy loading:**
-- 19 tabs total, HTML structure: `<button data-tab="tabId">` + `<div class="tab-content" id="tabId">`
+**Tab system — lazy loading** (in `app.js`):
 - `loadedTabs` dict tracks which tabs have been fetched
-- `switchTab(tabId)` → deactivates all, activates selected, calls `loadTabData(tabId)` on first visit
-- `loadTabData(tabId)` → dispatches to fetch function (e.g., `fetchMyLab()`, `fetchDividendLog()`)
+- `switchTab(tabId)` → `loadTabData(tabId)` on first visit
+- 10 lazy-loaded tabs, 9 eagerly-loaded tabs
 
-**10 lazy-loaded tabs:** sold, divlog, monthly, annual, lab, ivlist, superinv, salary, passive, rule4pct
-**9 eagerly-loaded tabs:** overview, positions, performance, dividends, watchlist, rebalancing, alerts, projections, analyzer
-
-**Key JS function groups:**
-
-| Group | Functions | Notes |
-|-------|-----------|-------|
-| Formatting | `formatMoney()`, `formatPercent()`, `getSignalBadge()`, `getCategoryBadge()` | Used everywhere |
-| Tab loaders | `fetchMyLab()`, `fetchDividendLog()`, `fetchMonthlyData()`, etc. | One per lazy tab |
-| Renderers | `renderPositionsTable()`, `renderLabPortfolio()`, `renderLabAllocChart()`, `renderIntrinsicValues()` | Build HTML from data |
-| Inline edit | `editCell(td, ticker, field, value, type)`, `editCellSelect(...)` | POST to update endpoints |
-| Charts | `createReturnsChart()`, `createAllocationChart()`, `createMonthlyDividendChart()` | Chart.js instances |
-| Actions | `addPosition()`, `deletePosition()`, `addToWatchlist()`, `runLabResearch()` | CRUD operations |
-
-**Signal badge colors:**
-```javascript
-const signalColors = {
-    'Strong Buy': {bg:'#4ade8020', fg:'#4ade80'},
-    'Buy':        {bg:'#22d3ee20', fg:'#22d3ee'},
-    'Expensive':  {bg:'#f59e0b20', fg:'#f59e0b'},
-    'Overrated':  {bg:'#f8717120', fg:'#f87171'},
-};
-```
-
+**Signal badge colors:** Strong Buy (#4ade80), Buy (#22d3ee), Expensive (#f59e0b), Overrated (#f87171)
 **Category badge classes:** `.cat-growth` (green), `.cat-value` (blue), `.cat-foundational` (purple), `.cat-international` (amber), `.cat-bonds` (yellow-green)
+**Chart.js colors** (hex only): `['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#22c55e', '#60a5fa', '#f87171', '#a78bfa', '#fbbf24', '#34d399']`
 
 ### Detailed Data Schemas (portfolio.json)
 
@@ -577,7 +605,7 @@ const signalColors = {
 5. **Month format mismatch**: monthlyData stores `"January 24"`, dividendLog stores `"January"`. The server uses `month_raw.split(" ")[0]` to extract just the month name when linking them.
 6. **Annual data is never stored** — always computed server-side from monthlyData + dividendLog.
 7. **Lab portfolios** were extracted from Excel where portfolios were stacked vertically, separated by "Total Holdings" rows. The `lastUpdate` and `source` (YouTube URL) come from metadata in those separator rows.
-8. **The dashboard is a single HTML file** (~3500 lines). All CSS is in a `<style>` block at the top, all JS is in a `<script>` block at the bottom. No build step.
+8. **The frontend is modular** — `dashboard.html` (~845 lines, HTML shell only) loads 5 CSS files and 19 JS modules via `<link>`/`<script>` tags. No build step, no bundler.
 9. **No authentication** — this is a personal local app. No login, no sessions.
 10. **yfinance rate limiting** — the 5-minute cache prevents hammering Yahoo Finance. If cache.json gets stale or corrupted, just delete it.
 11. **Google Drive sync caveat** — don't open the app on two machines simultaneously editing the same portfolio.json. One-at-a-time is safe.
