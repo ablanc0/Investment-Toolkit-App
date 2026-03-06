@@ -4461,9 +4461,9 @@
                     <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px;">
                         ${charts.map(ch => {
                             const desc = INVT_CHART_DESC[ch.key] || '';
-                            const tip = desc ? ` <span title="${desc}" style="cursor:help; opacity:0.5;">&#x3f;</span>` : '';
+                            const tip = desc ? ` title="${desc}"` : '';
                             return `<div>
-                            <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:6px; text-align:center; font-weight:600;">${ch.title}${tip}</div>
+                            <div${tip} style="font-size:0.75rem; color:var(--text-dim); margin-bottom:6px; text-align:center; font-weight:600; cursor:${desc ? 'help' : 'default'};">${ch.title}</div>
                             <div style="position:relative; height:180px;"><canvas id="invt-mc-${ch.key}"></canvas></div>
                         </div>`;
                         }).join('')}
@@ -4494,7 +4494,7 @@
                     const desc = INVT_METRIC_DESC[m.key] || '';
                     const tip = desc ? ` title="${desc}"` : '';
                     html += `<tr>
-                        <td${tip} style="cursor:${desc ? 'help' : 'default'};">${shortName}${desc ? ' <span style="opacity:0.4;">&#x3f;</span>' : ''}</td>
+                        <td${tip} style="cursor:${desc ? 'help' : 'default'};">${shortName}</td>
                         <td>${fmt(m.value5yr)}</td>
                         <td>${fmt(m.value1yr)}</td>
                         <td><span style="display:inline-block; padding:3px 10px; border-radius:10px; font-size:0.8rem; font-weight:700; background:${mcol}20; color:${mcol};">${avg}</span></td>
