@@ -1336,21 +1336,25 @@ def api_super_investor_buys_delete():
 @app.route("/api/super-investors")
 def api_super_investors_list():
     """List all available super investors."""
-    return jsonify([
-        {"key": k, "fund": v["fund"], "cik": v["cik"],
-         "cached": k in _13f_cache,
-         "fetchedAt": _13f_cache.get(k, {}).get("fetchedAt", ""),
-         "quarter": _13f_cache.get(k, {}).get("quarter", ""),
-         "holdingsCount": _13f_cache.get(k, {}).get("holdingsCount", 0)}
-        for k, v in SUPER_INVESTORS.items()
-    ])
+    result = []
+    for k, v in SUPER_INVESTORS.items():
+        latest = _get_latest_quarter(k)
+        result.append({
+            "key": k, "fund": v["fund"], "cik": v["cik"],
+            "note": v.get("note", ""),
+            "cached": latest is not None,
+            "quarter": latest["quarter"] if latest else "",
+            "holdingsCount": latest["holdingsCount"] if latest else 0,
+        })
+    return jsonify(result)
 
 
 @app.route("/api/super-investors/13f/<investor_key>")
 def api_super_investor_13f(investor_key):
-    """Fetch 13F holdings for one investor (uses cache if available)."""
-    if investor_key in _13f_cache:
-        return jsonify(_13f_cache[investor_key])
+    """Fetch 13F holdings for one investor (reads from history, fetches if missing)."""
+    latest = _get_latest_quarter(investor_key)
+    if latest:
+        return jsonify(latest)
     try:
         result = _fetch_investor_13f(investor_key)
         if result is None:
@@ -1382,6 +1386,8 @@ def api_super_investor_13f_all():
             _13f_progress["done"] = i + 1
         _13f_progress["running"] = False
         _13f_progress["current"] = ""
+        # Save history after all investors are done
+        _save_13f_history()
     threading.Thread(target=_bg, daemon=True).start()
     return jsonify({"status": "started", "total": len(SUPER_INVESTORS)})
 
@@ -1400,7 +1406,7 @@ def api_super_investor_overlap():
     investors = b.get("investors", [])
     ticker_investors = {}  # ticker -> [{investor, value, shares}]
     for inv_key in investors:
-        data = _13f_cache.get(inv_key)
+        data = _get_latest_quarter(inv_key)
         if not data or "holdings" not in data:
             continue
         for h in data["holdings"]:
@@ -1430,12 +1436,19 @@ def api_super_investor_overlap():
 
 @app.route("/api/super-investors/most-popular")
 def api_super_investor_most_popular():
-    """Top 50 most held stocks across all cached investors, ranked by investor count then value."""
+    """Top 50 most held stocks across investors with the latest quarter, ranked by investor count."""
+    current_q = _get_current_quarter_label()
     ticker_data = {}  # ticker -> {name, investors: set, totalValue, totalShares}
-    for inv_key, data in _13f_cache.items():
-        if "holdings" not in data:
+    matched_investors = 0
+    for inv_key in SUPER_INVESTORS:
+        hist = _13f_history.get(inv_key)
+        if not hist or not hist.get("quarters"):
             continue
-        for h in data["holdings"]:
+        latest = hist["quarters"][0]
+        if current_q and latest.get("quarter") != current_q:
+            continue  # skip investors whose latest quarter doesn't match
+        matched_investors += 1
+        for h in latest.get("holdings", []):
             tk = h.get("ticker", h.get("cusip", ""))
             if not tk or tk == h.get("cusip", ""):
                 continue  # skip unresolved CUSIPs
@@ -1458,9 +1471,118 @@ def api_super_investor_most_popular():
     popular.sort(key=lambda x: (x["investorCount"], x["totalValue"]), reverse=True)
     return jsonify({
         "popular": popular[:50],
-        "cachedInvestors": len(_13f_cache),
+        "cachedInvestors": matched_investors,
         "totalInvestors": len(SUPER_INVESTORS),
+        "quarter": current_q or "",
     })
+
+
+@app.route("/api/super-investors/history/<investor_key>")
+def api_super_investor_history(investor_key):
+    """Return quarterly summary for portfolio value chart (no holdings array)."""
+    hist = _13f_history.get(investor_key)
+    if not hist:
+        return jsonify({"error": "No history data", "quarters": []})
+    summary = [{
+        "quarter": q["quarter"],
+        "filingDate": q.get("filingDate", ""),
+        "totalValue": q.get("totalValue", 0),
+        "holdingsCount": q.get("holdingsCount", 0),
+        "top10pct": q.get("top10pct", 0),
+    } for q in hist.get("quarters", [])]
+    return jsonify({"investor": investor_key, "fund": hist.get("fund", ""), "quarters": summary})
+
+
+@app.route("/api/super-investors/activity/<investor_key>")
+def api_super_investor_activity(investor_key):
+    """Compare latest vs previous quarter to show buys/sells/changes."""
+    hist = _13f_history.get(investor_key)
+    if not hist or len(hist.get("quarters", [])) < 2:
+        return jsonify({"error": "Need at least 2 quarters of history", "buys": [], "sells": [], "increased": [], "decreased": []})
+    quarters = hist["quarters"]  # sorted most recent first
+    current = {h["ticker"]: h for h in quarters[0].get("holdings", []) if h.get("ticker")}
+    previous = {h["ticker"]: h for h in quarters[1].get("holdings", []) if h.get("ticker")}
+    buys, sells, increased, decreased = [], [], [], []
+    for ticker, h in current.items():
+        if ticker not in previous:
+            buys.append({"ticker": ticker, "name": h.get("name", ""), "shares": h["shares"], "value": h["value"], "pctPortfolio": h.get("pctPortfolio", 0)})
+        else:
+            prev_shares = previous[ticker]["shares"]
+            if h["shares"] > prev_shares:
+                change_pct = round((h["shares"] - prev_shares) / prev_shares * 100, 1) if prev_shares else 0
+                increased.append({"ticker": ticker, "name": h.get("name", ""), "shares": h["shares"], "prevShares": prev_shares, "changePct": change_pct, "value": h["value"]})
+            elif h["shares"] < prev_shares:
+                change_pct = round((h["shares"] - prev_shares) / prev_shares * 100, 1) if prev_shares else 0
+                decreased.append({"ticker": ticker, "name": h.get("name", ""), "shares": h["shares"], "prevShares": prev_shares, "changePct": change_pct, "value": h["value"]})
+    for ticker, h in previous.items():
+        if ticker not in current:
+            sells.append({"ticker": ticker, "name": h.get("name", ""), "shares": h["shares"], "value": h["value"]})
+    # Build per-ticker lookup for inline activity badges
+    by_ticker = {}
+    for b in buys: by_ticker[b["ticker"]] = {"type": "new"}
+    for s in sells: by_ticker[s["ticker"]] = {"type": "sold"}
+    for i in increased:
+        prev_val = previous[i["ticker"]]["value"]
+        val_chg = round((i["value"] - prev_val) / prev_val * 100, 1) if prev_val else 0
+        by_ticker[i["ticker"]] = {"type": "increased", "changePct": i["changePct"], "valueChangePct": val_chg}
+    for d in decreased:
+        prev_val = previous[d["ticker"]]["value"]
+        val_chg = round((d["value"] - prev_val) / prev_val * 100, 1) if prev_val else 0
+        by_ticker[d["ticker"]] = {"type": "decreased", "changePct": d["changePct"], "valueChangePct": val_chg}
+    # Unchanged holdings (same shares but value may differ due to price movement)
+    for ticker, h in current.items():
+        if ticker in previous and ticker not in by_ticker:
+            prev_val = previous[ticker]["value"]
+            val_chg = round((h["value"] - prev_val) / prev_val * 100, 1) if prev_val else 0
+            by_ticker[ticker] = {"type": "unchanged", "valueChangePct": val_chg}
+
+    return jsonify({
+        "currentQuarter": quarters[0].get("quarter", ""),
+        "previousQuarter": quarters[1].get("quarter", ""),
+        "buys": sorted(buys, key=lambda x: x["value"], reverse=True),
+        "sells": sorted(sells, key=lambda x: x["value"], reverse=True),
+        "increased": sorted(increased, key=lambda x: abs(x["changePct"]), reverse=True),
+        "decreased": sorted(decreased, key=lambda x: abs(x["changePct"]), reverse=True),
+        "buysCount": len(buys),
+        "sellsCount": len(sells),
+        "byTicker": by_ticker,
+    })
+
+
+@app.route("/api/super-investors/prices", methods=["POST"])
+def api_super_investor_prices():
+    """Fetch current prices for a list of tickers (max 50)."""
+    body = request.get_json(force=True) or {}
+    tickers = body.get("tickers", [])[:50]
+    if not tickers:
+        return jsonify({"prices": {}})
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(fetch_ticker_data, tickers))
+    prices = {}
+    for ticker, data in zip(tickers, results):
+        if data and data.get("price"):
+            prices[ticker] = {"price": data["price"], "changePercent": data.get("changePercent", 0)}
+    return jsonify({"prices": prices})
+
+
+@app.route("/api/super-investors/holding-history/<investor_key>/<ticker>")
+def api_super_investor_holding_history(investor_key, ticker):
+    """Return a holding's value/shares across all historical quarters."""
+    hist = _13f_history.get(investor_key)
+    if not hist:
+        return jsonify({"ticker": ticker, "history": []})
+    history = []
+    for q in hist.get("quarters", []):
+        for h in q.get("holdings", []):
+            if h.get("ticker") == ticker:
+                history.append({
+                    "quarter": q.get("quarter", ""),
+                    "value": h.get("value", 0),
+                    "shares": h.get("shares", 0),
+                    "pctPortfolio": h.get("pctPortfolio", 0),
+                })
+                break
+    return jsonify({"ticker": ticker, "history": history})
 
 
 # ── Projections & Risk Scenarios ────────────────────────────────────────
@@ -1849,69 +1971,213 @@ def _edgar_to_financials(facts):
 import xml.etree.ElementTree as ET
 
 SUPER_INVESTORS = {
-    "Warren Buffett":     {"cik": "0001067983", "fund": "Berkshire Hathaway"},
-    "Michael Burry":      {"cik": "0001649339", "fund": "Scion Asset Management"},
-    "Bill Ackman":        {"cik": "0001336528", "fund": "Pershing Square"},
-    "Ray Dalio":          {"cik": "0001350694", "fund": "Bridgewater Associates"},
-    "Seth Klarman":       {"cik": "0001061768", "fund": "Baupost Group"},
-    "David Tepper":       {"cik": "0001656456", "fund": "Appaloosa Management"},
-    "Howard Marks":       {"cik": "0000949509", "fund": "Oaktree Capital Management"},
-    "Terry Smith":        {"cik": "0001569205", "fund": "Fundsmith LLP"},
-    "Li Lu":              {"cik": "0001709323", "fund": "Himalaya Capital"},
+    # Original 9
+    "Greg Abel":            {"cik": "0001067983", "fund": "Berkshire Hathaway",         "note": "CEO since 2025; formerly Warren Buffett — greatest value investor"},
+    "Michael Burry":        {"cik": "0001649339", "fund": "Scion Asset Management",     "note": "Big Short fame, contrarian deep value"},
+    "Bill Ackman":          {"cik": "0001336528", "fund": "Pershing Square",            "note": "Activist investor, concentrated bets"},
+    "Ray Dalio":            {"cik": "0001350694", "fund": "Bridgewater Associates",     "note": "World's largest hedge fund, macro pioneer"},
+    "Seth Klarman":         {"cik": "0001061768", "fund": "Baupost Group",              "note": "Deep value, Margin of Safety author"},
+    "David Tepper":         {"cik": "0001656456", "fund": "Appaloosa Management",       "note": "Distressed debt and macro bets"},
+    "Howard Marks":         {"cik": "0000949509", "fund": "Oaktree Capital Management", "note": "Credit/distressed debt legend, memo writer"},
+    "Terry Smith":          {"cik": "0001569205", "fund": "Fundsmith LLP",              "note": "Quality compounder, buy-and-hold"},
+    "Li Lu":                {"cik": "0001709323", "fund": "Himalaya Capital",           "note": "Munger's pick, China-US value investor"},
+    # New 13
+    "Chris Hohn":           {"cik": "0001647251", "fund": "TCI Fund Management",        "note": "Activist investor, huge returns"},
+    "Stanley Druckenmiller": {"cik": "0001536411", "fund": "Duquesne Family Office",    "note": "Legendary macro trader, ex-Soros partner"},
+    "Dev Kantesaria":       {"cik": "0001697868", "fund": "Valley Forge Capital",       "note": "Quality-focused compounder"},
+    "Pat Dorsey":           {"cik": "0001671657", "fund": "Dorsey Asset Management",    "note": "Ex-Morningstar, economic moat expert"},
+    "Mohnish Pabrai":       {"cik": "0001549575", "fund": "Dalal Street",              "note": "Value investor, Buffett-style"},
+    "Joel Greenblatt":      {"cik": "0001510387", "fund": "Gotham Asset Management",    "note": "Magic Formula author"},
+    "Peter Brown":          {"cik": "0001037389", "fund": "Renaissance Technologies",   "note": "Quant legend, Medallion Fund"},
+    "Chuck Akre":           {"cik": "0001112520", "fund": "Akre Capital Management",    "note": "Compounder-focused, long-term hold"},
+    "Paul Tudor Jones":     {"cik": "0000923093", "fund": "Tudor Investment Corp",      "note": "Macro/hedge fund pioneer"},
+    "George Soros":         {"cik": "0001029160", "fund": "Soros Fund Management",      "note": "Macro legend, broke the Bank of England"},
+    "Chris Davis":          {"cik": "0001036325", "fund": "Davis Selected Advisers",    "note": "Multi-generational value fund family"},
+    "Chase Coleman":        {"cik": "0001167483", "fund": "Tiger Global Management",    "note": "Tiger Cub, tech and growth focused"},
+    "Dan Loeb":             {"cik": "0001040273", "fund": "Third Point",                "note": "Activist/event-driven investor"},
 }
 
-_13F_CACHE_FILE = DATA_DIR / "13f_cache.json"
-_13f_cache = {}  # investor_key -> {investor, fund, filingDate, quarter, holdings, totalValue}
+_13F_HISTORY_FILE = DATA_DIR / "13f_history.json"
+_13f_history = {}  # investor_key -> {fund, cik, quarters: [{quarter, filingDate, totalValue, ...}]}
 _13f_progress = {"done": 0, "total": 0, "current": "", "results": {}, "running": False}
+_cusip_ticker_cache = {}  # CUSIP -> ticker, shared across investors to avoid redundant OpenFIGI calls
 
 
-def _load_13f_cache():
-    """Load persisted 13F data from disk on startup."""
-    global _13f_cache
-    if _13F_CACHE_FILE.exists():
+def _load_13f_history():
+    """Load historical 13F data from disk on startup."""
+    global _13f_history
+    if _13F_HISTORY_FILE.exists():
         try:
-            _13f_cache = json.loads(_13F_CACHE_FILE.read_text())
-            print(f"[13F] Loaded {len(_13f_cache)} investors from disk cache")
+            _13f_history = json.loads(_13F_HISTORY_FILE.read_text())
+            # Migrate renamed keys (one-time)
+            _RENAMED_KEYS = {"Warren Buffett": "Greg Abel"}
+            for old, new in _RENAMED_KEYS.items():
+                if old in _13f_history and new not in _13f_history:
+                    _13f_history[new] = _13f_history.pop(old)
+            _sanitize_13f_history()
+            total_q = sum(len(h.get("quarters", [])) for h in _13f_history.values())
+            print(f"[13F] Loaded history: {len(_13f_history)} investors, {total_q} quarters")
         except Exception:
-            _13f_cache = {}
+            _13f_history = {}
 
 
-def _save_13f_cache():
-    """Persist 13F data to disk."""
+def _sanitize_13f_history():
+    """Clean up known data quality issues in historical 13F data on load."""
+    dirty = False
+    for key, hist in _13f_history.items():
+        quarters = hist.get("quarters", [])
+        if len(quarters) < 3:
+            continue
+        # Compute median holdings count and totalValue for this investor
+        counts = sorted([q.get("holdingsCount", 0) for q in quarters if q.get("holdingsCount", 0) > 0])
+        values = sorted([q.get("totalValue", 0) for q in quarters if q.get("totalValue", 0) > 0])
+        if not counts or not values:
+            continue
+        median_count = counts[len(counts) // 2]
+        median_value = values[len(values) // 2]
+        # Remove quarters that are clearly amendment filings (< 10% of median holdings
+        # when median is at least 10) or have wildly wrong values (>100x median)
+        count_threshold = max(4, int(median_count * 0.1))
+        original_len = len(quarters)
+        quarters[:] = [q for q in quarters
+                       if not (q.get("holdingsCount", 0) <= count_threshold and median_count >= 10)
+                       and not (q.get("totalValue", 0) > median_value * 100)]
+        removed = original_len - len(quarters)
+        if removed:
+            print(f"[13F] Sanitized {key}: removed {removed} bad quarter(s)")
+            dirty = True
+    if dirty:
+        _save_13f_history()
+
+
+def _get_latest_quarter(investor_key):
+    """Return the latest quarter data for an investor from history, or None."""
+    hist = _13f_history.get(investor_key)
+    if not hist or not hist.get("quarters"):
+        return None
+    q = hist["quarters"][0]
+    inv = SUPER_INVESTORS.get(investor_key, {})
+    return {
+        "investor": investor_key, "fund": inv.get("fund", ""), "note": inv.get("note", ""),
+        "filingDate": q.get("filingDate", ""), "quarter": q.get("quarter", ""),
+        "holdings": q.get("holdings", []), "totalValue": q.get("totalValue", 0),
+        "holdingsCount": q.get("holdingsCount", 0), "top10pct": q.get("top10pct", 0),
+    }
+
+
+def _get_current_quarter_label():
+    """Determine the most common latest quarter across all investors (e.g. 'Q4 2025')."""
+    from collections import Counter
+    labels = []
+    for key in SUPER_INVESTORS:
+        hist = _13f_history.get(key)
+        if hist and hist.get("quarters"):
+            labels.append(hist["quarters"][0].get("quarter", ""))
+    if not labels:
+        return None
+    return Counter(labels).most_common(1)[0][0]
+
+
+def _save_13f_history():
+    """Persist historical 13F data to disk."""
     try:
-        _13F_CACHE_FILE.write_text(json.dumps(_13f_cache, default=str))
+        _13F_HISTORY_FILE.write_text(json.dumps(_13f_history, default=str))
     except Exception as e:
-        print(f"[13F] Failed to save cache: {e}")
+        print(f"[13F] Failed to save history: {e}")
+
+
+def _append_to_history(investor_key, result):
+    """Append a quarter to history, or update it if the new filing has more holdings."""
+    quarter = result.get("quarter", "")
+    if not quarter:
+        return
+    inv = SUPER_INVESTORS.get(investor_key, {})
+    if investor_key not in _13f_history:
+        _13f_history[investor_key] = {"fund": inv.get("fund", ""), "cik": inv.get("cik", ""), "quarters": []}
+    new_entry = {
+        "quarter": quarter,
+        "filingDate": result.get("filingDate", ""),
+        "totalValue": result.get("totalValue", 0),
+        "holdingsCount": result.get("holdingsCount", 0),
+        "top10pct": result.get("top10pct", 0),
+        "holdings": result.get("holdings", []),
+    }
+    # Check if quarter already exists
+    for i, q in enumerate(_13f_history[investor_key]["quarters"]):
+        if q["quarter"] == quarter:
+            # Update if new data has more holdings (better filing replaces amendment)
+            if result.get("holdingsCount", 0) > q.get("holdingsCount", 0):
+                _13f_history[investor_key]["quarters"][i] = new_entry
+                print(f"[13F] Updated {investor_key} {quarter}: {q.get('holdingsCount', 0)} → {result.get('holdingsCount', 0)} holdings")
+            return
+    _13f_history[investor_key]["quarters"].insert(0, new_entry)
+
+
+def _edgar_request(url, timeout=15):
+    """HTTP GET to SEC EDGAR with retry and rate-limit compliance."""
+    for attempt in range(3):
+        try:
+            time.sleep(0.15)  # SEC fair access: max 10 req/sec
+            r = http_requests.get(url, headers={"User-Agent": EDGAR_USER_AGENT}, timeout=timeout)
+            if r.status_code == 429:
+                time.sleep(10)
+                continue
+            r.raise_for_status()
+            return r
+        except http_requests.exceptions.RequestException:
+            if attempt == 2:
+                raise
+            time.sleep(2)
+    return None
 
 
 def _fetch_13f_latest(cik):
-    """Get the most recent 13F-HR filing accession number and date."""
+    """Get the most recent 13F-HR filing accession number and date.
+    Uses reportDate (period of report) for accurate quarter derivation,
+    falling back to filingDate if reportDate is unavailable."""
     url = f"https://data.sec.gov/submissions/CIK{cik}.json"
-    r = http_requests.get(url, headers={"User-Agent": EDGAR_USER_AGENT}, timeout=15)
-    r.raise_for_status()
+    r = _edgar_request(url)
     data = r.json()
     recent = data.get("filings", {}).get("recent", {})
     forms = recent.get("form", [])
     accessions = recent.get("accessionNumber", [])
     dates = recent.get("filingDate", [])
+    report_dates = recent.get("reportDate", [])
+    # Prefer original 13F-HR over amendments; take the first (most recent) of each
+    original_idx = None
+    amendment_idx = None
     for i, form in enumerate(forms):
-        if form in ("13F-HR", "13F-HR/A"):
-            acc = accessions[i].replace("-", "")
-            return {"accession": accessions[i], "accessionClean": acc, "filingDate": dates[i]}
-    return None
+        if form == "13F-HR" and original_idx is None:
+            original_idx = i
+            break  # originals are what we want
+        elif form == "13F-HR/A" and amendment_idx is None:
+            amendment_idx = i
+    idx = original_idx if original_idx is not None else amendment_idx
+    if idx is None:
+        return None
+    acc = accessions[idx].replace("-", "")
+    report_date = report_dates[idx] if idx < len(report_dates) else ""
+    return {
+        "accession": accessions[idx], "accessionClean": acc,
+        "filingDate": dates[idx],
+        "reportDate": report_date,  # actual quarter-end date (e.g. 2025-12-31)
+    }
 
 
 def _fetch_13f_infotable(cik, accession_clean, accession_raw):
     """Download the infoTable XML from a 13F filing."""
     cik_num = cik.lstrip("0")
     index_url = f"https://www.sec.gov/Archives/edgar/data/{cik_num}/{accession_clean}/"
-    r = http_requests.get(index_url, headers={"User-Agent": EDGAR_USER_AGENT}, timeout=15)
-    r.raise_for_status()
-    # Find the infotable XML filename in the index page
-    matches = re.findall(r'href="([^"]*infotable[^"]*\.xml)"', r.text, re.IGNORECASE)
+    r = _edgar_request(index_url)
+    if not r:
+        return None
+    # Find XML filename — prefer infotable or holding files, skip primary_doc.xml
+    matches = re.findall(r'href="([^"]*(?:infotable|holding)[^"]*\.xml)"', r.text, re.IGNORECASE)
     if not matches:
-        # Try alternative: primary_doc.xml pattern
-        matches = re.findall(r'href="([^"]*\.xml)"', r.text, re.IGNORECASE)
+        all_xml = re.findall(r'href="([^"]*\.xml)"', r.text, re.IGNORECASE)
+        matches = [x for x in all_xml if "primary_doc" not in x.lower()]
+        if not matches:
+            matches = all_xml
     if not matches:
         return None
     xml_filename = matches[0]
@@ -1921,20 +2187,23 @@ def _fetch_13f_infotable(cik, accession_clean, accession_raw):
         xml_url = f"https://www.sec.gov{xml_filename}"
     else:
         xml_url = f"https://www.sec.gov/Archives/edgar/data/{cik_num}/{accession_clean}/{xml_filename}"
-    r2 = http_requests.get(xml_url, headers={"User-Agent": EDGAR_USER_AGENT}, timeout=30)
-    r2.raise_for_status()
+    r2 = _edgar_request(xml_url, timeout=30)
+    if not r2:
+        return None
     return r2.text
 
 
 def _parse_13f_xml(xml_string):
-    """Parse 13F infoTable XML into holdings list. Aggregates by CUSIP."""
+    """Parse 13F infoTable XML into holdings list. Aggregates by CUSIP.
+    Values are normalized to actual dollars (some filers report in thousands per SEC spec,
+    others in dollars — we auto-detect via median per-share price)."""
     ns = {"ns": "http://www.sec.gov/edgar/document/thirteenf/informationtable"}
     root = ET.fromstring(xml_string)
     by_cusip = {}
     for entry in root.findall(".//ns:infoTable", ns):
         cusip = (entry.findtext("ns:cusip", "", ns) or "").strip()
         name = (entry.findtext("ns:nameOfIssuer", "", ns) or "").strip()
-        value = int(entry.findtext("ns:value", "0", ns) or 0)  # value in dollars
+        value = int(entry.findtext("ns:value", "0", ns) or 0)
         shares_el = entry.find("ns:shrsOrPrnAmt", ns)
         shares = int(shares_el.findtext("ns:sshPrnamt", "0", ns) or 0) if shares_el else 0
         put_call = (entry.findtext("ns:putCall", "", ns) or "").strip()
@@ -1946,7 +2215,16 @@ def _parse_13f_xml(xml_string):
                 "cusip": cusip, "name": name, "value": value,
                 "shares": shares, "putCall": put_call,
             }
-    return list(by_cusip.values())
+    holdings = list(by_cusip.values())
+    # Auto-detect: SEC 13F values should be in thousands, but some filers report in dollars.
+    # Compute median per-share price; if < $1, values are in thousands → multiply by 1000.
+    prices = sorted([h["value"] / h["shares"] for h in holdings if h["shares"] > 0])
+    if prices:
+        median_price = prices[len(prices) // 2]
+        if median_price < 1.0:
+            for h in holdings:
+                h["value"] *= 1000
+    return holdings
 
 
 def _openfigi_batch(cusip_list, id_type="ID_CUSIP"):
@@ -1987,18 +2265,25 @@ def _openfigi_batch(cusip_list, id_type="ID_CUSIP"):
 
 
 def _resolve_cusips_to_tickers(holdings):
-    """Batch resolve CUSIPs to tickers via OpenFIGI (free, no key, 10/batch, 25 req/min)."""
+    """Batch resolve CUSIPs to tickers via OpenFIGI (free, no key, 10/batch, 25 req/min).
+    Uses module-level _cusip_ticker_cache to avoid redundant API calls across investors."""
+    global _cusip_ticker_cache
     cusips = list(dict.fromkeys(h["cusip"] for h in holdings if h.get("cusip")))
     if not cusips:
         return holdings
-    ticker_map = _openfigi_batch(cusips, "ID_CUSIP")
-    # Retry unresolved international CUSIPs (CINS codes starting with letter)
-    unresolved_cins = [c for c in cusips if c not in ticker_map and c[0:1].isalpha()]
-    if unresolved_cins:
-        cins_map = _openfigi_batch(unresolved_cins, "ID_CINS")
-        ticker_map.update(cins_map)
+    # Check cache first — only resolve unknown CUSIPs
+    uncached = [c for c in cusips if c not in _cusip_ticker_cache]
+    if uncached:
+        ticker_map = _openfigi_batch(uncached, "ID_CUSIP")
+        # Retry unresolved international CUSIPs (CINS codes starting with letter)
+        unresolved_cins = [c for c in uncached if c not in ticker_map and c[0:1].isalpha()]
+        if unresolved_cins:
+            cins_map = _openfigi_batch(unresolved_cins, "ID_CINS")
+            ticker_map.update(cins_map)
+        _cusip_ticker_cache.update(ticker_map)
+        print(f"[13F] CUSIP cache: {len(_cusip_ticker_cache)} total, {len(uncached)} resolved this batch")
     for h in holdings:
-        h["ticker"] = ticker_map.get(h["cusip"], h["cusip"])
+        h["ticker"] = _cusip_ticker_cache.get(h["cusip"], h["cusip"])
     return holdings
 
 
@@ -2026,43 +2311,64 @@ def _fetch_investor_13f(investor_key):
     # Add portfolio percentage
     for h in holdings:
         h["pctPortfolio"] = round(h["value"] / total_value * 100, 2) if total_value else 0
-    # Derive quarter from filing date
-    filing_date = filing["filingDate"]
-    quarter = _derive_quarter(filing_date)
+    # Derive quarter from reportDate (actual period-end), falling back to filingDate
+    quarter = _derive_quarter(filing.get("reportDate", ""), filing["filingDate"])
+    top10pct = round(sum(h["pctPortfolio"] for h in holdings[:10]), 1)
     result = {
         "investor": investor_key,
         "fund": inv["fund"],
-        "filingDate": filing_date,
+        "note": inv.get("note", ""),
+        "filingDate": filing["filingDate"],
         "quarter": quarter,
         "holdings": holdings,
         "totalValue": total_value,
         "holdingsCount": len(holdings),
+        "top10pct": top10pct,
         "fetchedAt": datetime.now().isoformat(),
     }
-    _13f_cache[investor_key] = result
-    _save_13f_cache()
+    _append_to_history(investor_key, result)
+    _save_13f_history()
     return result
 
 
-def _derive_quarter(filing_date):
-    """Derive the reporting quarter from the filing date (filings are ~45 days after quarter end)."""
-    try:
-        dt = datetime.strptime(filing_date, "%Y-%m-%d")
-        # 13F is due 45 days after quarter end, so filing in Feb = Q4 prev year, May = Q1, Aug = Q2, Nov = Q3
-        month = dt.month
-        year = dt.year
-        if month <= 2:
-            return f"Q4 {year - 1}"
-        elif month <= 5:
-            return f"Q1 {year}"
-        elif month <= 8:
-            return f"Q2 {year}"
-        elif month <= 11:
-            return f"Q3 {year}"
-        else:
-            return f"Q4 {year}"
-    except:
-        return ""
+def _derive_quarter(report_date, filing_date=""):
+    """Derive the reporting quarter from reportDate (period of report).
+    Falls back to filing date heuristic if reportDate is unavailable."""
+    # Prefer reportDate — it's the actual quarter-end (e.g. 2025-12-31 → Q4 2025)
+    if report_date:
+        try:
+            dt = datetime.strptime(report_date, "%Y-%m-%d")
+            month = dt.month
+            year = dt.year
+            if month <= 3:
+                return f"Q1 {year}"
+            elif month <= 6:
+                return f"Q2 {year}"
+            elif month <= 9:
+                return f"Q3 {year}"
+            else:
+                return f"Q4 {year}"
+        except (ValueError, TypeError):
+            pass
+    # Fallback: derive from filing date (filings are ~45 days after quarter end)
+    if filing_date:
+        try:
+            dt = datetime.strptime(filing_date, "%Y-%m-%d")
+            month = dt.month
+            year = dt.year
+            if month <= 2:
+                return f"Q4 {year - 1}"
+            elif month <= 5:
+                return f"Q1 {year}"
+            elif month <= 8:
+                return f"Q2 {year}"
+            elif month <= 11:
+                return f"Q3 {year}"
+            else:
+                return f"Q4 {year}"
+        except (ValueError, TypeError):
+            pass
+    return ""
 
 
 # ── FMP API (fallback) ─────────────────────────────────────────────────
@@ -4479,7 +4785,7 @@ def api_status():
 # ── Main ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     load_disk_cache()
-    _load_13f_cache()
+    _load_13f_history()
     print("\n" + "=" * 55)
     print("  InvToolkit — Investment Dashboard")
     print("=" * 55)
