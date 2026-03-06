@@ -4327,9 +4327,10 @@
                         <span>1yr: <b style="color:var(--text);">${data.score1yr}</b></span>
                         <span>Hybrid (70/30): <b style="color:${c};">${data.score}</b></span>
                     </div>
-                    <div style="font-size:0.72rem; color:var(--text-dim); margin-top:6px;">
-                        ${data.years ? data.years[0] + '–' + data.years[data.years.length - 1] : ''} · ${data.dataSource}
-                        ${updatedStr ? ' · Updated ' + updatedStr : ''}
+                    <div style="font-size:0.75rem; color:var(--text-dim); margin-top:6px; display:flex; gap:12px; flex-wrap:wrap;">
+                        <span>${data.years ? data.years[0] + '–' + data.years[data.years.length - 1] : ''} (${data.years ? data.years.length : 0} yr)</span>
+                        <span>Source: <strong style="color:var(--text);">${data.dataSource}</strong></span>
+                        ${updatedStr ? `<span>Updated: ${updatedStr}</span>` : ''}
                     </div>
                 </div>
             </div>`;
@@ -4589,6 +4590,13 @@
                         ${statRow('Operating CF', d.operatingCashflow, 'big')}
                         ${statRow('Total Revenue', d.totalRevenue, 'big')}
                     </div>
+                </div>
+                <div style="margin-top:8px; font-size:0.75rem; color:var(--text-dim); display:flex; gap:12px; flex-wrap:wrap;">
+                    ${(() => { const ds = d.dataSources || {}; return `
+                        <span>Profile: <strong style="color:var(--text);">${ds.profile || 'Yahoo Finance'}</strong></span>
+                        <span>Financials: <strong style="color:var(--text);">${ds.financials || 'SEC EDGAR'}</strong></span>
+                        <span>Peers: <strong style="color:var(--text);">${ds.peers || 'Finviz'}</strong></span>
+                    `; })()}
                 </div>`;
         }
 
