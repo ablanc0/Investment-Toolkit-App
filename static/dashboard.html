@@ -4369,7 +4369,7 @@
                     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-top:14px;">
                         ${cat.metrics.map(m => `<div style="text-align:center;">
                             <div style="font-size:0.7rem; color:var(--text-dim); margin-bottom:4px;">${m.name}</div>
-                            <canvas id="invt-mc-${m.key}" height="120"></canvas>
+                            <div style="position:relative; height:120px;"><canvas id="invt-mc-${m.key}"></canvas></div>
                         </div>`).join('')}
                     </div>
                 </div>`;
