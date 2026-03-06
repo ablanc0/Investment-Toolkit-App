@@ -4262,6 +4262,70 @@
             }
         }
 
+        // Score label descriptions (from Excel)
+        const INVT_SCORE_DESC = {
+            'Elite': 'A top-tier company with outstanding fundamentals. Strong growth, profitability, and financial efficiency, with a well-managed balance sheet.',
+            'High Quality': 'A strong company with excellent fundamentals and few weaknesses. Reliable growth, profitability, and shareholder returns.',
+            'Above Average': 'A good business with positive attributes but some weaknesses, such as inconsistent profitability or moderate growth challenges.',
+            'Below Average': 'A company with mixed fundamentals and notable concerns. Potential weaknesses in debt, profitability, or growth.',
+            'Poor Quality': 'A struggling business with significant weaknesses. High risk due to declining revenue, excessive debt, or poor profitability.',
+            'Insufficient Data': 'Relatively new company and/or not enough data reported.',
+        };
+
+        // Metric descriptions for tooltips
+        const INVT_METRIC_DESC = {
+            revenue_cagr: 'Measures how fast total sales are increasing or decreasing over time.',
+            eps_cagr: 'Measures the growth in Earnings Per Share, showing how much profit the company generates per share.',
+            fcf_share_cagr: 'Measures how much real cash a company generates per share, crucial for dividends, buybacks, and reinvestment.',
+            gpm: 'Measures core profitability before operating expenses.',
+            npm: 'Shows how much of each $1 in revenue turns into profit.',
+            fcf_margin: 'Measures real cash profitability, a key indicator of financial strength.',
+            net_debt_cagr: 'Measures whether debt is increasing or decreasing over time. Lower is better.',
+            net_debt_fcf: 'Measures how much net debt a company has relative to its Free Cash Flow. Lower is better.',
+            interest_cov: 'Measures how easily a company can cover its interest payments with operating profits. Higher is better.',
+            div_yield: 'Measures how much cash return shareholders get as a percentage of stock price.',
+            dps_cagr: 'Measures the rate at which dividends per share are increasing over time.',
+            payout_ratio: 'Measures the percentage of earnings paid out as dividends. A moderate ratio is preferred.',
+            fcf_payout: 'Measures how much of Free Cash Flow is used for dividends. A lower ratio indicates sustainability.',
+            shares_cagr: 'Measures the change in outstanding shares. A declining number indicates share buybacks.',
+            roa: 'Measures how efficiently a company generates profit from its assets.',
+            roe: 'Measures profitability relative to equity — how efficiently management uses shareholder capital.',
+            roic: 'Measures how well a company allocates its capital to generate returns.',
+        };
+
+        // Short names for compact collapsible table
+        const INVT_METRIC_SHORT = {
+            'Revenue CAGR': 'Rev. CAGR',
+            'EPS CAGR': 'EPS CAGR',
+            'FCF/Share CAGR': 'FCF/Sh CAGR',
+            'Gross Profit Margin': 'GPM',
+            'Net Profit Margin': 'NPM',
+            'FCF Margin': 'FCF Margin',
+            'Net Debt CAGR': 'Net Debt CAGR',
+            'Net Debt / FCF': 'ND/FCF',
+            'Interest Coverage': 'Int. Coverage',
+            'Dividend Yield': 'Div Yield',
+            'Div/Share CAGR': 'DPS CAGR',
+            'Payout Ratio': 'Payout %',
+            'FCF Payout Ratio': 'FCF Payout %',
+            'Shares Outstanding CAGR': 'Shares CAGR',
+            'Return on Assets': 'ROA',
+            'Return on Equity': 'ROE',
+            'Return on Invested Capital': 'ROIC',
+        };
+
+        // Chart tooltip descriptions (keyed by yearlyData field)
+        const INVT_CHART_DESC = {
+            revenue: INVT_METRIC_DESC.revenue_cagr,
+            eps: INVT_METRIC_DESC.eps_cagr,
+            fcfPerShare: INVT_METRIC_DESC.fcf_share_cagr,
+            gpm: INVT_METRIC_DESC.gpm, npm: INVT_METRIC_DESC.npm, fcfMargin: INVT_METRIC_DESC.fcf_margin,
+            netDebt: INVT_METRIC_DESC.net_debt_cagr, netDebtFcf: INVT_METRIC_DESC.net_debt_fcf, interestCov: INVT_METRIC_DESC.interest_cov,
+            divYield: INVT_METRIC_DESC.div_yield, dps: INVT_METRIC_DESC.dps_cagr, divGrowth: 'Year-over-year growth rate of dividends per share.',
+            payoutRatio: INVT_METRIC_DESC.payout_ratio, fcfPayout: INVT_METRIC_DESC.fcf_payout, sharesOut: INVT_METRIC_DESC.shares_cagr,
+            roa: INVT_METRIC_DESC.roa, roe: INVT_METRIC_DESC.roe, roic: INVT_METRIC_DESC.roic,
+        };
+
         // Per-category chart definitions matching Excel layout
         const INVT_CHART_DEFS = {
             growth: [
@@ -4322,6 +4386,7 @@
                         <div style="font-size:1.1rem; font-weight:700; color:${c}; margin-bottom:4px;">${data.label}</div>
                         <button onclick="loadInvtScore(true)" title="Refresh" style="background:none; border:1px solid var(--border); border-radius:6px; padding:4px 8px; cursor:pointer; color:var(--text-dim); font-size:0.75rem; line-height:1;">&#x21bb;</button>
                     </div>
+                    <div style="font-size:0.78rem; color:var(--text-dim); margin-bottom:6px; max-width:520px; line-height:1.4;">${INVT_SCORE_DESC[data.label] || ''}</div>
                     <div style="display:flex; gap:16px; font-size:0.82rem; color:var(--text-dim);">
                         <span>5yr: <b style="color:var(--text);">${data.score5yr}</b></span>
                         <span>1yr: <b style="color:var(--text);">${data.score1yr}</b></span>
@@ -4394,10 +4459,14 @@
                 html += `<div class="analyzer-section" style="margin-bottom:16px;">
                     <div class="analyzer-section-title" style="color:${col};">${cat.label} — ${scoreLabel}</div>
                     <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px;">
-                        ${charts.map(ch => `<div>
-                            <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:6px; text-align:center; font-weight:600;">${ch.title}</div>
+                        ${charts.map(ch => {
+                            const desc = INVT_CHART_DESC[ch.key] || '';
+                            const tip = desc ? ` <span title="${desc}" style="cursor:help; opacity:0.5;">&#x3f;</span>` : '';
+                            return `<div>
+                            <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:6px; text-align:center; font-weight:600;">${ch.title}${tip}</div>
                             <div style="position:relative; height:180px;"><canvas id="invt-mc-${ch.key}"></canvas></div>
-                        </div>`).join('')}
+                        </div>`;
+                        }).join('')}
                     </div>
                 </div>`;
             });
@@ -4409,7 +4478,8 @@
             catOrder.forEach(k => {
                 const cat = data.categories[k];
                 if (!cat || cat.note) return;
-                html += `<div class="analyzer-section">
+                const wide = k === 'dividends' ? ' style="grid-column:1/-1;"' : '';
+                html += `<div class="analyzer-section"${wide}>
                     <div class="analyzer-section-title">${cat.label} — <span style="color:${_invtScoreColor(cat.score)};">${cat.score}/10</span></div>
                     <table class="fcf-table">
                         <thead><tr><th>Metric</th><th>5yr</th><th>1yr</th><th>Score</th></tr></thead>
@@ -4420,8 +4490,11 @@
                     const avg = Math.round((s5 * 0.7 + s1 * 0.3) * 10) / 10;
                     const mcol = _invtScoreColor(avg);
                     const fmt = v => v == null ? '—' : (m.unit === '%' ? v.toFixed(2) + '%' : m.unit === 'x' ? v.toFixed(2) + 'x' : v.toFixed(2));
+                    const shortName = INVT_METRIC_SHORT[m.name] || m.name;
+                    const desc = INVT_METRIC_DESC[m.key] || '';
+                    const tip = desc ? ` title="${desc}"` : '';
                     html += `<tr>
-                        <td>${m.name}</td>
+                        <td${tip} style="cursor:${desc ? 'help' : 'default'};">${shortName}${desc ? ' <span style="opacity:0.4;">&#x3f;</span>' : ''}</td>
                         <td>${fmt(m.value5yr)}</td>
                         <td>${fmt(m.value1yr)}</td>
                         <td><span style="display:inline-block; padding:3px 10px; border-radius:10px; font-size:0.8rem; font-weight:700; background:${mcol}20; color:${mcol};">${avg}</span></td>
