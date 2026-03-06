@@ -45,6 +45,7 @@
         <button class="group-btn" data-group="research" style="--group-color: #993333">🔍 Research</button>
         <button class="group-btn" data-group="analysis" style="--group-color: #1BBC9D">🔬 Analysis</button>
         <button class="group-btn" data-group="planning" style="--group-color: #E69138">🏦 Planning</button>
+        <button class="group-btn" data-group="settings" style="--group-color: #9CA3AF">⚙ Settings</button>
     </div>
 
     <div class="nav-tabs" id="navTabs">
@@ -79,6 +80,9 @@
             <button class="tab-btn" data-tab="passive">Passive Income</button>
             <button class="tab-btn" data-tab="rule4pct">Rule 4%</button>
             <button class="tab-btn" data-tab="costOfLiving">Cost of Living</button>
+        </div>
+        <div class="tab-row" data-group="settings" style="display:none">
+            <button class="tab-btn" data-tab="settingsCategories">Categories</button>
         </div>
     </div>
 
@@ -202,7 +206,6 @@
                         <input type="number" id="newShares" placeholder="Shares" step="0.001" style="width: 80px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px;">
                         <input type="number" id="newAvgCost" placeholder="Avg Cost" step="0.01" style="width: 90px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px;">
                         <select id="newCategory" style="padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px;">
-                            <option>Growth</option><option>Value Stocks</option><option>Foundational</option><option>International</option><option>US Bonds</option>
                         </select>
                         <select id="newSecType" style="padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px;">
                             <option>Stocks</option><option>ETFs</option>
@@ -398,7 +401,7 @@
                     <input type="date" id="spSellDate" style="width: 130px;">
                     <input type="number" id="spAvgCost" placeholder="Avg Cost" step="0.01" style="width: 80px;">
                     <input type="number" id="spSellPrice" placeholder="Sell Price" step="0.01" style="width: 90px;">
-                    <select id="spCategory" style="padding: 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 8px; color: var(--text);"><option>Growth</option><option>Value Stocks</option><option>Foundational</option><option>International</option></select>
+                    <select id="spCategory" style="padding: 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 8px; color: var(--text);"></select>
                     <input type="text" id="spNotes" placeholder="Notes" style="width: 100px;">
                     <button class="wl-add-btn" onclick="addSoldPosition()">➕ Add</button>
                 </div>
@@ -825,6 +828,23 @@
                 <div id="simDetailTable"></div>
             </div>
         </div>
+        <!-- Settings: Categories Tab -->
+        <div class="tab-content" id="settingsCategories">
+            <div class="card">
+                <div class="card-title">⚙ Category Management</div>
+                <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 16px;">Define your investment categories and colors. Changes apply to all dropdowns and badges.</p>
+                <div id="categoryEditor"></div>
+                <div style="display: flex; gap: 8px; margin-top: 12px;">
+                    <button class="add-row-btn" onclick="addCategoryRow()">➕ Add Category</button>
+                    <button class="add-row-btn" onclick="saveCategories()" style="border-color: var(--green); color: var(--green);">💾 Save Categories</button>
+                </div>
+                <div style="margin-top: 16px;">
+                    <label style="font-size: 13px; color: var(--text-dim);">Default Category for new positions:</label>
+                    <select id="defaultCategorySelect" style="margin-left: 8px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px;"></select>
+                </div>
+            </div>
+        </div>
+
     </div><!-- /tabContainer -->
 
 
@@ -850,5 +870,6 @@
     <script src="/static/js/super-investors.js"></script>
     <script src="/static/js/salary.js"></script>
     <script src="/static/js/planning.js"></script>
+    <script src="/static/js/settings.js"></script>
 </body>
 </html>

@@ -25,21 +25,34 @@ function getSignalBadge(signal) {
     return `<span class="badge ${className}">${signal.toUpperCase()}</span>`;
 }
 
+// ── Category Settings (loaded from /api/settings) ───────────────
+let _categorySettings = null;
+
+async function loadCategorySettings() {
+    try {
+        const resp = await fetch('/api/settings');
+        const data = await resp.json();
+        _categorySettings = data.categories || [];
+    } catch { _categorySettings = []; }
+}
+
 function getCategoryBadge(category) {
     if (!category) return '';
-    const key = category.toLowerCase().replace(/\s+/g, ' ');
-    const categoryMap = {
-        'growth': 'cat-growth',
-        'value stocks': 'cat-value',
-        'value': 'cat-value',
-        'foundational': 'cat-foundational',
-        'international': 'cat-international',
-        'us bonds': 'cat-bonds',
-        'bonds': 'cat-bonds',
-        'cash': 'cat-cash'
-    };
-    const className = categoryMap[key] || 'cat-growth';
-    return `<span class="badge ${className}">${category}</span>`;
+    const cat = (_categorySettings || []).find(
+        c => c.name.toLowerCase() === category.toLowerCase()
+    );
+    const color = cat ? cat.color : '#6366f1';
+    return `<span class="badge" style="background:${color}20; color:${color};">${category}</span>`;
+}
+
+function getCategoryOptions() {
+    return (_categorySettings || []).map(c => c.name);
+}
+
+function populateCategorySelect(selectId) {
+    const el = document.getElementById(selectId);
+    if (!el) return;
+    el.innerHTML = getCategoryOptions().map(c => `<option>${c}</option>`).join('');
 }
 
 function showAlert(message, type = 'info') {

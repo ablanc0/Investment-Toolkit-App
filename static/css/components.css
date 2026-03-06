@@ -167,12 +167,7 @@
             letter-spacing: 0.5px;
         }
 
-        .cat-growth { background: #1d3f2e; color: var(--green); }
-        .cat-value { background: #1e3a8a; color: var(--blue); }
-        .cat-foundational { background: #312e81; color: var(--purple); }
-        .cat-international { background: #3f2e1d; color: var(--gold); }
-        .cat-bonds { background: #2e3620; color: #84cc16; }
-        .cat-cash { background: #2e2e2e; color: #a0a0a0; }
+        /* Category badge colors are now dynamic via inline styles from settings */
 
         .signal-strong-buy { background: #1d3f2e; color: var(--green); }
         .signal-buy { background: #1e3a8a; color: var(--blue); }
