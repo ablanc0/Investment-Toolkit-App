@@ -225,6 +225,10 @@ async function fetchAllData(retryCount = 0) {
         populateAlerts();
         populateNewTabs();
 
+        // Re-render settings editors that depend on portfolioData
+        if (typeof renderGoalsEditor === 'function') renderGoalsEditor();
+        if (typeof renderTargetAllocEditor === 'function') renderTargetAllocEditor();
+
         setLoadingState(false);
         updateTimestamp();
     } catch (error) {
