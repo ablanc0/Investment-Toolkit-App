@@ -2,15 +2,47 @@
 
 async function fetchRiskAnalysis() {
     try {
-        const resp = await fetch('/api/risk-analysis');
-        const data = await resp.json();
+        var params = _getCustomScenarioParams();
+        var url = '/api/risk-analysis' + (params ? '?' + params : '');
+        var resp = await fetch(url);
+        var data = await resp.json();
         renderRiskKpis(data.riskMetrics, data.marketMetrics);
         renderSectorConcentration(data.sectorConcentration);
+        renderCustomScenarioInputs();
         renderStressTests(data.stressTests, data.totalMarketValue);
         renderRecoveryProjections(data.recoveryProjections, data.totalMarketValue);
     } catch (e) {
         console.error('Error loading risk analysis:', e);
     }
+}
+
+function _getCustomScenarioParams() {
+    var drop = document.getElementById('customDrop');
+    var sf = document.getElementById('customStressFactor');
+    var rec = document.getElementById('customRecoveryYears');
+    if (!drop || !sf || !rec) return '';
+    return 'customDrop=' + drop.value + '&customStressFactor=' + sf.value + '&customRecoveryYears=' + rec.value;
+}
+
+function renderCustomScenarioInputs() {
+    if (document.getElementById('customScenarioInputs')) return;
+    var container = document.getElementById('stressTestContainer');
+    if (!container) return;
+    var wrapper = document.createElement('div');
+    wrapper.id = 'customScenarioInputs';
+    wrapper.style.cssText = 'background:var(--card); border:1px dashed #6366f144; padding:10px 16px; border-radius:10px; margin-bottom:12px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;';
+    wrapper.innerHTML = '<span style="font-size:12px; color:var(--text-dim); font-weight:600;">Custom Scenario</span>'
+        + '<label style="font-size:11px; color:var(--text-dim);">S&P 500 Decline %'
+        + '<input id="customDrop" type="number" value="-20" min="-100" max="0" step="1" style="width:60px; margin-left:4px; padding:3px 6px; background:var(--card-hover); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px;">'
+        + '</label>'
+        + '<label style="font-size:11px; color:var(--text-dim);">Stress Factor (VIX)'
+        + '<input id="customStressFactor" type="number" value="1.2" min="1.0" max="3.0" step="0.1" style="width:56px; margin-left:4px; padding:3px 6px; background:var(--card-hover); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px;">'
+        + '</label>'
+        + '<label style="font-size:11px; color:var(--text-dim);">Recovery (years)'
+        + '<input id="customRecoveryYears" type="number" value="1.0" min="0.1" max="30" step="0.5" style="width:56px; margin-left:4px; padding:3px 6px; background:var(--card-hover); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px;">'
+        + '</label>'
+        + '<button onclick="fetchRiskAnalysis()" style="padding:4px 12px; background:#6366f1; color:#fff; border:none; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;">Apply</button>';
+    container.parentNode.insertBefore(wrapper, container);
 }
 
 function renderRiskKpis(m, mkt) {
@@ -69,31 +101,73 @@ function renderSectorConcentration(sectors) {
 function renderStressTests(scenarios, totalMV) {
     const el = document.getElementById('stressTestContainer');
     if (!el) return;
-    el.innerHTML = scenarios.map((sc, idx) => {
-        const posTable = sc.positions.slice(0, 5).map(p => {
-            const color = p.estimatedLoss < 0 ? '#ef4444' : '#22c55e';
-            return `<tr><td>${p.ticker}</td><td style="text-align:right;">${p.beta.toFixed(2)}</td><td style="text-align:right;">${p.adjustedDrop.toFixed(1)}%</td><td style="text-align:right; color:${color};">${formatMoney(p.estimatedLoss)}</td><td><span style="color:${p.priority === 'HIGH' ? '#ef4444' : p.priority === 'MEDIUM' ? '#f59e0b' : '#22c55e'}; font-size:11px; font-weight:600;">${p.priority}</span></td></tr>`;
+    el.innerHTML = scenarios.map(function(sc) {
+        var dropColor = Math.abs(sc.drop) >= 50 ? '#ef4444' : Math.abs(sc.drop) >= 20 ? '#f59e0b' : '#6b7280';
+        var sf = sc.stressFactor || 1;
+        var sfBadge = sf > 1 ? '<span style="background:#6366f122; color:#a5b4fc; padding:2px 6px; border-radius:8px; font-size:10px; font-weight:600; margin-left:6px;">VIX x' + sf.toFixed(1) + '</span>' : '';
+        var avgRecYrs = sc.avgRecoveryYears || 0;
+        var recLabel = avgRecYrs < 1 ? Math.round(avgRecYrs * 12) + ' mo' : avgRecYrs.toFixed(1) + ' yrs';
+
+        // Header with dual Normal | Max Stress
+        var header = '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">'
+            + '<div>'
+            + '<strong>' + sc.name + '</strong>'
+            + '<span style="color:var(--text-dim); font-size:12px; margin-left:8px;">' + sc.description + '</span>'
+            + sfBadge
+            + '</div>'
+            + '<div style="display:flex; gap:16px; align-items:center; font-size:12px;">'
+            + '<div style="text-align:right;">'
+            + '<div style="color:var(--text-dim); font-size:10px;">Normal</div>'
+            + '<span style="color:' + dropColor + '; font-weight:600;">' + (sc.normalDropPct || sc.stressedDropPct).toFixed(1) + '%</span>'
+            + '<span style="color:var(--text-dim); margin-left:4px;">' + formatMoney(sc.normalTotalLoss || sc.totalEstimatedLoss) + '</span>'
+            + '</div>'
+            + '<div style="text-align:right;">'
+            + '<div style="color:var(--text-dim); font-size:10px;">Max Stress</div>'
+            + '<span style="color:#ef4444; font-weight:600;">' + (sc.maxStressDropPct || sc.stressedDropPct).toFixed(1) + '%</span>'
+            + '<span style="color:var(--text-dim); margin-left:4px;">' + formatMoney(sc.maxStressTotalLoss || sc.totalEstimatedLoss) + '</span>'
+            + '</div>'
+            + '</div>'
+            + '</div>';
+
+        // Per-position table (all positions)
+        var posRows = (sc.positions || []).map(function(p) {
+            var nColor = p.normalLoss < 0 ? '#ef4444' : '#22c55e';
+            var mColor = p.maxStressLoss < 0 ? '#ef4444' : '#22c55e';
+            var prioColor = p.priority === 'HIGH' ? '#ef4444' : p.priority === 'MEDIUM' ? '#f59e0b' : '#22c55e';
+            var recYrs = p.recoveryYears || 0;
+            var recStr = recYrs < 1 ? Math.round(recYrs * 12) + ' mo' : recYrs.toFixed(1) + ' yrs';
+            return '<tr>'
+                + '<td><strong>' + p.ticker + '</strong></td>'
+                + '<td style="text-align:right;">' + formatMoney(p.marketValue) + '</td>'
+                + '<td style="text-align:right;">' + p.beta.toFixed(2) + '</td>'
+                + '<td style="text-align:right;">' + p.normalDrop.toFixed(1) + '%</td>'
+                + '<td style="text-align:right; color:' + nColor + ';">' + formatMoney(p.normalLoss) + '</td>'
+                + '<td style="text-align:right;">' + p.maxStressDrop.toFixed(1) + '%</td>'
+                + '<td style="text-align:right; color:' + mColor + ';">' + formatMoney(p.maxStressLoss) + '</td>'
+                + '<td style="text-align:center;">' + recStr + '</td>'
+                + '<td><span style="color:' + prioColor + '; font-size:11px; font-weight:600;">' + p.priority + '</span></td>'
+                + '</tr>';
         }).join('');
-        const dropColor = Math.abs(sc.drop) >= 50 ? '#ef4444' : Math.abs(sc.drop) >= 20 ? '#f59e0b' : '#6b7280';
-        return `<div style="background:var(--card-hover); padding:12px 16px; border-radius:10px; margin-bottom:8px; cursor:pointer;" onclick="this.querySelector('.stress-detail').style.display = this.querySelector('.stress-detail').style.display === 'none' ? 'block' : 'none'">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                    <strong>${sc.name}</strong>
-                    <span style="color:var(--text-dim); font-size:12px; margin-left:8px;">${sc.description}</span>
-                </div>
-                <div style="text-align:right;">
-                    <span style="color:${dropColor}; font-weight:600;">${sc.stressedDropPct.toFixed(1)}%</span>
-                    <span style="color:var(--text-dim); font-size:12px; margin-left:8px;">${formatMoney(sc.totalEstimatedLoss)}</span>
-                </div>
-            </div>
-            <div class="stress-detail" style="display:none; margin-top:12px;">
-                <div style="display:flex; gap:16px; margin-bottom:8px; font-size:13px;">
-                    <span>Market Drop: <strong style="color:${dropColor}">${sc.drop}%</strong></span>
-                    <span>Stressed Value: <strong>${formatMoney(sc.stressedValue)}</strong></span>
-                </div>
-                <table style="width:100%; font-size:0.8rem;"><thead><tr><th>Ticker</th><th style="text-align:right;">Beta</th><th style="text-align:right;">Adj. Drop</th><th style="text-align:right;">Est. Loss</th><th>Priority</th></tr></thead><tbody>${posTable}</tbody></table>
-            </div>
-        </div>`;
+
+        var detail = '<div class="stress-detail" style="display:none; margin-top:12px;">'
+            + '<div style="display:flex; gap:16px; margin-bottom:8px; font-size:13px; flex-wrap:wrap;">'
+            + '<span>S&P 500 Drop: <strong style="color:' + dropColor + '">' + sc.drop + '%</strong></span>'
+            + '<span>Normal Value: <strong>' + formatMoney(sc.normalStressedValue || sc.stressedValue) + '</strong></span>'
+            + '<span>Max Stress Value: <strong style="color:#ef4444;">' + formatMoney(sc.maxStressStressedValue || sc.stressedValue) + '</strong></span>'
+            + '<span>Avg Recovery: <strong>' + recLabel + '</strong></span>'
+            + '</div>'
+            + '<div style="overflow-x:auto;"><table style="width:100%; font-size:0.78rem;"><thead><tr>'
+            + '<th>Ticker</th><th style="text-align:right;">MV</th><th style="text-align:right;">Beta</th>'
+            + '<th style="text-align:right;">Normal %</th><th style="text-align:right;">Normal $</th>'
+            + '<th style="text-align:right;">Max Stress %</th><th style="text-align:right;">Max Stress $</th>'
+            + '<th style="text-align:center;">Recovery</th><th>Risk</th>'
+            + '</tr></thead><tbody>' + posRows + '</tbody></table></div>'
+            + '</div>';
+
+        var isCustom = sc.name === 'Custom Scenario';
+        var cardBorder = isCustom ? 'border:1px dashed #6366f144;' : '';
+        return '<div style="background:var(--card-hover); padding:12px 16px; border-radius:10px; margin-bottom:8px; cursor:pointer;' + cardBorder + '" onclick="this.querySelector(\'.stress-detail\').style.display = this.querySelector(\'.stress-detail\').style.display === \'none\' ? \'block\' : \'none\'">'
+            + header + detail + '</div>';
     }).join('');
 }
 
@@ -118,51 +192,96 @@ async function loadCorrelationMatrix() {
 }
 
 function renderRecoveryProjections(projections, totalMV) {
-    const el = document.getElementById('recoveryProjectionContainer');
+    var el = document.getElementById('recoveryProjectionContainer');
     if (!el || !projections || !projections.length) {
         if (el) el.innerHTML = '<p style="color:var(--text-dim);">No recovery data available.</p>';
         return;
     }
 
-    const cards = projections.map(p => {
-        const shapeColor = p.shape === 'V-shaped' ? '#22c55e' : p.shape === 'U-shaped' ? '#f59e0b' : '#ef4444';
-        const years = p.recoveryYears;
-        const yearsLabel = years < 1 ? p.recoveryMonths + ' mo' : years === 1 ? '1 yr' : years + ' yrs';
+    var cards = projections.map(function(p) {
+        var shapeColor = p.shape === 'V-shaped' ? '#22c55e' : p.shape === 'U-shaped' ? '#f59e0b' : '#ef4444';
+        var years = p.recoveryYears;
+        var yearsLabel = years < 1 ? p.recoveryMonths + ' mo' : years === 1 ? '1 yr' : years + ' yrs';
+        var norm = p.normal || {};
+        var maxS = p.maxStress || {};
+        var normalPath = norm.path || p.path || [];
+        var maxPath = maxS.path || normalPath;
 
-        // Mini sparkline path from recovery data
-        const path = p.path || [];
-        const maxVal = Math.max(...path.map(pt => pt.value), 1);
-        const minVal = Math.min(...path.map(pt => pt.value), 0);
-        const range = maxVal - minVal || 1;
-        const w = 280, h = 50;
-        const points = path.map((pt, i) => {
-            const x = (i / Math.max(path.length - 1, 1)) * w;
-            const y = h - ((pt.value - minVal) / range) * h;
+        // Compute sparkline bounds from both paths
+        var allValues = normalPath.map(function(pt) { return pt.value; })
+            .concat(maxPath.map(function(pt) { return pt.value; }));
+        var maxVal = Math.max.apply(null, allValues.concat([1]));
+        var minVal = Math.min.apply(null, allValues.concat([0]));
+        var range = maxVal - minVal || 1;
+        var w = 280, h = 60;
+
+        function toPoints(path) {
+            return path.map(function(pt, i) {
+                var x = (i / Math.max(path.length - 1, 1)) * w;
+                var y = h - ((pt.value - minVal) / range) * h;
+                return x.toFixed(1) + ',' + y.toFixed(1);
+            }).join(' ');
+        }
+
+        var normalPts = toPoints(normalPath);
+        var maxPts = toPoints(maxPath);
+
+        // Build band polygon (normal line forward, then max stress line reversed)
+        var normalCoords = normalPath.map(function(pt, i) {
+            var x = (i / Math.max(normalPath.length - 1, 1)) * w;
+            var y = h - ((pt.value - minVal) / range) * h;
             return x.toFixed(1) + ',' + y.toFixed(1);
-        }).join(' ');
+        });
+        var maxCoords = maxPath.map(function(pt, i) {
+            var x = (i / Math.max(maxPath.length - 1, 1)) * w;
+            var y = h - ((pt.value - minVal) / range) * h;
+            return x.toFixed(1) + ',' + y.toFixed(1);
+        });
+        var bandPoly = normalCoords.concat(maxCoords.slice().reverse()).join(' ');
 
-        const baselineY = (h - ((totalMV - minVal) / range) * h).toFixed(1);
+        var baselineY = (h - ((totalMV - minVal) / range) * h).toFixed(1);
+
+        // Values for stats
+        var normStressed = norm.stressedValue || p.stressedValue || 0;
+        var normFinal = norm.finalValue || p.finalValue || 0;
+        var normDivs = norm.dividendsDuringRecovery || p.dividendsDuringRecovery || 0;
+        var maxStressed = maxS.stressedValue || normStressed;
+        var maxFinal = maxS.finalValue || normFinal;
+        var maxDivs = maxS.dividendsDuringRecovery || normDivs;
+        var avgPosRec = p.avgPositionRecoveryYears || 0;
+        var avgPosLabel = avgPosRec < 1 ? Math.round(avgPosRec * 12) + ' mo' : avgPosRec.toFixed(1) + ' yrs';
 
         return '<div style="background:var(--card-hover); padding:14px; border-radius:10px; border-left:3px solid ' + shapeColor + ';">'
             + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">'
             + '<strong style="font-size:13px;">' + p.name + '</strong>'
             + '<span style="padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; background:' + shapeColor + '22; color:' + shapeColor + ';">' + p.shape + '</span>'
             + '</div>'
-            + '<svg viewBox="0 0 ' + w + ' ' + h + '" style="width:100%; height:50px; margin:8px 0;">'
-            + '<polyline points="' + points + '" fill="none" stroke="' + shapeColor + '" stroke-width="2" />'
+            // SVG with band between normal and max stress
+            + '<svg viewBox="0 0 ' + w + ' ' + h + '" style="width:100%; height:60px; margin:8px 0;">'
+            + '<polygon points="' + bandPoly + '" fill="' + shapeColor + '" opacity="0.12" />'
+            + '<polyline points="' + normalPts + '" fill="none" stroke="' + shapeColor + '" stroke-width="2" />'
+            + '<polyline points="' + maxPts + '" fill="none" stroke="' + shapeColor + '" stroke-width="1.5" stroke-dasharray="4,3" />'
             + '<line x1="0" y1="' + baselineY + '" x2="' + w + '" y2="' + baselineY + '" stroke="var(--text-dim)" stroke-width="0.5" stroke-dasharray="4,3" />'
             + '</svg>'
-            + '<div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-dim);">'
-            + '<span>Recovery: <strong style="color:var(--text);">' + yearsLabel + '</strong></span>'
-            + '<span>Divs earned: <strong style="color:var(--text);">' + formatMoney(p.dividendsDuringRecovery) + '</strong></span>'
+            // Legend
+            + '<div style="display:flex; gap:12px; font-size:10px; color:var(--text-dim); margin-bottom:8px;">'
+            + '<span><span style="display:inline-block; width:16px; height:2px; background:' + shapeColor + '; vertical-align:middle; margin-right:4px;"></span>Normal</span>'
+            + '<span><span style="display:inline-block; width:16px; height:2px; background:' + shapeColor + '; vertical-align:middle; margin-right:4px; border-top:1px dashed ' + shapeColor + '; height:0;"></span>Max Stress</span>'
             + '</div>'
-            + '<div style="font-size:11px; color:var(--text-dim); margin-top:4px;">'
-            + formatMoney(p.stressedValue) + ' → ' + formatMoney(p.finalValue)
+            // Stats grid: Normal vs Max Stress
+            + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:4px 12px; font-size:12px;">'
+            + '<div style="color:var(--text-dim);">Normal: <strong style="color:var(--text);">' + formatMoney(normStressed) + ' → ' + formatMoney(normFinal) + '</strong></div>'
+            + '<div style="color:var(--text-dim);">Max Stress: <strong style="color:var(--text);">' + formatMoney(maxStressed) + ' → ' + formatMoney(maxFinal) + '</strong></div>'
+            + '<div style="color:var(--text-dim);">Divs (normal): <strong style="color:var(--text);">' + formatMoney(normDivs) + '</strong></div>'
+            + '<div style="color:var(--text-dim);">Divs (max): <strong style="color:var(--text);">' + formatMoney(maxDivs) + '</strong></div>'
+            + '</div>'
+            + '<div style="font-size:11px; color:var(--text-dim); margin-top:6px;">'
+            + 'Recovery: <strong>' + yearsLabel + '</strong> · Avg position: <strong>' + avgPosLabel + '</strong>'
             + '</div>'
             + '</div>';
     }).join('');
 
-    el.innerHTML = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">' + cards + '</div>';
+    el.innerHTML = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px;">' + cards + '</div>';
 }
 
 function renderCorrelationMatrix(tickers, matrix) {

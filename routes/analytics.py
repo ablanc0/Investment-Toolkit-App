@@ -1,7 +1,7 @@
 """Analytics Blueprint — tax optimization, risk analysis, attribution, benchmark, dividends deep dive."""
 
 from datetime import datetime
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 
 from services.data_store import load_portfolio, get_settings
 from services.yfinance_svc import fetch_all_quotes
@@ -150,14 +150,26 @@ def api_tax_optimization():
 def api_risk_analysis():
     from services.yfinance_svc import fetch_historical_prices
     from services.cache import cache_get, cache_set
+    from config import STRESS_SCENARIOS, CUSTOM_SCENARIO_DEFAULTS
 
     enriched, portfolio, total_mv, total_div = _get_enriched_portfolio()
     monthly_data = portfolio.get("monthlyData", [])
 
+    # Build scenarios: 4 historical + 1 custom (with optional query param overrides)
+    custom = dict(CUSTOM_SCENARIO_DEFAULTS)
+    if request.args.get("customDrop"):
+        custom["drop"] = max(min(float(request.args["customDrop"]), 0), -100)
+    if request.args.get("customStressFactor"):
+        custom["stressFactor"] = max(float(request.args["customStressFactor"]), 1.0)
+    if request.args.get("customRecoveryYears"):
+        custom["recoveryYears"] = max(float(request.args["customRecoveryYears"]), 0.1)
+    custom["recoveryMonths"] = round(custom["recoveryYears"] * 12)
+    scenarios = list(STRESS_SCENARIOS) + [custom]
+
     concentration = compute_sector_concentration(enriched, total_mv)
-    stress = compute_stress_test(enriched, total_mv)
+    stress = compute_stress_test(enriched, total_mv, scenarios=scenarios)
     metrics = compute_risk_metrics(monthly_data, enriched)
-    recovery = compute_recovery_projection(stress, total_mv, total_div)
+    recovery = compute_recovery_projection(stress, total_mv, total_div, scenarios=scenarios)
 
     # Market benchmark (SPY) for comparison
     market = {}

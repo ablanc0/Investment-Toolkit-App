@@ -34,24 +34,46 @@ def compute_sector_concentration(enriched_positions, total_market_value):
 
 
 def compute_stress_test(enriched_positions, total_market_value, scenarios=None):
-    """Stress test portfolio against historical scenarios."""
+    """Stress test portfolio against historical scenarios.
+
+    Returns both Normal (beta × drop) and Max Stress (beta × drop × stressFactor)
+    projections per position per scenario, plus per-position recovery time.
+    """
     if scenarios is None:
         scenarios = STRESS_SCENARIOS
 
     results = []
     for scenario in scenarios:
         drop_pct = scenario["drop"]
+        stress_factor = scenario.get("stressFactor", 1.0)
+        recovery_yrs = scenario.get("recoveryYears", 1.0)
         pos_results = []
-        total_loss = 0
+        normal_total_loss = 0
+        max_stress_total_loss = 0
+        total_recovery_yrs = 0
 
         for p in enriched_positions:
             beta = p.get("beta", 1) or 1
             mv = p.get("marketValue", 0)
-            adj_drop = max(beta * drop_pct, -100)  # can't lose more than 100%
-            est_loss = mv * adj_drop / 100
-            total_loss += est_loss
 
-            abs_loss = abs(est_loss)
+            # Normal: beta × market drop
+            normal_drop = max(beta * drop_pct, -100)
+            normal_loss = mv * normal_drop / 100
+            normal_value = max(mv + normal_loss, 0)
+
+            # Max Stress: beta × market drop × VIX stress factor
+            max_stress_drop = max(beta * drop_pct * stress_factor, -100)
+            max_stress_loss = mv * max_stress_drop / 100
+            max_stress_value = max(mv + max_stress_loss, 0)
+
+            normal_total_loss += normal_loss
+            max_stress_total_loss += max_stress_loss
+
+            # Per-position recovery time: recoveryYears × (1 + beta) / 2
+            pos_recovery = round(recovery_yrs * (1 + beta) / 2, 1)
+            total_recovery_yrs += pos_recovery
+
+            abs_loss = abs(max_stress_loss)
             if abs_loss > mv * 0.5:
                 priority = "HIGH"
             elif abs_loss > mv * 0.2:
@@ -63,21 +85,41 @@ def compute_stress_test(enriched_positions, total_market_value, scenarios=None):
                 "ticker": p.get("ticker", ""),
                 "beta": round(beta, 2),
                 "marketValue": round(mv, 2),
-                "adjustedDrop": round(adj_drop, 2),
-                "estimatedLoss": round(est_loss, 2),
+                "normalDrop": round(normal_drop, 2),
+                "normalValue": round(normal_value, 2),
+                "normalLoss": round(normal_loss, 2),
+                "maxStressDrop": round(max_stress_drop, 2),
+                "maxStressValue": round(max_stress_value, 2),
+                "maxStressLoss": round(max_stress_loss, 2),
+                "recoveryYears": pos_recovery,
                 "priority": priority,
             })
 
-        pos_results.sort(key=lambda x: x["estimatedLoss"])
-        stressed_value = total_market_value + total_loss
+        pos_results.sort(key=lambda x: x["normalLoss"])
+        normal_stressed = max(total_market_value + normal_total_loss, 0)
+        max_stress_stressed = max(total_market_value + max_stress_total_loss, 0)
+        n_pos = len(enriched_positions)
+        avg_recovery = round(total_recovery_yrs / n_pos, 1) if n_pos > 0 else 0
 
         results.append({
             "name": scenario["name"],
             "description": scenario.get("description", ""),
             "drop": drop_pct,
-            "totalEstimatedLoss": round(total_loss, 2),
-            "stressedValue": round(max(stressed_value, 0), 2),
-            "stressedDropPct": round((total_loss / total_market_value * 100) if total_market_value > 0 else 0, 2),
+            "stressFactor": stress_factor,
+            # Normal scenario aggregates
+            "normalTotalLoss": round(normal_total_loss, 2),
+            "normalStressedValue": round(normal_stressed, 2),
+            "normalDropPct": round((normal_total_loss / total_market_value * 100) if total_market_value > 0 else 0, 2),
+            # Max Stress scenario aggregates
+            "maxStressTotalLoss": round(max_stress_total_loss, 2),
+            "maxStressStressedValue": round(max_stress_stressed, 2),
+            "maxStressDropPct": round((max_stress_total_loss / total_market_value * 100) if total_market_value > 0 else 0, 2),
+            # Recovery
+            "avgRecoveryYears": avg_recovery,
+            # Backward compat (aliased to normal)
+            "totalEstimatedLoss": round(normal_total_loss, 2),
+            "stressedValue": round(normal_stressed, 2),
+            "stressedDropPct": round((normal_total_loss / total_market_value * 100) if total_market_value > 0 else 0, 2),
             "positions": pos_results,
         })
 
@@ -87,7 +129,7 @@ def compute_stress_test(enriched_positions, total_market_value, scenarios=None):
 def compute_recovery_projection(stress_results, total_market_value, annual_div_income, scenarios=None):
     """Estimate recovery timeline for each stress scenario.
 
-    Models recovery path factoring in:
+    Builds dual recovery paths (Normal and Max Stress) factoring in:
     - Historical recovery duration (from scenario data)
     - Dividend reinvestment during recovery
     - V-shaped, U-shaped, L-shaped recovery curves
@@ -96,58 +138,79 @@ def compute_recovery_projection(stress_results, total_market_value, annual_div_i
         scenarios = STRESS_SCENARIOS
 
     scenario_map = {s["name"]: s for s in scenarios}
+    monthly_divs = annual_div_income / 12
     projections = []
+
+    def build_path(stressed_val, recovery_months, shape):
+        """Build month-by-month recovery path from stressed value back to pre-crash."""
+        gap = total_market_value - stressed_val
+        path = []
+        current = stressed_val
+
+        for month in range(recovery_months + 1):
+            pct = (current / total_market_value * 100) if total_market_value > 0 else 0
+            path.append({"month": month, "value": round(current, 2), "pctRecovered": round(pct, 1)})
+
+            if month < recovery_months:
+                t = (month + 1) / recovery_months
+                if shape == "V-shaped":
+                    target_frac = t
+                elif shape == "U-shaped":
+                    target_frac = t * t
+                else:  # L-shaped
+                    target_frac = math.sqrt(t)
+
+                target_value = stressed_val + gap * target_frac
+                market_gain = target_value - current
+                current = current + market_gain + monthly_divs
+
+        divs_total = monthly_divs * recovery_months
+        return path, round(current, 2), round(divs_total, 2)
 
     for result in stress_results:
         sc_data = scenario_map.get(result["name"], {})
         recovery_months = sc_data.get("recoveryMonths", 24)
         shape = sc_data.get("shape", "V-shaped")
-        stressed_value = result["stressedValue"]
-        loss = abs(result["totalEstimatedLoss"])
 
-        if loss <= 0 or total_market_value <= 0:
+        normal_stressed = result.get("normalStressedValue", result.get("stressedValue", 0))
+        max_stress_stressed = result.get("maxStressStressedValue", normal_stressed)
+        normal_loss = abs(result.get("normalTotalLoss", result.get("totalEstimatedLoss", 0)))
+        max_stress_loss = abs(result.get("maxStressTotalLoss", normal_loss))
+        avg_recovery_yrs = result.get("avgRecoveryYears", round(recovery_months / 12, 1))
+
+        if total_market_value <= 0:
+            continue
+        if normal_loss <= 0 and max_stress_loss <= 0:
             continue
 
-        # Monthly dividend income (assumed constant during recovery)
-        monthly_divs = annual_div_income / 12
-
-        # Build recovery path month by month
-        # Market recovery rate per month to reach pre-crash value
-        gap = total_market_value - stressed_value
-        path = []
-        current_value = stressed_value
-
-        for month in range(recovery_months + 1):
-            pct_of_original = (current_value / total_market_value * 100) if total_market_value > 0 else 0
-            path.append({"month": month, "value": round(current_value, 2), "pctRecovered": round(pct_of_original, 1)})
-
-            if month < recovery_months:
-                # Shape-adjusted recovery fraction
-                t = (month + 1) / recovery_months
-                if shape == "V-shaped":
-                    target_frac = t
-                elif shape == "U-shaped":
-                    target_frac = t * t  # slow start, fast finish
-                else:  # L-shaped
-                    target_frac = math.sqrt(t)  # fast start, slow finish
-
-                target_value = stressed_value + gap * target_frac
-                market_gain = target_value - current_value
-                current_value = current_value + market_gain + monthly_divs
-
-        # Total dividends collected during recovery
-        total_divs_during_recovery = monthly_divs * recovery_months
+        # Build both recovery paths
+        normal_path, normal_final, normal_divs = build_path(normal_stressed, recovery_months, shape)
+        max_path, max_final, max_divs = build_path(max_stress_stressed, recovery_months, shape)
 
         projections.append({
             "name": result["name"],
             "shape": shape,
             "recoveryMonths": recovery_months,
             "recoveryYears": round(recovery_months / 12, 1),
-            "stressedValue": stressed_value,
             "preStressValue": round(total_market_value, 2),
-            "dividendsDuringRecovery": round(total_divs_during_recovery, 2),
-            "finalValue": round(current_value, 2),
-            "path": path,
+            "avgPositionRecoveryYears": avg_recovery_yrs,
+            "normal": {
+                "stressedValue": round(normal_stressed, 2),
+                "finalValue": normal_final,
+                "dividendsDuringRecovery": normal_divs,
+                "path": normal_path,
+            },
+            "maxStress": {
+                "stressedValue": round(max_stress_stressed, 2),
+                "finalValue": max_final,
+                "dividendsDuringRecovery": max_divs,
+                "path": max_path,
+            },
+            # Backward compat (aliased to normal)
+            "stressedValue": round(normal_stressed, 2),
+            "finalValue": normal_final,
+            "dividendsDuringRecovery": normal_divs,
+            "path": normal_path,
         })
 
     return projections
