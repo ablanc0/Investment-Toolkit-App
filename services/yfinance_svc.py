@@ -90,21 +90,22 @@ def fetch_historical_prices(tickers, period="1y"):
         data = yf.download(tickers, period=period, interval="1mo", progress=False)
 
         result = {}
-        if len(tickers) == 1:
-            # Single ticker: data columns are flat (Open, High, Low, Close, ...)
-            ticker = tickers[0]
-            if "Close" in data.columns and not data["Close"].empty:
-                prices = [float(p) for p in data["Close"].dropna().tolist()]
-                result[ticker] = prices
-        else:
-            # Multiple tickers: data columns are MultiIndex (Close -> AAPL, MSFT, ...)
-            if "Close" in data.columns:
-                close_data = data["Close"]
+        if "Close" in data.columns:
+            close_data = data["Close"]
+            # Handle both MultiIndex and flat columns
+            if hasattr(close_data, 'columns'):
+                # MultiIndex or DataFrame with ticker columns
                 for ticker in tickers:
                     if ticker in close_data.columns:
                         col = close_data[ticker].dropna()
                         if not col.empty:
                             result[ticker] = [float(p) for p in col.tolist()]
+            else:
+                # Single Series (flat columns, single ticker)
+                ticker = tickers[0]
+                prices = [float(p) for p in close_data.dropna().tolist()]
+                if prices:
+                    result[ticker] = prices
 
         cache_set(cache_key, result)
         return result

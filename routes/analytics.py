@@ -8,8 +8,8 @@ from services.yfinance_svc import fetch_all_quotes
 from models.tax_optimization import compute_tax_positions, compute_tax_summary
 from models.risk_analysis import (
     compute_sector_concentration, compute_stress_test,
-    compute_risk_metrics, compute_correlation_matrix,
-    compute_recovery_projection,
+    compute_risk_metrics, compute_market_metrics,
+    compute_correlation_matrix, compute_recovery_projection,
 )
 from models.analytics import (
     compute_performance_attribution, compute_benchmark_comparison,
@@ -107,6 +107,9 @@ def api_tax_optimization():
 
 @bp.route("/api/risk-analysis")
 def api_risk_analysis():
+    from services.yfinance_svc import fetch_historical_prices
+    from services.cache import cache_get, cache_set
+
     enriched, portfolio, total_mv, total_div = _get_enriched_portfolio()
     monthly_data = portfolio.get("monthlyData", [])
 
@@ -115,10 +118,26 @@ def api_risk_analysis():
     metrics = compute_risk_metrics(monthly_data, enriched)
     recovery = compute_recovery_projection(stress, total_mv, total_div)
 
+    # Market benchmark (SPY) for comparison
+    market = {}
+    cached_mkt = cache_get("market_risk_metrics")
+    if cached_mkt:
+        market = cached_mkt
+    else:
+        try:
+            spy_data = fetch_historical_prices(["SPY"], period="2y")
+            spy_prices = spy_data.get("SPY", [])
+            if spy_prices:
+                market = compute_market_metrics(spy_prices)
+                cache_set("market_risk_metrics", market)
+        except Exception:
+            pass
+
     return jsonify({
         "sectorConcentration": concentration,
         "stressTests": stress,
         "riskMetrics": metrics,
+        "marketMetrics": market,
         "recoveryProjections": recovery,
         "totalMarketValue": round(total_mv, 2),
         "lastUpdated": datetime.now().isoformat(),

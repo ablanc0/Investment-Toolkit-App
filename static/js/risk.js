@@ -4,7 +4,7 @@ async function fetchRiskAnalysis() {
     try {
         const resp = await fetch('/api/risk-analysis');
         const data = await resp.json();
-        renderRiskKpis(data.riskMetrics);
+        renderRiskKpis(data.riskMetrics, data.marketMetrics);
         renderSectorConcentration(data.sectorConcentration);
         renderStressTests(data.stressTests, data.totalMarketValue);
         renderRecoveryProjections(data.recoveryProjections, data.totalMarketValue);
@@ -13,18 +13,26 @@ async function fetchRiskAnalysis() {
     }
 }
 
-function renderRiskKpis(m) {
+function renderRiskKpis(m, mkt) {
     const el = document.getElementById('riskKpis');
     if (!el || !m) return;
     const sharpeColor = m.sharpeRatio >= 1 ? '#22c55e' : m.sharpeRatio >= 0.5 ? '#f59e0b' : '#ef4444';
     const ddColor = m.maxDrawdown <= -20 ? '#ef4444' : m.maxDrawdown <= -10 ? '#f59e0b' : '#22c55e';
+
+    function mktSub(label, val, fmt) {
+        if (!mkt || val === undefined) return '';
+        return '<div class="kpi-sub" style="margin-top:2px;">S&P 500: <strong>' + fmt(val) + '</strong></div>';
+    }
+    const fPct = v => v.toFixed(1) + '%';
+    const fDec = v => v.toFixed(2);
+
     el.innerHTML = `
-        <div class="kpi-card"><div class="kpi-label">Sharpe Ratio</div><div class="kpi-value" style="color:${sharpeColor}">${m.sharpeRatio.toFixed(2)}</div><div class="kpi-sub">${m.sharpeRatio >= 1 ? 'Good' : m.sharpeRatio >= 0.5 ? 'Moderate' : 'Low'} risk-adjusted return</div></div>
-        <div class="kpi-card"><div class="kpi-label">Sortino Ratio</div><div class="kpi-value">${m.sortinoRatio.toFixed(2)}</div><div class="kpi-sub">Downside risk-adjusted</div></div>
+        <div class="kpi-card"><div class="kpi-label">Sharpe Ratio</div><div class="kpi-value" style="color:${sharpeColor}">${m.sharpeRatio.toFixed(2)}</div><div class="kpi-sub">${m.sharpeRatio >= 1 ? 'Good' : m.sharpeRatio >= 0.5 ? 'Moderate' : 'Low'} risk-adjusted return</div>${mktSub('S&P', mkt && mkt.sharpeRatio, fDec)}</div>
+        <div class="kpi-card"><div class="kpi-label">Sortino Ratio</div><div class="kpi-value">${m.sortinoRatio.toFixed(2)}</div><div class="kpi-sub">Downside risk-adjusted</div>${mktSub('S&P', mkt && mkt.sortinoRatio, fDec)}</div>
         <div class="kpi-card"><div class="kpi-label">Portfolio Beta</div><div class="kpi-value">${m.portfolioBeta.toFixed(2)}</div><div class="kpi-sub">${m.portfolioBeta > 1.1 ? 'More volatile than market' : m.portfolioBeta < 0.9 ? 'Less volatile' : 'Near market'}</div></div>
-        <div class="kpi-card"><div class="kpi-label">Annualized Volatility</div><div class="kpi-value">${m.annualizedVolatility.toFixed(1)}%</div></div>
-        <div class="kpi-card"><div class="kpi-label">Max Drawdown</div><div class="kpi-value" style="color:${ddColor}">${m.maxDrawdown.toFixed(1)}%</div><div class="kpi-sub">${m.maxDrawdownPeriod || '-'}</div></div>
-        <div class="kpi-card"><div class="kpi-label">Annualized Return</div><div class="kpi-value" style="color:${m.annualizedReturn >= 0 ? '#22c55e' : '#ef4444'}">${m.annualizedReturn.toFixed(1)}%</div><div class="kpi-sub">${m.monthCount} months tracked</div></div>
+        <div class="kpi-card"><div class="kpi-label">Annualized Volatility</div><div class="kpi-value">${m.annualizedVolatility.toFixed(1)}%</div>${mktSub('S&P', mkt && mkt.annualizedVolatility, fPct)}</div>
+        <div class="kpi-card"><div class="kpi-label">Max Drawdown</div><div class="kpi-value" style="color:${ddColor}">${m.maxDrawdown.toFixed(1)}%</div><div class="kpi-sub">${m.maxDrawdownPeriod || '-'}</div>${mktSub('S&P', mkt && mkt.maxDrawdown, fPct)}</div>
+        <div class="kpi-card"><div class="kpi-label">Annualized Return</div><div class="kpi-value" style="color:${m.annualizedReturn >= 0 ? '#22c55e' : '#ef4444'}">${m.annualizedReturn.toFixed(1)}%</div><div class="kpi-sub">${m.monthCount} months tracked</div>${mktSub('S&P', mkt && mkt.annualizedReturn, fPct)}</div>
     `;
 }
 

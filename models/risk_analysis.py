@@ -155,11 +155,14 @@ def compute_recovery_projection(stress_results, total_market_value, annual_div_i
 
 def compute_risk_metrics(monthly_data, enriched_positions):
     """Compute portfolio-level risk metrics from monthly data."""
+    # Filter to entries with actual portfolio values (skip empty/future rows)
+    valid_data = [e for e in monthly_data if e.get("portfolioValue", 0) > 0]
+
     monthly_returns = []
-    for i in range(1, len(monthly_data)):
-        prev_val = monthly_data[i - 1].get("portfolioValue", 0)
-        curr_val = monthly_data[i].get("portfolioValue", 0)
-        contrib = monthly_data[i].get("contributions", 0)
+    for i in range(1, len(valid_data)):
+        prev_val = valid_data[i - 1].get("portfolioValue", 0)
+        curr_val = valid_data[i].get("portfolioValue", 0)
+        contrib = valid_data[i].get("contributions", 0)
         if prev_val > 0:
             ret = (curr_val - prev_val - contrib) / prev_val
             monthly_returns.append(ret)
@@ -198,13 +201,13 @@ def compute_risk_metrics(monthly_data, enriched_positions):
     else:
         sortino = 0
 
-    # Max drawdown
+    # Max drawdown (only over valid data)
     peak = 0
     max_dd = 0
     dd_start = ""
     dd_end = ""
     current_dd_start = ""
-    for i, entry in enumerate(monthly_data):
+    for entry in valid_data:
         val = entry.get("portfolioValue", 0)
         if val > peak:
             peak = val
@@ -237,6 +240,66 @@ def compute_risk_metrics(monthly_data, enriched_positions):
         "maxDrawdownPeriod": dd_period,
         "portfolioBeta": round(port_beta, 2),
         "monthCount": n_months,
+    }
+
+
+def compute_market_metrics(monthly_prices):
+    """Compute risk metrics for a market benchmark (e.g. SPY) from monthly prices."""
+    if len(monthly_prices) < 3:
+        return {
+            "annualizedReturn": 0, "annualizedVolatility": 0,
+            "sharpeRatio": 0, "sortinoRatio": 0, "maxDrawdown": 0,
+        }
+
+    monthly_returns = []
+    for i in range(1, len(monthly_prices)):
+        if monthly_prices[i - 1] > 0:
+            monthly_returns.append((monthly_prices[i] - monthly_prices[i - 1]) / monthly_prices[i - 1])
+
+    if len(monthly_returns) < 2:
+        return {
+            "annualizedReturn": 0, "annualizedVolatility": 0,
+            "sharpeRatio": 0, "sortinoRatio": 0, "maxDrawdown": 0,
+        }
+
+    n = len(monthly_returns)
+    cum = 1
+    for r in monthly_returns:
+        cum *= (1 + r)
+    ann_return = (cum ** (12 / n) - 1) if n > 0 else 0
+
+    mean_r = sum(monthly_returns) / n
+    variance = sum((r - mean_r) ** 2 for r in monthly_returns) / (n - 1)
+    std = math.sqrt(variance)
+    ann_vol = std * math.sqrt(12)
+
+    rf_monthly = (1 + RISK_FREE_RATE) ** (1 / 12) - 1
+    sharpe = ((mean_r - rf_monthly) / std * math.sqrt(12)) if std > 0 else 0
+
+    downside = [r for r in monthly_returns if r < rf_monthly]
+    if downside:
+        dd_var = sum((r - rf_monthly) ** 2 for r in downside) / len(downside)
+        dd_dev = math.sqrt(dd_var) * math.sqrt(12)
+        sortino = ((ann_return - RISK_FREE_RATE) / dd_dev) if dd_dev > 0 else 0
+    else:
+        sortino = 0
+
+    peak = 0
+    max_dd = 0
+    for price in monthly_prices:
+        if price > peak:
+            peak = price
+        if peak > 0:
+            dd = (price - peak) / peak
+            if dd < max_dd:
+                max_dd = dd
+
+    return {
+        "annualizedReturn": round(ann_return * 100, 2),
+        "annualizedVolatility": round(ann_vol * 100, 2),
+        "sharpeRatio": round(sharpe, 2),
+        "sortinoRatio": round(sortino, 2),
+        "maxDrawdown": round(max_dd * 100, 2),
     }
 
 
