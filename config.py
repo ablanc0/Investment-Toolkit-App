@@ -105,6 +105,11 @@ DEFAULT_SETTINGS = {
         "overrated": 50,
         "topPerformer": 30,
     },
+    "valuationDefaults": {
+        "discountRate": 10,
+        "marginOfSafety": 25,
+        "terminalGrowth": 3,
+    },
 }
 
 # ── SEC EDGAR API ───────────────────────────────────────────────────────
