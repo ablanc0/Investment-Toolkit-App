@@ -225,6 +225,8 @@ function loadTabData(tabId) {
         taxOptimization: fetchTaxOptimization,
         riskAnalysis: fetchRiskAnalysis,
         divDeep: fetchDividendDeepDive,
+        screening: populateScreening,
+        notesGoals: populateNotesGoals,
     };
     if (loaders[tabId]) loaders[tabId]();
 }

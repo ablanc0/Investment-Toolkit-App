@@ -59,7 +59,8 @@
         <div class="tab-row" data-group="dashboard">
             <button class="tab-btn active" data-tab="overview">Overview</button>
             <button class="tab-btn" data-tab="performance">Performance</button>
-            <button class="tab-btn" data-tab="alerts">Alerts</button>
+            <button class="tab-btn" data-tab="screening">Screening</button>
+            <button class="tab-btn" data-tab="notesGoals">Notes & Goals</button>
         </div>
         <div class="tab-row" data-group="portfolio" style="display:none">
             <button class="tab-btn" data-tab="positions">Positions</button>
@@ -102,6 +103,7 @@
             <!-- Section 1: Portfolio Overview -->
             <h3 style="color: var(--text); margin: 0 0 12px 0; font-size: 15px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim);">Portfolio Overview</h3>
             <div class="kpi-grid" id="overviewKpis"></div>
+            <div id="healthSummaryBar" style="margin: 12px 0 0 0; display: flex; gap: 12px; flex-wrap: wrap;"></div>
 
             <!-- Section 2: Dividend Stats -->
             <h3 style="color: var(--text); margin: 24px 0 12px 0; font-size: 15px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim);">Dividend Stats</h3>
@@ -149,10 +151,8 @@
             </div>
 
             <div class="card">
-                <div class="card-title">🎨 Strategy Mix</div>
-                <div class="chart-container">
-                    <canvas id="strategyChart"></canvas>
-                </div>
+                <div class="card-title">📊 Day Movers</div>
+                <div id="dayMoversContainer"></div>
             </div>
         </div>
 
@@ -384,33 +384,50 @@
             </div>
         </div>
 
-        <!-- Alerts Tab -->
-        <div class="tab-content" id="alerts">
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-bottom: 32px;">
-                <div class="card">
-                    <div class="card-title">🎯 Strong Buy Signals</div>
-                    <div id="strongBuyAlerts"></div>
+        <!-- Screening Tab (was Alerts) -->
+        <div class="tab-content" id="screening">
+            <div class="kpi-grid" id="screeningKpis" style="margin-bottom: 16px;"></div>
+            <div class="card" style="margin-bottom: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <div class="card-title" style="margin-bottom: 0;">💼 Portfolio Signals</div>
+                    <select id="portfolioSignalFilter" onchange="populateScreening()" style="padding: 6px 12px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 13px;">
+                        <option value="all">All Signals</option>
+                        <option value="strong-buy">Strong Buy</option>
+                        <option value="buy">Buy</option>
+                        <option value="overcost">Overcost</option>
+                        <option value="overrated">Overrated</option>
+                    </select>
                 </div>
-
-                <div class="card">
-                    <div class="card-title">⚠️ Overvalued Warnings</div>
-                    <div id="overvaluedAlerts"></div>
-                </div>
-
-                <div class="card">
-                    <div class="card-title">⭐ Top Performers</div>
-                    <div id="topPerformerAlerts"></div>
+                <div class="table-wrapper">
+                    <table><thead><tr>
+                        <th>Ticker</th><th>Price</th><th>Avg Cost</th><th>Return %</th><th>IV</th><th>Distance</th><th>Signal</th><th>InvT Score</th><th>Category</th>
+                    </tr></thead><tbody id="portfolioSignalsBody"></tbody></table>
                 </div>
             </div>
-
             <div class="card">
-                <div class="card-title">📋 Strategy Notes</div>
-                <div id="strategyNotes"></div>
+                <div class="card-title">🔍 Watchlist Opportunities</div>
+                <div class="table-wrapper">
+                    <table><thead><tr>
+                        <th>Ticker</th><th>Price</th><th>IV</th><th>Distance</th><th>Signal</th><th>InvT Score</th><th>Div Yield</th><th>Sector</th><th>Priority</th>
+                    </tr></thead><tbody id="watchlistSignalsBody"></tbody></table>
+                </div>
             </div>
+        </div>
 
-            <div class="card">
-                <div class="card-title">🎯 Goal Tracker</div>
-                <div id="goalTracker"></div>
+        <!-- Notes & Goals Tab -->
+        <div class="tab-content" id="notesGoals">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <div class="card-title" style="margin-bottom: 0;">📋 Strategy Notes</div>
+                        <button class="wl-add-btn" onclick="addStrategyNote()" style="font-size: 13px; padding: 6px 14px;">+ Add Note</button>
+                    </div>
+                    <div id="strategyNotesContainer"></div>
+                </div>
+                <div class="card">
+                    <div class="card-title">🎯 Goal Tracker</div>
+                    <div id="goalTrackerContainer"></div>
+                </div>
             </div>
         </div>
 
@@ -1010,7 +1027,7 @@
                             <option value="dividends">Dividends</option>
                             <option value="watchlist">Watchlist</option>
                             <option value="rebalancing">Rebalancing</option>
-                            <option value="alerts">Alerts</option>
+                            <option value="screening">Screening</option>
                             <option value="analyzer">Stock Analyzer</option>
                             <option value="projections">Projections</option>
                         </select>
