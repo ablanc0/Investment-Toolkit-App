@@ -5,7 +5,7 @@ async function fetchTaxOptimization() {
         const resp = await fetch('/api/tax-optimization');
         const data = await resp.json();
         renderTaxKpis(data.summary);
-        renderTaxTable(data.positions);
+        renderTaxHarvestTable(data.positions);
     } catch (e) {
         console.error('Error loading tax optimization:', e);
     }
@@ -23,7 +23,7 @@ function renderTaxKpis(s) {
     `;
 }
 
-function renderTaxTable(positions) {
+function renderTaxHarvestTable(positions) {
     const tbody = document.getElementById('taxBody');
     if (!tbody) return;
     tbody.innerHTML = positions.map(p => {
