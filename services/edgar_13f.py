@@ -20,11 +20,14 @@ _cusip_ticker_cache = {}  # CUSIP -> ticker, shared across investors to avoid re
 
 
 def _load_13f_history():
-    """Load historical 13F data from disk on startup."""
+    """Load historical 13F data from disk on startup.
+    Mutates dict in-place so cross-module imports see the loaded data."""
     global _13f_history
     if _13F_HISTORY_FILE.exists():
         try:
-            _13f_history = json.loads(_13F_HISTORY_FILE.read_text())
+            data = json.loads(_13F_HISTORY_FILE.read_text())
+            _13f_history.clear()
+            _13f_history.update(data)
             # Migrate renamed keys (one-time)
             _RENAMED_KEYS = {"Warren Buffett": "Greg Abel"}
             for old, new in _RENAMED_KEYS.items():
@@ -34,7 +37,7 @@ def _load_13f_history():
             total_q = sum(len(h.get("quarters", [])) for h in _13f_history.values())
             print(f"[13F] Loaded history: {len(_13f_history)} investors, {total_q} quarters")
         except Exception:
-            _13f_history = {}
+            _13f_history.clear()
 
 
 def _sanitize_13f_history():
