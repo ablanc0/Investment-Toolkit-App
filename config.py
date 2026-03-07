@@ -123,6 +123,11 @@ DEFAULT_SETTINGS = {
         "discountRate": 10,
         "marginOfSafety": 25,
         "terminalGrowth": 3,
+        "riskFreeRate": 4.25,
+        "marketReturn": 9.9,
+    },
+    "apiKeys": {
+        "fmp": "",
     },
 }
 

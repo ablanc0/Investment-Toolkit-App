@@ -2,6 +2,13 @@
 // Extracted from dashboard.html — keep in global scope (no modules)
 // Uses the global `charts` object declared here.
 
+function getChartTextColor() {
+    return getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#e0e6ed';
+}
+function getChartGridColor() {
+    return getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#2a2e42';
+}
+
 let charts = {};
 
 function createReturnsChart(positions) {
@@ -34,11 +41,11 @@ function createReturnsChart(positions) {
             },
             scales: {
                 x: {
-                    ticks: { color: '#8b92b2' },
-                    grid: { color: '#2a2e42' }
+                    ticks: { color: getChartTextColor() },
+                    grid: { color: getChartGridColor() }
                 },
                 y: {
-                    ticks: { color: '#8b92b2' },
+                    ticks: { color: getChartTextColor() },
                     grid: { display: false }
                 }
             }
@@ -60,7 +67,7 @@ function createAllocationChart(elementId, data, label) {
             datasets: [{
                 data: entries.map(e => e[1]),
                 backgroundColor: colors,
-                borderColor: '#0f1117',
+                borderColor: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#0f1117',
                 borderWidth: 2
             }]
         },
@@ -72,7 +79,7 @@ function createAllocationChart(elementId, data, label) {
                 legend: {
                     position: 'right',
                     labels: {
-                        color: '#e0e6ed',
+                        color: getChartTextColor(),
                         usePointStyle: true,
                         padding: 15
                     }
@@ -105,11 +112,11 @@ function createMonthlyDividendChart(monthlyTotals) {
             plugins: { legend: { display: false } },
             scales: {
                 y: {
-                    ticks: { color: '#8b92b2' },
-                    grid: { color: '#2a2e42' }
+                    ticks: { color: getChartTextColor() },
+                    grid: { color: getChartGridColor() }
                 },
                 x: {
-                    ticks: { color: '#8b92b2' },
+                    ticks: { color: getChartTextColor() },
                     grid: { display: false }
                 }
             }
@@ -141,11 +148,11 @@ function createHoldingDividendChart(byHolding) {
             plugins: { legend: { display: false } },
             scales: {
                 x: {
-                    ticks: { color: '#8b92b2' },
-                    grid: { color: '#2a2e42' }
+                    ticks: { color: getChartTextColor() },
+                    grid: { color: getChartGridColor() }
                 },
                 y: {
-                    ticks: { color: '#8b92b2' },
+                    ticks: { color: getChartTextColor() },
                     grid: { display: false }
                 }
             }

@@ -6,11 +6,19 @@ Fetches financial statements, DCF, benchmarks, and FRED AAA yield.
 import requests as http_requests
 
 from config import FMP_API_KEY, FMP_BASE, AAA_YIELD_CURRENT
+from services.data_store import get_settings
+
+
+def _get_fmp_key():
+    """Get FMP API key from user settings, falling back to config default."""
+    settings = get_settings()
+    key = (settings.get("apiKeys") or {}).get("fmp", "")
+    return key if key else FMP_API_KEY
 
 
 def _fmp_get(endpoint, **params):
     """Call FMP stable API. Returns parsed JSON or None on error."""
-    params["apikey"] = FMP_API_KEY
+    params["apikey"] = _get_fmp_key()
     try:
         r = http_requests.get(f"{FMP_BASE}/{endpoint}", params=params, timeout=15)
         data = r.json()
