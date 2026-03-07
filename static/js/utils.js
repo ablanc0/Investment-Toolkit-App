@@ -37,6 +37,9 @@ async function loadCategorySettings() {
         _categorySettings = data.categories || [];
         _signalThresholds = data.signalThresholds || {};
         _defaultSignalMode = data.signalMode || 'avgCost';
+        // Portfolio name
+        const nameEl = document.getElementById('portfolioName');
+        if (nameEl && data.portfolioName) nameEl.textContent = data.portfolioName;
     } catch { _categorySettings = []; _signalThresholds = {}; }
 }
 

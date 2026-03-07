@@ -23,7 +23,8 @@ function populateAlerts() {
             </div>
         `).join('') : '<p style="color: var(--text-dim);">No overvalued positions</p>';
 
-    const topPerformers = positions.filter(p => p.returnPercent > 30).sort((a, b) => b.returnPercent - a.returnPercent);
+    const tp = _signalThresholds?.topPerformer ?? 30;
+    const topPerformers = positions.filter(p => p.returnPercent > tp).sort((a, b) => b.returnPercent - a.returnPercent);
     document.getElementById('topPerformerAlerts').innerHTML = topPerformers.length > 0 ?
         topPerformers.map(p => `
             <div class="alert info">

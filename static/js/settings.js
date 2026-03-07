@@ -6,6 +6,7 @@ async function fetchSettingsData() {
     try {
         const resp = await fetch('/api/settings');
         _settingsCache = await resp.json();
+        renderPortfolioName();
         renderCategoryEditor();
         renderSignalThresholdEditor();
     } catch (e) {
@@ -101,6 +102,31 @@ async function saveCategories() {
     }
 }
 
+// ── Portfolio Name ───────────────────────────────────────────────
+
+function renderPortfolioName() {
+    const input = document.getElementById('settingsPortfolioName');
+    if (input && _settingsCache?.portfolioName) input.value = _settingsCache.portfolioName;
+}
+
+async function savePortfolioName() {
+    const name = document.getElementById('settingsPortfolioName')?.value?.trim();
+    if (!name) return;
+    try {
+        const resp = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ portfolioName: name })
+        });
+        _settingsCache = await resp.json();
+        const h1 = document.getElementById('portfolioName');
+        if (h1) h1.textContent = name;
+        showSaveToast('Portfolio name saved');
+    } catch (e) {
+        showAlert('Failed to save portfolio name', 'error');
+    }
+}
+
 // ── Signal Thresholds ────────────────────────────────────────────
 
 function renderSignalThresholdEditor() {
@@ -113,6 +139,7 @@ function renderSignalThresholdEditor() {
         { key: 'buy', label: 'Buy', hint: 'below %', color: '#22d3ee', default: 5 },
         { key: 'expensive', label: 'Expensive', hint: 'above %', color: '#fb923c', default: 20 },
         { key: 'overrated', label: 'Overrated', hint: 'above %', color: '#f87171', default: 50 },
+        { key: 'topPerformer', label: 'Top Performer', hint: 'above %', color: '#a78bfa', default: 30 },
     ];
 
     container.innerHTML = fields.map(f => `
@@ -155,6 +182,7 @@ async function saveSignalThresholds() {
         buy: parseFloat(document.getElementById('thresh_buy').value),
         expensive: parseFloat(document.getElementById('thresh_expensive').value),
         overrated: parseFloat(document.getElementById('thresh_overrated').value),
+        topPerformer: parseFloat(document.getElementById('thresh_topPerformer').value),
     };
     const signalMode = document.getElementById('defaultSignalMode')?.value || 'avgCost';
 
