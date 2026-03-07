@@ -846,6 +846,17 @@
                 </div>
             </div>
 
+            <!-- API Health -->
+            <div class="card" style="margin-bottom: 16px;">
+                <div class="card-title">🏥 API Health</div>
+                <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 12px;">Status of external data sources used by the Stock Analyzer.</p>
+                <div id="apiHealthTable"></div>
+                <div style="display: flex; gap: 8px; margin-top: 12px; align-items: center;">
+                    <button class="add-row-btn" onclick="runHealthCheck()" id="healthCheckBtn">🔍 Run Health Check</button>
+                    <span id="healthCheckStatus" style="font-size: 12px; color: var(--text-dim);"></span>
+                </div>
+            </div>
+
             <!-- General -->
             <div class="card" style="margin-bottom: 16px;">
                 <div class="card-title">🏷 General</div>

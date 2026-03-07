@@ -103,10 +103,15 @@ function fmtVal(v, fmt) {
     if (fmt === 'x') return v.toFixed(2) + 'x';
     return typeof v === 'number' ? v.toFixed(2) : v;
 }
-function statRow(label, val, fmt) {
+function statRow(label, val, fmt, fieldKey) {
     const display = fmtVal(val, fmt);
     const color = fmt === '%' && val !== 0 ? (val > 0 ? '#22c55e' : '#ef4444') : 'var(--text)';
-    return `<div class="analyzer-stat"><span class="analyzer-stat-label">${label}</span><span class="analyzer-stat-value" style="color:${display === '—' ? 'var(--text-dim)' : color}">${display}</span></div>`;
+    let warn = '';
+    if ((val == null || val === 0) && fieldKey && window._analyzerWarnings) {
+        const w = window._analyzerWarnings.find(w => w.field === fieldKey);
+        if (w) warn = `<span title="${w.reason}" style="cursor:help; margin-left:4px; color:#f59e0b; font-size:0.75rem;">&#9888;</span>`;
+    }
+    return `<div class="analyzer-stat"><span class="analyzer-stat-label">${label}</span><span class="analyzer-stat-value" style="color:${display === '—' ? 'var(--text-dim)' : color}">${display}${warn}</span></div>`;
 }
 function recColor(rec) {
     const r = (rec || '').toLowerCase();

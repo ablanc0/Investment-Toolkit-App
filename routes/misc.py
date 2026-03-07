@@ -158,3 +158,17 @@ def api_status():
         "portfolioFile": PORTFOLIO_FILE.exists(),
         "timestamp": datetime.now().isoformat(),
     })
+
+
+@bp.route("/api/health")
+def api_health():
+    """Return API health status for all external services."""
+    from services.api_health import get_health_summary
+    return jsonify(get_health_summary())
+
+
+@bp.route("/api/health/check", methods=["POST"])
+def api_health_check():
+    """Run health checks against all APIs and return results."""
+    from services.api_health import run_health_check
+    return jsonify(run_health_check())

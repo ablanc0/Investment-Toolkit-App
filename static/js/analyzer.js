@@ -955,11 +955,18 @@ function renderInvtRadarChart(data) {
 }
 
 function renderAnalyzerOverview(d) {
-    return `
+    let warningBar = '';
+    if (d._warnings && d._warnings.length > 0) {
+        const count = d._warnings.length;
+        warningBar = `<div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:8px; padding:8px 12px; margin-bottom:12px; font-size:0.8rem; color:#f59e0b;">
+            &#9888; ${count} data warning${count > 1 ? 's' : ''}: some fields may be missing or unavailable. Hover &#9888; icons for details.
+        </div>`;
+    }
+    return warningBar + `
         <div class="analyzer-sections">
             <div class="analyzer-section">
                 <div class="analyzer-section-title">📊 Valuation</div>
-                ${statRow('Trailing P/E', d.trailingPE)}
+                ${statRow('Trailing P/E', d.trailingPE, null, 'trailingPE')}
                 ${statRow('Forward P/E', d.forwardPE)}
                 ${statRow('PEG Ratio', d.pegRatio)}
                 ${statRow('Price/Book', d.priceToBook, 'x')}
@@ -994,7 +1001,7 @@ function renderAnalyzerOverview(d) {
                 <div class="analyzer-section-title">🚀 Growth</div>
                 ${statRow('Revenue Growth', d.revenueGrowth, '%')}
                 ${statRow('Earnings Growth', d.earningsGrowth, '%')}
-                ${statRow('EPS (TTM)', d.earningsPerShare, '$')}
+                ${statRow('EPS (TTM)', d.earningsPerShare, '$', 'earningsPerShare')}
                 ${statRow('Forward EPS', d.forwardEps, '$')}
                 ${statRow('Revenue/Share', d.revenuePerShare, '$')}
             </div>
@@ -1009,16 +1016,16 @@ function renderAnalyzerOverview(d) {
             <div class="analyzer-section">
                 <div class="analyzer-section-title">📋 Key Metrics</div>
                 ${statRow('Market Cap', d.marketCap, 'big')}
-                ${statRow('Enterprise Value', d.enterpriseValue, 'big')}
-                ${statRow('Beta', d.beta)}
-                ${statRow('Book Value', d.bookValue, '$')}
+                ${statRow('Enterprise Value', d.enterpriseValue, 'big', 'enterpriseValue')}
+                ${statRow('Beta', d.beta, null, 'beta')}
+                ${statRow('Book Value', d.bookValue, '$', 'bookValue')}
                 ${statRow('Short Ratio', d.shortRatio)}
             </div>
             <div class="analyzer-section">
                 <div class="analyzer-section-title">💵 Cash Flow</div>
-                ${statRow('Free Cash Flow', d.freeCashflow, 'big')}
-                ${statRow('Operating CF', d.operatingCashflow, 'big')}
-                ${statRow('Total Revenue', d.totalRevenue, 'big')}
+                ${statRow('Free Cash Flow', d.freeCashflow, 'big', 'freeCashflow')}
+                ${statRow('Operating CF', d.operatingCashflow, 'big', 'operatingCashflow')}
+                ${statRow('Total Revenue', d.totalRevenue, 'big', 'totalRevenue')}
             </div>
         </div>
         <div style="margin-top:8px; font-size:0.75rem; color:var(--text-dim); display:flex; gap:12px; flex-wrap:wrap;">
@@ -1027,6 +1034,7 @@ function renderAnalyzerOverview(d) {
                 <span>Financials: <strong style="color:var(--text);">${ds.financials || 'SEC EDGAR'}</strong></span>
                 <span>Peers: <strong style="color:var(--text);">${ds.peers || 'Finviz'}</strong></span>
             `; })()}
+            ${d._fmpQuota && d._fmpQuota.limit ? `<span style="margin-left:auto; color:${d._fmpQuota.remaining < 20 ? '#ef4444' : d._fmpQuota.remaining < 50 ? '#f59e0b' : 'var(--text-dim)'};">FMP: ${d._fmpQuota.remaining}/${d._fmpQuota.limit} calls left</span>` : ''}
         </div>`;
 }
 
@@ -1735,6 +1743,7 @@ async function analyzeStock(refresh = true) {
         }
 
         _analyzerData = d;
+        window._analyzerWarnings = d._warnings || [];
         localStorage.setItem('analyzerLastTicker', ticker);
 
         const hasValuation = d.valuation && (d.valuation.dcf || d.valuation.graham || d.valuation.relative);

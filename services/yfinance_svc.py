@@ -3,6 +3,8 @@ InvToolkit — yfinance data-fetching helpers.
 Wraps yfinance calls with the shared TTL cache.
 """
 
+import time
+
 import yfinance as yf
 
 from services.cache import cache_get, cache_set, _cache, _cache_lock
@@ -15,8 +17,14 @@ def fetch_ticker_data(ticker):
         return cached
 
     try:
+        from services.api_health import record_api_call
+        start = time.time()
         t = yf.Ticker(ticker)
         info = t.info or {}
+        latency = int((time.time() - start) * 1000)
+        ok = bool(info.get("currentPrice") or info.get("regularMarketPrice"))
+        record_api_call("yfinance", success=ok, latency_ms=latency,
+                        error_msg=None if ok else f"No price data for {ticker}")
 
         # yfinance returns a lot — we extract what we need
         data = {

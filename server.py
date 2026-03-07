@@ -48,9 +48,11 @@ app.register_blueprint(settings_bp)
 if __name__ == "__main__":
     from services.cache import load_disk_cache
     from services.edgar_13f import _load_13f_history
+    from services.api_health import load_quota_from_cache
 
     load_disk_cache()
     _load_13f_history()
+    load_quota_from_cache()
 
     from services.backup import run_backup
     backup_result = run_backup()

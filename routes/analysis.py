@@ -285,6 +285,36 @@ def api_stock_analyzer(ticker):
             "analystCount": info.get("numberOfAnalystOpinions", 0),
         }
 
+        # Build warnings list
+        _warnings = []
+
+        # Fallback warnings
+        if data_source == "FMP":
+            _warnings.append({"field": "financials", "source": "SEC EDGAR", "reason": "EDGAR unavailable, fell back to FMP"})
+        elif data_source == "Yahoo Finance":
+            _warnings.append({"field": "financials", "source": "FMP", "reason": "FMP unavailable, fell back to Yahoo Finance"})
+
+        # Missing critical field warnings
+        for fkey, flabel in [("freeCashflow", "Free Cash Flow"), ("operatingCashflow", "Operating Cash Flow"),
+                              ("totalRevenue", "Total Revenue"), ("earningsPerShare", "EPS"),
+                              ("trailingPE", "Trailing P/E"), ("bookValue", "Book Value"),
+                              ("enterpriseValue", "Enterprise Value"), ("beta", "Beta")]:
+            if not result.get(fkey):
+                _warnings.append({"field": fkey, "source": data_source, "reason": f"{flabel} not available"})
+
+        # Valuation model warnings
+        if not dcf:
+            _warnings.append({"field": "valuation.dcf", "source": data_source, "reason": "Insufficient data for DCF model"})
+        if not graham:
+            _warnings.append({"field": "valuation.graham", "source": data_source, "reason": "Insufficient data for Graham model"})
+        if fmp_dcf_result[0] is None:
+            _warnings.append({"field": "benchmarks.fmpDcf", "source": "FMP", "reason": "FMP DCF benchmark unavailable"})
+
+        result["_warnings"] = _warnings
+
+        from services.api_health import get_fmp_quota
+        result["_fmpQuota"] = get_fmp_quota()
+
         # Persist to file and memory cache
         store = _load_analyzer_store()
         store[ticker] = result
