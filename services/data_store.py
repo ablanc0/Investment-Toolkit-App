@@ -38,6 +38,11 @@ def get_settings():
             merged[key] = [dict(item) if isinstance(item, dict) else item for item in default]
         else:
             merged[key] = default
+    # Migrate old flat signalThresholds → nested format
+    st = merged.get("signalThresholds", {})
+    if st and "iv" not in st and "strongBuy" in st:
+        merged["signalThresholds"] = dict(DEFAULT_SETTINGS["signalThresholds"])
+        merged["signalThresholds"]["topPerformer"] = st.get("topPerformer", 30)
     return merged
 
 

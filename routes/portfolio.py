@@ -9,16 +9,29 @@ from services.yfinance_svc import fetch_ticker_data, fetch_all_quotes, fetch_div
 bp = Blueprint('portfolio', __name__)
 
 
-def _get_signal(dist_pct, thresholds):
-    """Return signal label from configurable thresholds. dist_pct is a ratio (0.05 = 5%)."""
-    sb = thresholds.get("strongBuy", -5) / 100
-    b  = thresholds.get("buy", 5) / 100
-    e  = thresholds.get("expensive", 20) / 100
-    o  = thresholds.get("overrated", 50) / 100
-    if dist_pct > o: return "Overrated"
-    if dist_pct > e: return "Expensive"
-    if dist_pct < sb: return "Strong Buy"
-    if dist_pct < b: return "Buy"
+def _get_iv_signal(dist_pct, thresholds):
+    """IV Signal: price vs intrinsic value. dist_pct is a ratio (0.05 = 5%)."""
+    t = thresholds.get("iv", {})
+    sb = t.get("strongBuy", -15) / 100
+    b  = t.get("buy", 0) / 100
+    e  = t.get("expensive", 15) / 100
+    if dist_pct <= sb: return "Strong Buy"
+    if dist_pct < b:   return "Buy"
+    if dist_pct <= e:   return "Expensive"
+    return "Overrated"
+
+
+def _get_avgcost_signal(dist_pct, thresholds):
+    """Avg Cost Signal: price vs avg cost. dist_pct is a ratio (0.05 = 5%)."""
+    t = thresholds.get("avgCost", {})
+    sb = t.get("strongBuy", -15) / 100
+    b  = t.get("buy", -5) / 100
+    ac = t.get("avgCost", 5) / 100
+    oc = t.get("overcost", 15) / 100
+    if dist_pct < sb:  return "Strong Buy"
+    if dist_pct < b:   return "Buy"
+    if dist_pct < ac:  return "Avg. Cost"
+    if dist_pct <= oc: return "Overcost"
     return "Hold"
 
 
@@ -94,10 +107,10 @@ def api_portfolio():
         dist_from_avg = ((price - avg_cost) / avg_cost) if avg_cost > 0 else 0
 
         # IV Signal
-        iv_signal = _get_signal(dist_from_iv, thresholds) if intrinsic_value > 0 else ""
+        iv_signal = _get_iv_signal(dist_from_iv, thresholds) if intrinsic_value > 0 else ""
 
         # Avg Cost Signal
-        avg_cost_signal = _get_signal(dist_from_avg, thresholds)
+        avg_cost_signal = _get_avgcost_signal(dist_from_avg, thresholds)
 
         total_market_value += market_value
         total_cost_basis += cost_basis
@@ -181,7 +194,7 @@ def api_portfolio():
 
     # Signals based on valuation
     for pos in enriched:
-        pos["signal"] = _get_signal(pos["returnPercent"] / 100, thresholds)
+        pos["signal"] = _get_avgcost_signal(pos["returnPercent"] / 100, thresholds)
 
     # Percent of total dividend income
     for pos in enriched:

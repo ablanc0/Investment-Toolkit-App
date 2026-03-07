@@ -19,7 +19,9 @@ function getSignalBadge(signal) {
         'buy': 'signal-buy',
         'hold': 'signal-hold',
         'overrated': 'signal-overrated',
-        'expensive': 'signal-expensive'
+        'expensive': 'signal-expensive',
+        'avg.-cost': 'signal-avg-cost',
+        'overcost': 'signal-overcost'
     };
     const className = signalMap[key] || 'signal-hold';
     return `<span class="badge ${className}">${signal.toUpperCase()}</span>`;
@@ -113,6 +115,8 @@ function signalColor(signal) {
     const s = (signal || '').toLowerCase();
     if (s.includes('strong buy')) return {bg:'#4ade8020', fg:'#4ade80'};
     if (s.includes('buy')) return {bg:'#22d3ee20', fg:'#22d3ee'};
+    if (s.includes('avg')) return {bg:'#60a5fa20', fg:'#60a5fa'};
+    if (s.includes('overcost')) return {bg:'#fb923c20', fg:'#fb923c'};
     if (s.includes('hold')) return {bg:'#f59e0b20', fg:'#f59e0b'};
     if (s.includes('expensive')) return {bg:'#fb923c20', fg:'#fb923c'};
     if (s.includes('overrated')) return {bg:'#f8717120', fg:'#f87171'};

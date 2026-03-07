@@ -849,21 +849,38 @@
                     <select id="defaultCategorySelect" style="margin-left: 8px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px;"></select>
                 </div>
             </div>
-            <!-- Signal Thresholds -->
+            <!-- IV Signal Thresholds -->
             <div class="card" style="margin-top: 16px;">
-                <div class="card-title">📊 Signal Thresholds</div>
-                <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 16px;">Configure distance thresholds for buy/sell signals. Values are percentages.</p>
-                <div id="signalThresholdEditor" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;"></div>
-                <div id="signalPreview" style="margin-top: 12px;"></div>
-                <div style="margin-top: 16px; display: flex; align-items: center; gap: 16px;">
-                    <div>
+                <div class="card-title">📈 IV Signal Thresholds</div>
+                <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 16px;">Price vs Intrinsic Value — is this stock cheap or expensive?</p>
+                <div id="ivThresholdEditor" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;"></div>
+                <div id="ivSignalPreview" style="margin-top: 12px;"></div>
+            </div>
+            <!-- Avg Cost Signal Thresholds -->
+            <div class="card" style="margin-top: 16px;">
+                <div class="card-title">💼 Avg Cost Signal Thresholds</div>
+                <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 16px;">Price vs Your Avg Cost — how is your position doing?</p>
+                <div id="avgCostThresholdEditor" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;"></div>
+                <div id="avgCostSignalPreview" style="margin-top: 12px;"></div>
+            </div>
+            <!-- Signal Settings -->
+            <div class="card" style="margin-top: 16px;">
+                <div class="card-title">⚙ Signal Settings</div>
+                <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
                         <label style="font-size: 13px; color: var(--text-dim);">Default Signal Mode:</label>
-                        <select id="defaultSignalMode" style="margin-left: 8px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px;">
+                        <select id="defaultSignalMode" style="padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px;">
                             <option value="avgCost">Avg Cost</option>
                             <option value="iv">Intrinsic Value</option>
                         </select>
                     </div>
-                    <button class="add-row-btn" onclick="saveSignalThresholds()" style="border-color: var(--green); color: var(--green);">💾 Save Thresholds</button>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="badge signal-strong-buy" style="min-width: 90px; text-align: center;">TOP PERFORMER</span>
+                        <input type="number" id="thresh_topPerformer" value="30" step="1"
+                               style="width: 80px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; text-align: right;">
+                        <span style="color: var(--text-dim); font-size: 12px;">above %</span>
+                    </div>
+                    <button class="add-row-btn" onclick="saveSignalThresholds()" style="border-color: var(--green); color: var(--green);">💾 Save All Signals</button>
                 </div>
             </div>
             <!-- Goals -->
