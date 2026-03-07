@@ -73,36 +73,26 @@ function toggleTheme() {
     if (btn) btn.textContent = next === 'dark' ? '\u{1F319}' : '\u{2600}\u{FE0F}';
 }
 
-// ── API Health Panel ─────────────────────────────────────────────
-function toggleHealthPanel() {
-    const panel = document.getElementById('apiHealthPanel');
-    if (!panel) return;
-    const open = panel.style.display !== 'none';
-    panel.style.display = open ? 'none' : 'block';
-    if (!open) fetchApiHealth();
-}
-
-// Close health panel when clicking outside
-document.addEventListener('click', (e) => {
-    const panel = document.getElementById('apiHealthPanel');
-    const btn = document.getElementById('apiHealthBtn');
-    if (panel && panel.style.display !== 'none' && !panel.contains(e.target) && !btn.contains(e.target)) {
-        panel.style.display = 'none';
-    }
-});
-
-function updateHealthDot(data) {
+// ── API Health Badge ─────────────────────────────────────────────
+function updateHealthBadge(data) {
     const dot = document.getElementById('apiHealthDot');
-    if (!dot) return;
+    const text = document.getElementById('apiHealthText');
+    if (!dot || !text) return;
     const statuses = Object.values(data.apis || {}).map(a => a.status);
+    const okCount = statuses.filter(s => s === 'ok').length;
     if (statuses.every(s => s === 'ok')) {
         dot.style.background = '#22c55e';
+        text.textContent = 'APIS OK';
+        text.style.color = '#22c55e';
     } else if (statuses.some(s => s === 'error')) {
+        const errCount = statuses.filter(s => s === 'error').length;
         dot.style.background = '#ef4444';
-    } else if (statuses.some(s => s === 'ok')) {
-        dot.style.background = '#f59e0b';
+        text.textContent = `APIS ${okCount}/${statuses.length}`;
+        text.style.color = '#ef4444';
     } else {
         dot.style.background = '#6b7280';
+        text.textContent = 'APIS';
+        text.style.color = '';
     }
 }
 
@@ -123,7 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Auto health check on startup
     fetch('/api/health/check', { method: 'POST' })
         .then(r => r.json())
-        .then(data => updateHealthDot(data))
+        .then(data => updateHealthBadge(data))
         .catch(() => {});
 });
 
@@ -231,6 +221,7 @@ function loadTabData(tabId) {
         costOfLiving: fetchCostOfLiving,
         projections: fetchProjections,
         settingsCategories: fetchSettingsData,
+        apiHealth: fetchApiHealth,
     };
     if (loaders[tabId]) loaders[tabId]();
 }

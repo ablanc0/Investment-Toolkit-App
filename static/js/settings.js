@@ -586,7 +586,7 @@ function renderApiHealthTable(data) {
     html += '</tbody></table>';
 
     container.innerHTML = html;
-    updateHealthDot(data);
+    updateHealthBadge(data);
 }
 
 async function runHealthCheck() {
