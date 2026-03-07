@@ -1034,7 +1034,7 @@ function renderAnalyzerOverview(d) {
                 <span>Financials: <strong style="color:var(--text);">${ds.financials || 'SEC EDGAR'}</strong></span>
                 <span>Peers: <strong style="color:var(--text);">${ds.peers || 'Finviz'}</strong></span>
             `; })()}
-            ${d._fmpQuota && d._fmpQuota.limit ? `<span style="margin-left:auto; color:${d._fmpQuota.remaining < 20 ? '#ef4444' : d._fmpQuota.remaining < 50 ? '#f59e0b' : 'var(--text-dim)'};">FMP: ${d._fmpQuota.remaining}/${d._fmpQuota.limit} calls left</span>` : ''}
+            <span style="margin-left:auto; color:var(--text-dim);">FMP: 250 calls/day</span>
         </div>`;
 }
 

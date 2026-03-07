@@ -550,7 +550,7 @@ function renderApiHealthTable(data) {
     if (!container) return;
 
     const apis = [
-        { key: 'fmp', name: 'FMP (Financial Modeling Prep)', icon: '📈' },
+        { key: 'fmp', name: 'FMP (Financial Modeling Prep) — 250 calls/day', icon: '📈' },
         { key: 'yfinance', name: 'Yahoo Finance', icon: '📊' },
         { key: 'fred', name: 'FRED (AAA Bond Yield)', icon: '🏛' },
         { key: 'edgar', name: 'SEC EDGAR', icon: '📋' },
@@ -585,19 +585,6 @@ function renderApiHealthTable(data) {
         }
     }
     html += '</tbody></table>';
-
-    // FMP Quota bar
-    const quota = data.fmpQuota || {};
-    if (quota.limit) {
-        const used = quota.used || 0;
-        const pct = Math.min(100, (used / quota.limit) * 100);
-        const barColor = pct > 90 ? '#ef4444' : pct > 70 ? '#f59e0b' : '#22c55e';
-        html += '<div style="margin-top:12px;">';
-        html += `<div style="font-size:12px; color:var(--text-dim); margin-bottom:4px;">FMP Quota: ${used} / ${quota.limit} calls today (${quota.remaining} remaining)</div>`;
-        html += `<div style="height:8px; background:var(--border); border-radius:4px; overflow:hidden;">`;
-        html += `<div style="height:100%; width:${pct}%; background:${barColor}; border-radius:4px; transition:width 0.3s;"></div>`;
-        html += '</div></div>';
-    }
 
     container.innerHTML = html;
 }

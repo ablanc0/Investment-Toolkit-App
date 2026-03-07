@@ -312,9 +312,6 @@ def api_stock_analyzer(ticker):
 
         result["_warnings"] = _warnings
 
-        from services.api_health import get_fmp_quota
-        result["_fmpQuota"] = get_fmp_quota()
-
         # Persist to file and memory cache
         store = _load_analyzer_store()
         store[ticker] = result
