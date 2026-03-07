@@ -29,10 +29,19 @@ def save_disk_cache():
         pass
 
 
+def _get_ttl():
+    """Get cache TTL from user settings, falling back to config constant."""
+    try:
+        from services.data_store import get_settings
+        return get_settings().get("cacheTTL", CACHE_TTL)
+    except Exception:
+        return CACHE_TTL
+
+
 def cache_get(key):
     with _cache_lock:
         entry = _cache.get(key)
-        if entry and (time.time() - entry.get("ts", 0)) < CACHE_TTL:
+        if entry and (time.time() - entry.get("ts", 0)) < _get_ttl():
             return entry["data"]
     return None
 

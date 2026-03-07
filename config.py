@@ -112,6 +112,13 @@ DEFAULT_SETTINGS = {
         },
         "topPerformer": 30,
     },
+    "display": {
+        "currencySymbol": "$",
+        "decimalPlaces": 2,
+        "percentDecimals": 2,
+        "defaultTab": "overview",
+    },
+    "cacheTTL": 300,
     "valuationDefaults": {
         "discountRate": 10,
         "marginOfSafety": 25,

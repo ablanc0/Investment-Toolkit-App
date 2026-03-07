@@ -1,14 +1,19 @@
 // ── Shared Utility Functions ─────────────────────────────────────
 // Extracted from dashboard.html — keep in global scope (no modules)
 
+// ── Display settings (populated from /api/settings) ──────────────
+let _displaySettings = { currencySymbol: '$', decimalPlaces: 2, percentDecimals: 2, defaultTab: 'overview' };
+
 function formatMoney(value) {
-    if (value === null || value === undefined) return '$0.00';
-    return '$' + parseFloat(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    if (value === null || value === undefined) return _displaySettings.currencySymbol + '0.00';
+    const dp = _displaySettings.decimalPlaces ?? 2;
+    return _displaySettings.currencySymbol + parseFloat(value).toFixed(dp).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
 function formatPercent(value) {
     if (value === null || value === undefined) return '0.00%';
-    return parseFloat(value).toFixed(2) + '%';
+    const dp = _displaySettings.percentDecimals ?? 2;
+    return parseFloat(value).toFixed(dp) + '%';
 }
 
 function getSignalBadge(signal) {
@@ -39,6 +44,7 @@ async function loadCategorySettings() {
         _categorySettings = data.categories || [];
         _signalThresholds = data.signalThresholds || {};
         _defaultSignalMode = data.signalMode || 'avgCost';
+        if (data.display) _displaySettings = { ..._displaySettings, ...data.display };
         // Portfolio name
         const nameEl = document.getElementById('portfolioName');
         if (nameEl && data.portfolioName) nameEl.textContent = data.portfolioName;

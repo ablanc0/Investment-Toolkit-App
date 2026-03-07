@@ -89,10 +89,12 @@ function setupTabNavigation() {
         }
     });
 
-    // Restore last active tab
+    // Restore last active tab, or use settings default
     const lastTab = localStorage.getItem('activeTab');
-    if (lastTab && document.getElementById(lastTab)) {
-        switchTab(lastTab);
+    const defaultTab = _displaySettings?.defaultTab || 'overview';
+    const tabToLoad = (lastTab && document.getElementById(lastTab)) ? lastTab : defaultTab;
+    if (document.getElementById(tabToLoad)) {
+        switchTab(tabToLoad);
     }
 }
 

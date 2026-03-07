@@ -12,6 +12,7 @@ async function fetchSettingsData() {
         renderGoalsEditor();
         renderTargetAllocEditor();
         renderValuationDefaults();
+        renderDisplayPreferences();
     } catch (e) {
         console.error('Error loading settings:', e);
     }
@@ -403,5 +404,64 @@ async function saveValuationDefaults() {
         showSaveToast('Valuation defaults saved');
     } catch (e) {
         showAlert('Failed to save valuation defaults', 'error');
+    }
+}
+
+// ── Display & Preferences ───────────────────────────────────────
+
+function renderDisplayPreferences() {
+    const d = _settingsCache?.display || {};
+    const cacheTTL = _settingsCache?.cacheTTL ?? 300;
+
+    const currInput = document.getElementById('pref_currencySymbol');
+    const dpInput = document.getElementById('pref_decimalPlaces');
+    const pctInput = document.getElementById('pref_percentDecimals');
+    const tabSelect = document.getElementById('pref_defaultTab');
+    const cacheInput = document.getElementById('pref_cacheTTL');
+
+    if (currInput) currInput.value = d.currencySymbol || '$';
+    if (dpInput) dpInput.value = d.decimalPlaces ?? 2;
+    if (pctInput) pctInput.value = d.percentDecimals ?? 2;
+    if (tabSelect) tabSelect.value = d.defaultTab || 'overview';
+    if (cacheInput) cacheInput.value = Math.round(cacheTTL / 60);
+
+    updateFormatPreview();
+}
+
+function updateFormatPreview() {
+    const preview = document.getElementById('formatPreview');
+    if (!preview) return;
+    const sym = document.getElementById('pref_currencySymbol')?.value || '$';
+    const dp = parseInt(document.getElementById('pref_decimalPlaces')?.value) || 2;
+    const pct = parseInt(document.getElementById('pref_percentDecimals')?.value) || 2;
+    const sample = (1234.5678).toFixed(dp).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    preview.innerHTML = `<span style="font-size: 12px; color: var(--text-dim);">
+        Money: <strong style="color:var(--text)">${sym}${sample}</strong>
+        &middot; Percent: <strong style="color:var(--text)">${(12.3456).toFixed(pct)}%</strong>
+    </span>`;
+}
+
+async function saveDisplayPreferences() {
+    const display = {
+        currencySymbol: document.getElementById('pref_currencySymbol').value.trim() || '$',
+        decimalPlaces: parseInt(document.getElementById('pref_decimalPlaces').value) || 2,
+        percentDecimals: parseInt(document.getElementById('pref_percentDecimals').value) || 2,
+        defaultTab: document.getElementById('pref_defaultTab').value,
+    };
+    const cacheMinutes = parseFloat(document.getElementById('pref_cacheTTL').value) || 5;
+    const cacheTTL = Math.round(cacheMinutes * 60);
+
+    try {
+        const resp = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ display, cacheTTL })
+        });
+        _settingsCache = await resp.json();
+        _displaySettings = { ..._displaySettings, ...display };
+        renderDisplayPreferences();
+        showSaveToast('Display preferences saved');
+    } catch (e) {
+        showAlert('Failed to save preferences', 'error');
     }
 }
