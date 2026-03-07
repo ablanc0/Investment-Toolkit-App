@@ -101,8 +101,8 @@ def api_portfolio():
         # IV fields
         iv_data = iv_map.get(ticker, {})
         intrinsic_value = iv_data.get("intrinsicValue", 0) or 0
-        invt_score_data = iv_data.get("invtScore")
-        invt_score = invt_score_data.get("score", 0) if isinstance(invt_score_data, dict) else 0
+        invt_score_data = iv_data.get("invtScore", 0)
+        invt_score = invt_score_data.get("score", 0) if isinstance(invt_score_data, dict) else (float(invt_score_data) if invt_score_data else 0)
         dist_from_iv = ((price - intrinsic_value) / intrinsic_value) if intrinsic_value > 0 else 0
         dist_from_avg = ((price - avg_cost) / avg_cost) if avg_cost > 0 else 0
 
@@ -314,8 +314,8 @@ def api_watchlist():
         dist_pct = round(((price - intrinsic) / intrinsic * 100) if intrinsic > 0 else 0, 2)
 
         # InvT Score from IV list
-        invt_score_data = iv_entry.get("invtScore")
-        invt_score = invt_score_data.get("score", 0) if isinstance(invt_score_data, dict) else 0
+        invt_score_data = iv_entry.get("invtScore", 0)
+        invt_score = invt_score_data.get("score", 0) if isinstance(invt_score_data, dict) else (float(invt_score_data) if invt_score_data else 0)
 
         result.append({
             "ticker": ticker,
