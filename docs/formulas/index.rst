@@ -16,4 +16,5 @@ file so results can be independently verified.
    annual-data
    rule4
    projections
+   stress-testing
    taxes
