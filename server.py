@@ -6,41 +6,44 @@ Entry point: creates Flask app, registers blueprints, runs startup tasks.
 from flask import Flask, send_from_directory
 from config import DATA_DIR, PORTFOLIO_FILE
 
+
 # ── App Factory ────────────────────────────────────────────────────────
 
-app = Flask(__name__, static_folder="static")
+def create_app(testing=False):
+    """Create and configure the Flask application."""
+    application = Flask(__name__, static_folder="static")
+    application.config["TESTING"] = testing
+
+    @application.route("/")
+    def index():
+        return send_from_directory("static", "dashboard.html")
+
+    from routes.portfolio import bp as portfolio_bp
+    from routes.dividends import bp as dividends_bp
+    from routes.lab import bp as lab_bp
+    from routes.misc import bp as misc_bp
+    from routes.super_investors import bp as super_investors_bp
+    from routes.projections import bp as projections_bp
+    from routes.analysis import bp as analysis_bp
+    from routes.salary import bp as salary_bp
+    from routes.planning import bp as planning_bp
+    from routes.settings import bp as settings_bp
+
+    application.register_blueprint(portfolio_bp)
+    application.register_blueprint(dividends_bp)
+    application.register_blueprint(lab_bp)
+    application.register_blueprint(misc_bp)
+    application.register_blueprint(super_investors_bp)
+    application.register_blueprint(projections_bp)
+    application.register_blueprint(analysis_bp)
+    application.register_blueprint(salary_bp)
+    application.register_blueprint(planning_bp)
+    application.register_blueprint(settings_bp)
+
+    return application
 
 
-# ── Static Serving ─────────────────────────────────────────────────────
-
-@app.route("/")
-def index():
-    return send_from_directory("static", "dashboard.html")
-
-
-# ── Register Blueprints ────────────────────────────────────────────────
-
-from routes.portfolio import bp as portfolio_bp
-from routes.dividends import bp as dividends_bp
-from routes.lab import bp as lab_bp
-from routes.misc import bp as misc_bp
-from routes.super_investors import bp as super_investors_bp
-from routes.projections import bp as projections_bp
-from routes.analysis import bp as analysis_bp
-from routes.salary import bp as salary_bp
-from routes.planning import bp as planning_bp
-from routes.settings import bp as settings_bp
-
-app.register_blueprint(portfolio_bp)
-app.register_blueprint(dividends_bp)
-app.register_blueprint(lab_bp)
-app.register_blueprint(misc_bp)
-app.register_blueprint(super_investors_bp)
-app.register_blueprint(projections_bp)
-app.register_blueprint(analysis_bp)
-app.register_blueprint(salary_bp)
-app.register_blueprint(planning_bp)
-app.register_blueprint(settings_bp)
+app = create_app()
 
 
 # ── Main ───────────────────────────────────────────────────────────────
