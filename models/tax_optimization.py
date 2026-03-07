@@ -4,8 +4,9 @@ from datetime import datetime
 from config import LTCG_RATE, STCG_RATE, HARVEST_LOSS_THRESHOLD, TRIM_GAIN_THRESHOLD, HOLDING_PERIOD_DAYS
 
 
-def compute_tax_positions(enriched_positions):
+def compute_tax_positions(enriched_positions, holding_days=None):
     """Compute tax impact and harvest opportunities for each position."""
+    threshold_days = holding_days if holding_days is not None else HOLDING_PERIOD_DAYS
     results = []
     for p in enriched_positions:
         cost_basis = p.get("costBasis", 0)
@@ -15,11 +16,12 @@ def compute_tax_positions(enriched_positions):
 
         # Holding period
         buy_date = p.get("buyDate", "")
+        days_held = 0
         if buy_date:
             try:
                 bd = datetime.strptime(buy_date, "%Y-%m-%d")
                 days_held = (datetime.now() - bd).days
-                holding = "Long-term" if days_held >= HOLDING_PERIOD_DAYS else "Short-term"
+                holding = "Long-term" if days_held >= threshold_days else "Short-term"
             except (ValueError, TypeError):
                 holding = "Long-term"
         else:
@@ -48,6 +50,7 @@ def compute_tax_positions(enriched_positions):
             "taxImpact": tax_impact,
             "harvestOpportunity": harvest,
             "holdingPeriod": holding,
+            "daysHeld": days_held,
             "action": action,
         })
 

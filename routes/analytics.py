@@ -1,7 +1,7 @@
 """Analytics Blueprint — tax optimization, risk analysis, attribution, benchmark, dividends deep dive."""
 
 from datetime import datetime
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 
 from services.data_store import load_portfolio, get_settings
 from services.yfinance_svc import fetch_all_quotes
@@ -93,8 +93,9 @@ def _get_enriched_portfolio():
 
 @bp.route("/api/tax-optimization")
 def api_tax_optimization():
+    holding_days = request.args.get("holdingDays", type=int)
     enriched, _, _, _ = _get_enriched_portfolio()
-    positions = compute_tax_positions(enriched)
+    positions = compute_tax_positions(enriched, holding_days=holding_days)
     summary = compute_tax_summary(positions)
     return jsonify({
         "positions": positions,
