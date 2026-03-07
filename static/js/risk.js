@@ -7,6 +7,7 @@ async function fetchRiskAnalysis() {
         renderRiskKpis(data.riskMetrics);
         renderSectorConcentration(data.sectorConcentration);
         renderStressTests(data.stressTests, data.totalMarketValue);
+        renderRecoveryProjections(data.recoveryProjections, data.totalMarketValue);
     } catch (e) {
         console.error('Error loading risk analysis:', e);
     }
@@ -101,6 +102,54 @@ async function loadCorrelationMatrix() {
         btn.disabled = false;
         btn.textContent = 'Reload Matrix';
     }
+}
+
+function renderRecoveryProjections(projections, totalMV) {
+    const el = document.getElementById('recoveryProjectionContainer');
+    if (!el || !projections || !projections.length) {
+        if (el) el.innerHTML = '<p style="color:var(--text-dim);">No recovery data available.</p>';
+        return;
+    }
+
+    const cards = projections.map(p => {
+        const shapeColor = p.shape === 'V-shaped' ? '#22c55e' : p.shape === 'U-shaped' ? '#f59e0b' : '#ef4444';
+        const years = p.recoveryYears;
+        const yearsLabel = years < 1 ? p.recoveryMonths + ' mo' : years === 1 ? '1 yr' : years + ' yrs';
+
+        // Mini sparkline path from recovery data
+        const path = p.path || [];
+        const maxVal = Math.max(...path.map(pt => pt.value), 1);
+        const minVal = Math.min(...path.map(pt => pt.value), 0);
+        const range = maxVal - minVal || 1;
+        const w = 280, h = 50;
+        const points = path.map((pt, i) => {
+            const x = (i / Math.max(path.length - 1, 1)) * w;
+            const y = h - ((pt.value - minVal) / range) * h;
+            return x.toFixed(1) + ',' + y.toFixed(1);
+        }).join(' ');
+
+        const baselineY = (h - ((totalMV - minVal) / range) * h).toFixed(1);
+
+        return '<div style="background:var(--card-hover); padding:14px; border-radius:10px; border-left:3px solid ' + shapeColor + ';">'
+            + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">'
+            + '<strong style="font-size:13px;">' + p.name + '</strong>'
+            + '<span style="padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; background:' + shapeColor + '22; color:' + shapeColor + ';">' + p.shape + '</span>'
+            + '</div>'
+            + '<svg viewBox="0 0 ' + w + ' ' + h + '" style="width:100%; height:50px; margin:8px 0;">'
+            + '<polyline points="' + points + '" fill="none" stroke="' + shapeColor + '" stroke-width="2" />'
+            + '<line x1="0" y1="' + baselineY + '" x2="' + w + '" y2="' + baselineY + '" stroke="var(--text-dim)" stroke-width="0.5" stroke-dasharray="4,3" />'
+            + '</svg>'
+            + '<div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-dim);">'
+            + '<span>Recovery: <strong style="color:var(--text);">' + yearsLabel + '</strong></span>'
+            + '<span>Divs earned: <strong style="color:var(--text);">' + formatMoney(p.dividendsDuringRecovery) + '</strong></span>'
+            + '</div>'
+            + '<div style="font-size:11px; color:var(--text-dim); margin-top:4px;">'
+            + formatMoney(p.stressedValue) + ' → ' + formatMoney(p.finalValue)
+            + '</div>'
+            + '</div>';
+    }).join('');
+
+    el.innerHTML = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">' + cards + '</div>';
 }
 
 function renderCorrelationMatrix(tickers, matrix) {

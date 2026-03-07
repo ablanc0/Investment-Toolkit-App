@@ -197,12 +197,12 @@ HOLDING_PERIOD_DAYS = 365       # Days for long-term classification
 # ── Risk Analysis Constants ────────────────────────────────────────────
 
 STRESS_SCENARIOS = [
-    {"name": "Great Depression (1929)", "drop": -86, "description": "Worst bear market in history"},
-    {"name": "Dot-Com Crash (2000)", "drop": -49, "description": "Tech bubble burst"},
-    {"name": "Financial Crisis (2008)", "drop": -57, "description": "Global financial meltdown"},
-    {"name": "COVID Crash (2020)", "drop": -34, "description": "Pandemic-driven selloff"},
-    {"name": "Moderate Correction", "drop": -20, "description": "Standard market correction"},
-    {"name": "Mild Pullback", "drop": -10, "description": "Normal market volatility"},
+    {"name": "Great Depression (1929)", "drop": -86, "description": "Worst bear market in history", "recoveryMonths": 152, "shape": "L-shaped"},
+    {"name": "Dot-Com Crash (2000)", "drop": -49, "description": "Tech bubble burst", "recoveryMonths": 56, "shape": "U-shaped"},
+    {"name": "Financial Crisis (2008)", "drop": -57, "description": "Global financial meltdown", "recoveryMonths": 49, "shape": "V-shaped"},
+    {"name": "COVID Crash (2020)", "drop": -34, "description": "Pandemic-driven selloff", "recoveryMonths": 5, "shape": "V-shaped"},
+    {"name": "Moderate Correction", "drop": -20, "description": "Standard market correction", "recoveryMonths": 14, "shape": "V-shaped"},
+    {"name": "Mild Pullback", "drop": -10, "description": "Normal market volatility", "recoveryMonths": 4, "shape": "V-shaped"},
 ]
 
 CONCENTRATION_THRESHOLDS = {"high": 30, "medium": 15}

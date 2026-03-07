@@ -9,6 +9,7 @@ from models.tax_optimization import compute_tax_positions, compute_tax_summary
 from models.risk_analysis import (
     compute_sector_concentration, compute_stress_test,
     compute_risk_metrics, compute_correlation_matrix,
+    compute_recovery_projection,
 )
 from models.analytics import (
     compute_performance_attribution, compute_benchmark_comparison,
@@ -106,17 +107,19 @@ def api_tax_optimization():
 
 @bp.route("/api/risk-analysis")
 def api_risk_analysis():
-    enriched, portfolio, total_mv, _ = _get_enriched_portfolio()
+    enriched, portfolio, total_mv, total_div = _get_enriched_portfolio()
     monthly_data = portfolio.get("monthlyData", [])
 
     concentration = compute_sector_concentration(enriched, total_mv)
     stress = compute_stress_test(enriched, total_mv)
     metrics = compute_risk_metrics(monthly_data, enriched)
+    recovery = compute_recovery_projection(stress, total_mv, total_div)
 
     return jsonify({
         "sectorConcentration": concentration,
         "stressTests": stress,
         "riskMetrics": metrics,
+        "recoveryProjections": recovery,
         "totalMarketValue": round(total_mv, 2),
         "lastUpdated": datetime.now().isoformat(),
     })

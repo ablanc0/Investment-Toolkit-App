@@ -84,6 +84,75 @@ def compute_stress_test(enriched_positions, total_market_value, scenarios=None):
     return results
 
 
+def compute_recovery_projection(stress_results, total_market_value, annual_div_income, scenarios=None):
+    """Estimate recovery timeline for each stress scenario.
+
+    Models recovery path factoring in:
+    - Historical recovery duration (from scenario data)
+    - Dividend reinvestment during recovery
+    - V-shaped, U-shaped, L-shaped recovery curves
+    """
+    if scenarios is None:
+        scenarios = STRESS_SCENARIOS
+
+    scenario_map = {s["name"]: s for s in scenarios}
+    projections = []
+
+    for result in stress_results:
+        sc_data = scenario_map.get(result["name"], {})
+        recovery_months = sc_data.get("recoveryMonths", 24)
+        shape = sc_data.get("shape", "V-shaped")
+        stressed_value = result["stressedValue"]
+        loss = abs(result["totalEstimatedLoss"])
+
+        if loss <= 0 or total_market_value <= 0:
+            continue
+
+        # Monthly dividend income (assumed constant during recovery)
+        monthly_divs = annual_div_income / 12
+
+        # Build recovery path month by month
+        # Market recovery rate per month to reach pre-crash value
+        gap = total_market_value - stressed_value
+        path = []
+        current_value = stressed_value
+
+        for month in range(recovery_months + 1):
+            pct_of_original = (current_value / total_market_value * 100) if total_market_value > 0 else 0
+            path.append({"month": month, "value": round(current_value, 2), "pctRecovered": round(pct_of_original, 1)})
+
+            if month < recovery_months:
+                # Shape-adjusted recovery fraction
+                t = (month + 1) / recovery_months
+                if shape == "V-shaped":
+                    target_frac = t
+                elif shape == "U-shaped":
+                    target_frac = t * t  # slow start, fast finish
+                else:  # L-shaped
+                    target_frac = math.sqrt(t)  # fast start, slow finish
+
+                target_value = stressed_value + gap * target_frac
+                market_gain = target_value - current_value
+                current_value = current_value + market_gain + monthly_divs
+
+        # Total dividends collected during recovery
+        total_divs_during_recovery = monthly_divs * recovery_months
+
+        projections.append({
+            "name": result["name"],
+            "shape": shape,
+            "recoveryMonths": recovery_months,
+            "recoveryYears": round(recovery_months / 12, 1),
+            "stressedValue": stressed_value,
+            "preStressValue": round(total_market_value, 2),
+            "dividendsDuringRecovery": round(total_divs_during_recovery, 2),
+            "finalValue": round(current_value, 2),
+            "path": path,
+        })
+
+    return projections
+
+
 def compute_risk_metrics(monthly_data, enriched_positions):
     """Compute portfolio-level risk metrics from monthly data."""
     monthly_returns = []
