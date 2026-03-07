@@ -1106,6 +1106,7 @@
             <div class="kpi-grid" id="riskKpis"></div>
             <div class="card" style="margin-top: 16px;">
                 <div class="card-title">Sector Concentration</div>
+                <p style="color:var(--text-dim); font-size:12px; margin:0 0 12px 0;">How much of your portfolio is in each sector. Over 30% in one sector is high risk — a sector downturn could drag the whole portfolio.</p>
                 <div id="sectorConcentrationTable"></div>
             </div>
             <div class="card" style="margin-top: 16px;">
@@ -1119,10 +1120,11 @@
                 <div id="recoveryProjectionContainer"></div>
             </div>
             <div class="card" style="margin-top: 16px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px;">
                     <div class="card-title" style="margin-bottom:0;">Correlation Matrix</div>
                     <button class="add-row-btn" onclick="loadCorrelationMatrix()" id="corrMatrixBtn">Load Matrix</button>
                 </div>
+                <p style="color:var(--text-dim); font-size:12px; margin:0 0 12px 0;">Shows how your positions move together. High correlation (red, &gt;0.8) means they rise and fall in sync — less diversification benefit. Low or negative correlation (green) means they offset each other, reducing overall risk. Aim for a mix of uncorrelated assets.</p>
                 <div id="correlationContainer" style="overflow-x: auto;"></div>
             </div>
         </div>

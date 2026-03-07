@@ -58,14 +58,17 @@ function renderRiskKpis(m, mkt) {
     const fPct = v => v.toFixed(1) + '%';
     const fDec = v => v.toFixed(2);
 
+    var sortinoColor = m.sortinoRatio >= 2 ? '#22c55e' : m.sortinoRatio >= 1 ? '#f59e0b' : '#ef4444';
+    var betaLabel = m.portfolioBeta > 1.1 ? 'More volatile than market' : m.portfolioBeta < 0.9 ? 'Less volatile' : 'Near market';
+
     el.innerHTML = `
-        <div class="kpi-card"><div class="kpi-label">TWR</div><div class="kpi-value" style="color:${m.twr >= 0 ? '#22c55e' : '#ef4444'}">${m.twr.toFixed(1)}%</div><div class="kpi-sub">Cumulative, ${m.monthCount} months</div>${mktSub('S&P', mkt && mkt.twr, fPct)}</div>
-        <div class="kpi-card"><div class="kpi-label">Annualized Return</div><div class="kpi-value" style="color:${m.annualizedReturn >= 0 ? '#22c55e' : '#ef4444'}">${m.annualizedReturn.toFixed(1)}%</div>${mktSub('S&P', mkt && mkt.annualizedReturn, fPct)}</div>
-        <div class="kpi-card"><div class="kpi-label">Sharpe Ratio</div><div class="kpi-value" style="color:${sharpeColor}">${m.sharpeRatio.toFixed(2)}</div><div class="kpi-sub">${m.sharpeRatio >= 1 ? 'Good' : m.sharpeRatio >= 0.5 ? 'Moderate' : 'Low'} risk-adjusted return</div>${mktSub('S&P', mkt && mkt.sharpeRatio, fDec)}</div>
-        <div class="kpi-card"><div class="kpi-label">Sortino Ratio</div><div class="kpi-value">${m.sortinoRatio.toFixed(2)}</div><div class="kpi-sub">Downside risk-adjusted</div>${mktSub('S&P', mkt && mkt.sortinoRatio, fDec)}</div>
-        <div class="kpi-card"><div class="kpi-label">Portfolio Beta</div><div class="kpi-value">${m.portfolioBeta.toFixed(2)}</div><div class="kpi-sub">${m.portfolioBeta > 1.1 ? 'More volatile than market' : m.portfolioBeta < 0.9 ? 'Less volatile' : 'Near market'}</div></div>
-        <div class="kpi-card"><div class="kpi-label">Annualized Volatility</div><div class="kpi-value">${m.annualizedVolatility.toFixed(1)}%</div>${mktSub('S&P', mkt && mkt.annualizedVolatility, fPct)}</div>
-        <div class="kpi-card"><div class="kpi-label">Max Drawdown</div><div class="kpi-value" style="color:${ddColor}">${m.maxDrawdown.toFixed(1)}%</div><div class="kpi-sub">${m.maxDrawdownPeriod || '-'}</div>${mktSub('S&P', mkt && mkt.maxDrawdown, fPct)}</div>
+        <div class="kpi-card"><div class="kpi-label">TWR</div><div class="kpi-value" style="color:${m.twr >= 0 ? '#22c55e' : '#ef4444'}">${m.twr.toFixed(1)}%</div><div class="kpi-sub">Total return over ${m.monthCount} months, adjusted for contributions</div>${mktSub('S&P', mkt && mkt.twr, fPct)}</div>
+        <div class="kpi-card"><div class="kpi-label">Annualized Return</div><div class="kpi-value" style="color:${m.annualizedReturn >= 0 ? '#22c55e' : '#ef4444'}">${m.annualizedReturn.toFixed(1)}%</div><div class="kpi-sub">Yearly equivalent of cumulative TWR</div>${mktSub('S&P', mkt && mkt.annualizedReturn, fPct)}</div>
+        <div class="kpi-card"><div class="kpi-label">Sharpe Ratio</div><div class="kpi-value" style="color:${sharpeColor}">${m.sharpeRatio.toFixed(2)}</div><div class="kpi-sub">Return per unit of total risk. &gt;1 good, &gt;2 great</div>${mktSub('S&P', mkt && mkt.sharpeRatio, fDec)}</div>
+        <div class="kpi-card"><div class="kpi-label">Sortino Ratio</div><div class="kpi-value" style="color:${sortinoColor}">${m.sortinoRatio.toFixed(2)}</div><div class="kpi-sub">Like Sharpe but only penalizes losses. &gt;2 good</div>${mktSub('S&P', mkt && mkt.sortinoRatio, fDec)}</div>
+        <div class="kpi-card"><div class="kpi-label">Portfolio Beta</div><div class="kpi-value">${m.portfolioBeta.toFixed(2)}</div><div class="kpi-sub">${betaLabel}. 1.0 = moves with S&P 500</div></div>
+        <div class="kpi-card"><div class="kpi-label">Annualized Volatility</div><div class="kpi-value">${m.annualizedVolatility.toFixed(1)}%</div><div class="kpi-sub">How much returns swing. Lower = smoother ride</div>${mktSub('S&P', mkt && mkt.annualizedVolatility, fPct)}</div>
+        <div class="kpi-card"><div class="kpi-label">Max Drawdown</div><div class="kpi-value" style="color:${ddColor}">${m.maxDrawdown.toFixed(1)}%</div><div class="kpi-sub">Largest peak-to-trough drop. ${m.maxDrawdownPeriod || '-'}</div>${mktSub('S&P', mkt && mkt.maxDrawdown, fPct)}</div>
     `;
     let disc = document.getElementById('riskKpisDisclaimer');
     if (!disc) {
@@ -311,6 +314,13 @@ function renderCorrelationMatrix(tickers, matrix) {
         });
         html += '</tr>';
     });
-    html += '</tbody></table>';
+    html += '</tbody></table>'
+        + '<div style="display:flex; gap:12px; margin-top:10px; font-size:11px; color:var(--text-dim); flex-wrap:wrap;">'
+        + '<span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:#ef444433; vertical-align:middle; margin-right:3px;"></span>&gt;0.8 High (moves together)</span>'
+        + '<span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:#f59e0b33; vertical-align:middle; margin-right:3px;"></span>0.5–0.8 Moderate</span>'
+        + '<span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:#fbbf2433; vertical-align:middle; margin-right:3px;"></span>0.2–0.5 Low</span>'
+        + '<span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:#6b728033; vertical-align:middle; margin-right:3px;"></span>&plusmn;0.2 Uncorrelated</span>'
+        + '<span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:#22c55e33; vertical-align:middle; margin-right:3px;"></span>&lt;-0.2 Inverse (offsets risk)</span>'
+        + '</div>';
     el.innerHTML = html;
 }
