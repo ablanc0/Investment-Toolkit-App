@@ -164,7 +164,9 @@ def compute_risk_metrics(monthly_data, enriched_positions):
         curr_val = valid_data[i].get("portfolioValue", 0)
         contrib = valid_data[i].get("contributions", 0)
         if prev_val > 0:
-            ret = (curr_val - prev_val - contrib) / prev_val
+            # Modified Dietz: assume contributions happen mid-month
+            base = prev_val + 0.5 * contrib
+            ret = (curr_val - prev_val - contrib) / base
             monthly_returns.append(ret)
 
     if len(monthly_returns) < 2:
