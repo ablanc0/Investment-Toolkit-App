@@ -43,12 +43,14 @@ function populateScreening() {
                 <td>${formatMoney(p.price)}</td>
                 <td>${formatMoney(p.avgCost)}</td>
                 <td class="${(p.returnPercent || 0) >= 0 ? 'positive' : 'negative'}">${formatPercent(p.returnPercent)}</td>
+                <td>${p.intrinsicValue ? formatMoney(p.intrinsicValue) : '<span style="color:var(--text-dim);">—</span>'}</td>
+                <td class="${(p.distFromIV || 0) <= 0 ? 'positive' : 'negative'}">${p.intrinsicValue ? formatPercent(p.distFromIV) : '<span style="color:var(--text-dim);">—</span>'}</td>
                 <td>${p.isStock ? getSignalBadge(p.signal) : '<span style="color: var(--text-dim);">—</span>'}</td>
                 <td>${p.invtScore ? '<span style="color:' + _invtScoreColor(p.invtScore) + ';font-weight:600">' + Number(p.invtScore).toFixed(1) + '</span>' : '—'}</td>
                 <td>${p.category || '—'}</td>
             </tr>
         `).join('') :
-        '<tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:24px;">No signals matching filter</td></tr>';
+        '<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:24px;">No signals matching filter</td></tr>';
 
     // Portfolio panel summary
     const stocks = signaled.filter(p => p.isStock);
