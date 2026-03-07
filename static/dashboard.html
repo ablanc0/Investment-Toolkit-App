@@ -606,9 +606,8 @@
 
         <div class="tab-content" id="superinv">
             <div class="card" style="margin-bottom: 24px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; flex-wrap: wrap; gap: 10px;">
                     <div class="card-title" style="margin-bottom: 0;">Super Investor 13F Holdings</div>
-                    <p style="color:var(--text-dim); font-size:11px; margin:4px 0 0 0;">13F filings are quarterly SEC reports showing what institutional investors hold. Track what top fund managers are buying and selling.</p>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <select id="siInvestorSelect" onchange="fetch13F(this.value)" style="padding: 6px 12px; background: var(--card-hover); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem;">
                             <option value="">Select Investor...</option>
@@ -618,6 +617,7 @@
                         <button onclick="exportSuperInvCSV()" style="padding: 6px 14px; background: var(--card-hover); color: var(--text); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 0.82rem;">CSV</button>
                     </div>
                 </div>
+                <p style="color:var(--text-dim); font-size:11px; margin:0 0 16px 0;">13F filings are quarterly SEC reports showing what institutional investors hold. Track what top fund managers are buying and selling.</p>
                 <div id="si13fProgress" style="display: none; padding: 10px 14px; background: var(--card-hover); border-radius: 8px; margin-bottom: 12px; font-size: 0.85rem; color: var(--text-dim);"></div>
                 <div id="siInvestorNote" style="display: none; font-size: 0.82rem; color: var(--text-dim); font-style: italic; margin-bottom: 12px;"></div>
                 <div id="si13fMeta" style="display: none; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;"></div>
