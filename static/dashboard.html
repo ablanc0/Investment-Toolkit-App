@@ -722,7 +722,8 @@
                     <div class="card-title" style="margin-bottom: 0;" id="salTableTitle">Tax Filing</div>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <label class="form-label" style="margin-bottom: 0; font-size: 0.8rem;">Year:</label>
-                        <select id="salaryYearSelect" class="form-input" style="width: 90px; font-size: 0.85rem;" onchange="switchSalaryYear()"></select>
+                        <input type="number" id="salaryYearInput" class="form-input" style="width: 80px; font-size: 0.85rem; text-align:center;" min="2020" max="2040" onchange="switchSalaryYear()">
+                        <button class="add-row-btn" onclick="saveHistoryYear()" style="font-size: 0.78rem; padding: 4px 10px;">Save</button>
                     </div>
                 </div>
                 <div id="salaryBreakdownTable"></div>
@@ -748,9 +749,8 @@
 
             <!-- History -->
             <div class="card" style="margin-top: 16px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div style="margin-bottom: 12px;">
                     <div class="card-title" style="margin-bottom: 0;">Salary History</div>
-                    <button class="add-row-btn" onclick="saveHistoryYear()" style="font-size: 0.78rem; padding: 4px 10px;" id="saveHistoryBtn">Save <span id="saveHistoryYear"></span></button>
                 </div>
                 <div id="salHistory"></div>
             </div>
