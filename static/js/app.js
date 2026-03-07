@@ -73,6 +73,39 @@ function toggleTheme() {
     if (btn) btn.textContent = next === 'dark' ? '\u{1F319}' : '\u{2600}\u{FE0F}';
 }
 
+// ── API Health Panel ─────────────────────────────────────────────
+function toggleHealthPanel() {
+    const panel = document.getElementById('apiHealthPanel');
+    if (!panel) return;
+    const open = panel.style.display !== 'none';
+    panel.style.display = open ? 'none' : 'block';
+    if (!open) fetchApiHealth();
+}
+
+// Close health panel when clicking outside
+document.addEventListener('click', (e) => {
+    const panel = document.getElementById('apiHealthPanel');
+    const btn = document.getElementById('apiHealthBtn');
+    if (panel && panel.style.display !== 'none' && !panel.contains(e.target) && !btn.contains(e.target)) {
+        panel.style.display = 'none';
+    }
+});
+
+function updateHealthDot(data) {
+    const dot = document.getElementById('apiHealthDot');
+    if (!dot) return;
+    const statuses = Object.values(data.apis || {}).map(a => a.status);
+    if (statuses.every(s => s === 'ok')) {
+        dot.style.background = '#22c55e';
+    } else if (statuses.some(s => s === 'error')) {
+        dot.style.background = '#ef4444';
+    } else if (statuses.some(s => s === 'ok')) {
+        dot.style.background = '#f59e0b';
+    } else {
+        dot.style.background = '#6b7280';
+    }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     setupTabNavigation();
@@ -87,6 +120,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const input = document.getElementById('analyzerTicker');
         if (input) { input.value = lastTicker; analyzeStock(false); }
     }
+    // Auto health check on startup
+    fetch('/api/health/check', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => updateHealthDot(data))
+        .catch(() => {});
 });
 
 // Two-Level Navigation

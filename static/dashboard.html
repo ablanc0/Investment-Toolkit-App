@@ -28,6 +28,19 @@
             <button id="themeToggle" onclick="toggleTheme()" title="Toggle theme"
                     style="background:none; border:1px solid var(--border); border-radius:6px; cursor:pointer; font-size:16px; padding:4px 8px; color:var(--text-dim);">🌙</button>
             <button class="refresh-btn" id="refreshBtn">🔄 Refresh</button>
+            <div style="position:relative; display:inline-block;">
+                <button class="refresh-btn" id="apiHealthBtn" title="API Health" onclick="toggleHealthPanel()">🏥<span id="apiHealthDot" style="position:absolute; top:2px; right:2px; width:8px; height:8px; border-radius:50%; background:#6b7280;"></span></button>
+                <div id="apiHealthPanel" style="display:none; position:absolute; right:0; top:100%; margin-top:8px; width:480px; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px; box-shadow:0 8px 32px rgba(0,0,0,0.3); z-index:100;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <span style="font-weight:600; font-size:14px;">API Health</span>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <span id="healthCheckStatus" style="font-size:11px; color:var(--text-dim);"></span>
+                            <button class="add-row-btn" onclick="runHealthCheck()" id="healthCheckBtn" style="font-size:12px; padding:4px 10px;">🔍 Check</button>
+                        </div>
+                    </div>
+                    <div id="apiHealthTable"></div>
+                </div>
+            </div>
             <button class="refresh-btn" id="settingsBtn" title="Settings" onclick="switchTab('settingsCategories')">⚙</button>
             <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
                 <div class="timestamp">
@@ -843,17 +856,6 @@
                 <div id="apiKeyFmpCurrent" style="margin-top: 8px; font-size: 12px; color: var(--text-dim);"></div>
                 <div style="margin-top: 12px;">
                     <button class="add-row-btn" onclick="saveApiKeys()" style="border-color: var(--green); color: var(--green);">💾 Save Keys</button>
-                </div>
-            </div>
-
-            <!-- API Health -->
-            <div class="card" style="margin-bottom: 16px;">
-                <div class="card-title">🏥 API Health</div>
-                <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 12px;">Status of external data sources used by the Stock Analyzer.</p>
-                <div id="apiHealthTable"></div>
-                <div style="display: flex; gap: 8px; margin-top: 12px; align-items: center;">
-                    <button class="add-row-btn" onclick="runHealthCheck()" id="healthCheckBtn">🔍 Run Health Check</button>
-                    <span id="healthCheckStatus" style="font-size: 12px; color: var(--text-dim);"></span>
                 </div>
             </div>
 

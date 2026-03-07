@@ -14,7 +14,6 @@ async function fetchSettingsData() {
         renderValuationDefaults();
         renderDisplayPreferences();
         renderApiKeys();
-        fetchApiHealth();
     } catch (e) {
         console.error('Error loading settings:', e);
     }
@@ -587,6 +586,7 @@ function renderApiHealthTable(data) {
     html += '</tbody></table>';
 
     container.innerHTML = html;
+    updateHealthDot(data);
 }
 
 async function runHealthCheck() {
