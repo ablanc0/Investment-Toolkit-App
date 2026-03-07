@@ -445,6 +445,7 @@ def api_position_add():
         if p["ticker"] == ticker:
             return jsonify({"error": f"'{ticker}' already exists"}), 400
 
+    now = datetime.now()
     new_pos = {
         "ticker": ticker,
         "shares": float(body.get("shares", 0)),
@@ -453,6 +454,7 @@ def api_position_add():
         "sector": body.get("sector", ""),
         "secType": body.get("secType", "Stocks"),
         "buyDate": body.get("buyDate", ""),
+        "entryDate": body.get("entryDate", now.strftime("%Y-%m")),
     }
     portfolio["positions"].append(new_pos)
     save_portfolio(portfolio)

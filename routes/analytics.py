@@ -1,7 +1,7 @@
 """Analytics Blueprint — tax optimization, risk analysis, attribution, benchmark, dividends deep dive."""
 
 from datetime import datetime
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify
 
 from services.data_store import load_portfolio, get_settings
 from services.yfinance_svc import fetch_all_quotes
@@ -71,6 +71,7 @@ def _get_enriched_portfolio():
             "shares": shares,
             "avgCost": avg_cost,
             "buyDate": p.get("buyDate", ""),
+            "entryDate": p.get("entryDate", ""),
             "price": round(price, 2),
             "costBasis": round(cost_basis, 2),
             "marketValue": round(market_value, 2),
@@ -89,13 +90,52 @@ def _get_enriched_portfolio():
     return enriched, portfolio, total_mv, total_div_income
 
 
+def _backfill_entry_dates(enriched, portfolio):
+    """Auto-set entryDate for positions missing it, using dividend log."""
+    div_log = portfolio.get("dividendLog", [])
+    positions = portfolio.get("positions", [])
+    pos_map = {p["ticker"]: p for p in positions}
+    needs_save = False
+
+    # Month name → number for parsing dividend log months
+    month_map = {
+        "January": 1, "February": 2, "March": 3, "April": 4,
+        "May": 5, "June": 6, "July": 7, "August": 8,
+        "September": 9, "October": 10, "November": 11, "December": 12,
+    }
+
+    for ep in enriched:
+        ticker = ep["ticker"]
+        raw_pos = pos_map.get(ticker)
+        if not raw_pos or raw_pos.get("entryDate"):
+            continue  # already has entryDate
+
+        # Find first non-zero dividend entry for this ticker
+        for entry in div_log:
+            val = entry.get(ticker)
+            if val and float(val) > 0:
+                month_name = entry.get("month", "")
+                year = entry.get("year", 0)
+                month_num = month_map.get(month_name, 0)
+                if year and month_num:
+                    entry_date = f"{year}-{month_num:02d}"
+                    raw_pos["entryDate"] = entry_date
+                    ep["entryDate"] = entry_date
+                    needs_save = True
+                break
+
+    if needs_save:
+        from services.data_store import save_portfolio
+        save_portfolio(portfolio)
+
+
 # ── Tax Optimization ──────────────────────────────────────────────────
 
 @bp.route("/api/tax-optimization")
 def api_tax_optimization():
-    holding_days = request.args.get("holdingDays", type=int)
-    enriched, _, _, _ = _get_enriched_portfolio()
-    positions = compute_tax_positions(enriched, holding_days=holding_days)
+    enriched, portfolio, _, _ = _get_enriched_portfolio()
+    _backfill_entry_dates(enriched, portfolio)
+    positions = compute_tax_positions(enriched)
     summary = compute_tax_summary(positions)
     return jsonify({
         "positions": positions,

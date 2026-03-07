@@ -4,9 +4,33 @@ from datetime import datetime
 from config import LTCG_RATE, STCG_RATE, HARVEST_LOSS_THRESHOLD, TRIM_GAIN_THRESHOLD, HOLDING_PERIOD_DAYS
 
 
-def compute_tax_positions(enriched_positions, holding_days=None):
+def _compute_days_held(position):
+    """Compute days held from entryDate (YYYY-MM) or buyDate (YYYY-MM-DD)."""
+    now = datetime.now()
+
+    # Prefer entryDate (YYYY-MM format)
+    entry_date = position.get("entryDate", "")
+    if entry_date:
+        try:
+            ed = datetime.strptime(entry_date, "%Y-%m")
+            return (now - ed).days
+        except (ValueError, TypeError):
+            pass
+
+    # Fallback to buyDate (YYYY-MM-DD format)
+    buy_date = position.get("buyDate", "")
+    if buy_date:
+        try:
+            bd = datetime.strptime(buy_date, "%Y-%m-%d")
+            return (now - bd).days
+        except (ValueError, TypeError):
+            pass
+
+    return 0
+
+
+def compute_tax_positions(enriched_positions):
     """Compute tax impact and harvest opportunities for each position."""
-    threshold_days = holding_days if holding_days is not None else HOLDING_PERIOD_DAYS
     results = []
     for p in enriched_positions:
         cost_basis = p.get("costBasis", 0)
@@ -14,18 +38,11 @@ def compute_tax_positions(enriched_positions, holding_days=None):
         unrealized_gl = market_value - cost_basis
         gl_pct = (unrealized_gl / cost_basis * 100) if cost_basis > 0 else 0
 
-        # Holding period
-        buy_date = p.get("buyDate", "")
-        days_held = 0
-        if buy_date:
-            try:
-                bd = datetime.strptime(buy_date, "%Y-%m-%d")
-                days_held = (datetime.now() - bd).days
-                holding = "Long-term" if days_held >= threshold_days else "Short-term"
-            except (ValueError, TypeError):
-                holding = "Long-term"
+        days_held = _compute_days_held(p)
+        if days_held > 0:
+            holding = "Long-term" if days_held >= HOLDING_PERIOD_DAYS else "Short-term"
         else:
-            holding = "Long-term"
+            holding = "Long-term"  # default when no date info
 
         tax_rate = LTCG_RATE if holding == "Long-term" else STCG_RATE
         tax_impact = round(max(unrealized_gl * tax_rate, 0), 2)

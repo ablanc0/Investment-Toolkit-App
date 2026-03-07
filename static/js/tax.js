@@ -1,23 +1,13 @@
 // ── Tax Optimization Tab ──
 
 async function fetchTaxOptimization() {
-    const holdingInput = document.getElementById('holdingDaysInput');
-    const holdingDays = holdingInput ? parseInt(holdingInput.value) || 365 : 365;
     try {
-        const resp = await fetch('/api/tax-optimization?holdingDays=' + holdingDays);
+        const resp = await fetch('/api/tax-optimization');
         const data = await resp.json();
         renderTaxKpis(data.summary);
         renderTaxTable(data.positions);
     } catch (e) {
         console.error('Error loading tax optimization:', e);
-    }
-}
-
-function initTaxListeners() {
-    const input = document.getElementById('holdingDaysInput');
-    if (input && !input.dataset.bound) {
-        input.dataset.bound = '1';
-        input.addEventListener('change', fetchTaxOptimization);
     }
 }
 
@@ -31,7 +21,6 @@ function renderTaxKpis(s) {
         <div class="kpi-card"><div class="kpi-label">Est. Tax Liability (15%)</div><div class="kpi-value" style="color:#f59e0b">${formatMoney(s.estTaxLiability)}</div></div>
         <div class="kpi-card"><div class="kpi-label">Potential Tax Savings</div><div class="kpi-value" style="color:#22d3ee">${formatMoney(s.potentialTaxSavings)}</div><div class="kpi-sub">${s.harvestableCount} harvestable positions</div></div>
     `;
-    initTaxListeners();
 }
 
 function renderTaxTable(positions) {
@@ -45,7 +34,7 @@ function renderTaxTable(positions) {
         let actionColor = 'var(--text-dim)';
         if (p.action.includes('harvest')) actionColor = '#4ade80';
         else if (p.action.includes('trimming')) actionColor = '#f59e0b';
-        const daysLabel = p.daysHeld > 0 ? p.daysHeld + 'd' : '';
+        const daysLabel = p.daysHeld > 0 ? ' (' + p.daysHeld + 'd)' : '';
         return `<tr>
             <td><strong>${p.ticker}</strong></td>
             <td style="text-align:right;">${formatMoney(p.costBasis)}</td>
@@ -54,7 +43,7 @@ function renderTaxTable(positions) {
             <td style="text-align:right; color:${glColor};">${formatPercent(p.gainLossPct)}</td>
             <td style="text-align:right;">${formatMoney(p.taxImpact)}</td>
             <td style="text-align:center;">${harvestBadge}</td>
-            <td>${p.holdingPeriod}<span style="color:var(--text-dim); font-size:11px; margin-left:4px;">${daysLabel}</span></td>
+            <td>${p.holdingPeriod}<span style="color:var(--text-dim); font-size:11px;">${daysLabel}</span></td>
             <td style="color:${actionColor}; font-size:12px;">${p.action}</td>
         </tr>`;
     }).join('');
