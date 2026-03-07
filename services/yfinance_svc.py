@@ -38,7 +38,7 @@ def fetch_ticker_data(ticker):
             "industry": info.get("industry", ""),
             "divYield": round(info.get("dividendYield") or info.get("trailingAnnualDividendYield") or 0, 2),
             "divRate": info.get("dividendRate") or info.get("trailingAnnualDividendRate", 0),
-            "beta": info.get("beta", 0),
+            "beta": info.get("beta") or info.get("beta3Year", 0),
             "fiftyTwoWeekHigh": info.get("fiftyTwoWeekHigh", 0),
             "fiftyTwoWeekLow": info.get("fiftyTwoWeekLow", 0),
             "targetMeanPrice": info.get("targetMeanPrice", 0),

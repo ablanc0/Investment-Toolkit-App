@@ -47,7 +47,7 @@ def compute_stress_test(enriched_positions, total_market_value, scenarios=None):
         for p in enriched_positions:
             beta = p.get("beta", 1) or 1
             mv = p.get("marketValue", 0)
-            adj_drop = beta * drop_pct
+            adj_drop = max(beta * drop_pct, -100)  # can't lose more than 100%
             est_loss = mv * adj_drop / 100
             total_loss += est_loss
 
