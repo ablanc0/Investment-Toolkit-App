@@ -250,6 +250,7 @@ def api_portfolio():
         },
         "targets": portfolio.get("targets", {}),
         "goals": goals_array,
+        "goals_raw": raw_goals,
         "strategy": portfolio.get("strategy", []),
         "lastUpdated": datetime.now().isoformat(),
     })
@@ -543,3 +544,16 @@ def api_goals_update():
     portfolio["goals"] = goals
     save_portfolio(portfolio)
     return jsonify({"ok": True, "goals": goals})
+
+
+@bp.route("/api/targets/update", methods=["POST"])
+def api_targets_update():
+    """Update target allocations. Body: {category: {Cat1: %, Cat2: %}}"""
+    body = request.get_json()
+    portfolio = load_portfolio()
+    targets = portfolio.get("targets", {})
+    if "category" in body and isinstance(body["category"], dict):
+        targets["category"] = body["category"]
+    portfolio["targets"] = targets
+    save_portfolio(portfolio)
+    return jsonify({"ok": True, "targets": targets})

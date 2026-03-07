@@ -1,4 +1,4 @@
-// ── Settings Tab: Category Management + Signal Thresholds ────────
+// ── Settings Tab ─────────────────────────────────────────────────
 
 let _settingsCache = null;
 
@@ -9,6 +9,9 @@ async function fetchSettingsData() {
         renderPortfolioName();
         renderCategoryEditor();
         renderSignalThresholdEditor();
+        renderGoalsEditor();
+        renderTargetAllocEditor();
+        renderValuationDefaults();
     } catch (e) {
         console.error('Error loading settings:', e);
     }
@@ -199,5 +202,154 @@ async function saveSignalThresholds() {
         showSaveToast('Signal thresholds saved');
     } catch (e) {
         showAlert('Failed to save thresholds', 'error');
+    }
+}
+
+// ── Goals Editor ─────────────────────────────────────────────────
+
+function renderGoalsEditor() {
+    const container = document.getElementById('goalsEditor');
+    if (!container) return;
+
+    // Goals live in portfolio.goals, not settings — fetch from portfolioData or API
+    const goals = portfolioData?.goals_raw || window._goalsRaw || {};
+    const fields = [
+        { key: 'portfolioTarget', label: 'Portfolio Target ($)', icon: '💼' },
+        { key: 'dividendTarget', label: 'Annual Dividend Target ($)', icon: '💰' },
+        { key: 'maxHoldings', label: 'Max Holdings', icon: '📊' },
+        { key: 'cashReserveMin', label: 'Cash Reserve Min ($)', icon: '🏦' },
+    ];
+
+    container.innerHTML = fields.map(f => `
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 13px; color: var(--text-dim); min-width: 180px;">${f.icon} ${f.label}</span>
+            <input type="number" id="goal_${f.key}" value="${goals[f.key] || ''}" step="1"
+                   placeholder="0"
+                   style="width: 120px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; text-align: right;">
+        </div>
+    `).join('');
+}
+
+async function saveGoals() {
+    const body = {};
+    ['portfolioTarget', 'dividendTarget', 'maxHoldings', 'cashReserveMin'].forEach(key => {
+        const val = document.getElementById('goal_' + key)?.value;
+        if (val !== '' && val !== undefined) body[key] = parseFloat(val);
+    });
+
+    try {
+        const resp = await fetch('/api/goals/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        if (resp.ok) {
+            const data = await resp.json();
+            window._goalsRaw = data.goals;
+            showSaveToast('Goals saved');
+        }
+    } catch (e) {
+        showAlert('Failed to save goals', 'error');
+    }
+}
+
+// ── Target Allocations ───────────────────────────────────────────
+
+function renderTargetAllocEditor() {
+    const container = document.getElementById('targetAllocEditor');
+    if (!container) return;
+
+    const categories = getCategoryOptions();
+    const targets = portfolioData?.targets?.category || portfolioData?.targets || window._targetAllocs || {};
+
+    container.innerHTML = categories.map(cat => `
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            ${getCategoryBadge(cat)}
+            <input type="number" id="alloc_${cat.replace(/\s+/g, '_')}" value="${targets[cat] || ''}" step="1" min="0" max="100"
+                   placeholder="0"
+                   style="width: 80px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; text-align: right;"
+                   oninput="updateAllocTotal()">
+            <span style="color: var(--text-dim); font-size: 12px;">%</span>
+        </div>
+    `).join('');
+
+    updateAllocTotal();
+}
+
+function updateAllocTotal() {
+    const categories = getCategoryOptions();
+    let total = 0;
+    categories.forEach(cat => {
+        total += parseFloat(document.getElementById('alloc_' + cat.replace(/\s+/g, '_'))?.value || 0);
+    });
+    const warning = document.getElementById('allocTotalWarning');
+    if (!warning) return;
+    const color = Math.abs(total - 100) < 0.01 ? '#22c55e' : '#f59e0b';
+    warning.innerHTML = `<span style="font-size: 12px; color: ${color}; font-weight: 600;">Total: ${total.toFixed(0)}%${Math.abs(total - 100) >= 0.01 ? ' (should be 100%)' : ' ✓'}</span>`;
+}
+
+async function saveTargetAllocations() {
+    const categories = getCategoryOptions();
+    const targets = {};
+    categories.forEach(cat => {
+        const val = parseFloat(document.getElementById('alloc_' + cat.replace(/\s+/g, '_'))?.value || 0);
+        if (val > 0) targets[cat] = val;
+    });
+
+    try {
+        const resp = await fetch('/api/targets/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category: targets })
+        });
+        if (resp.ok) {
+            window._targetAllocs = targets;
+            showSaveToast('Target allocations saved');
+        }
+    } catch (e) {
+        showAlert('Failed to save targets', 'error');
+    }
+}
+
+// ── Valuation Defaults ───────────────────────────────────────────
+
+function renderValuationDefaults() {
+    const container = document.getElementById('valuationDefaultsEditor');
+    if (!container) return;
+
+    const v = _settingsCache?.valuationDefaults || {};
+    const fields = [
+        { key: 'discountRate', label: 'Discount Rate', unit: '%', default: 10, step: 0.25 },
+        { key: 'marginOfSafety', label: 'Margin of Safety', unit: '%', default: 25, step: 1 },
+        { key: 'terminalGrowth', label: 'Terminal Growth', unit: '%', default: 3, step: 0.25 },
+    ];
+
+    container.innerHTML = fields.map(f => `
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 13px; color: var(--text-dim); min-width: 130px;">${f.label}</span>
+            <input type="number" id="valdef_${f.key}" value="${v[f.key] ?? f.default}" step="${f.step}"
+                   style="width: 80px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; text-align: right;">
+            <span style="color: var(--text-dim); font-size: 12px;">${f.unit}</span>
+        </div>
+    `).join('');
+}
+
+async function saveValuationDefaults() {
+    const valuationDefaults = {
+        discountRate: parseFloat(document.getElementById('valdef_discountRate').value),
+        marginOfSafety: parseFloat(document.getElementById('valdef_marginOfSafety').value),
+        terminalGrowth: parseFloat(document.getElementById('valdef_terminalGrowth').value),
+    };
+
+    try {
+        const resp = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ valuationDefaults })
+        });
+        _settingsCache = await resp.json();
+        showSaveToast('Valuation defaults saved');
+    } catch (e) {
+        showAlert('Failed to save valuation defaults', 'error');
     }
 }
