@@ -133,58 +133,110 @@ async function savePortfolioName() {
 // ── Signal Thresholds ────────────────────────────────────────────
 
 function renderSignalThresholdEditor() {
-    const t = _settingsCache?.signalThresholds || {};
-    const container = document.getElementById('signalThresholdEditor');
-    if (!container) return;
-
-    const fields = [
-        { key: 'strongBuy', label: 'Strong Buy', hint: 'below %', color: '#4ade80', default: -5 },
-        { key: 'buy', label: 'Buy', hint: 'below %', color: '#22d3ee', default: 5 },
-        { key: 'expensive', label: 'Expensive', hint: 'above %', color: '#fb923c', default: 20 },
-        { key: 'overrated', label: 'Overrated', hint: 'above %', color: '#f87171', default: 50 },
-        { key: 'topPerformer', label: 'Top Performer', hint: 'above %', color: '#a78bfa', default: 30 },
-    ];
-
-    container.innerHTML = fields.map(f => `
-        <div style="display: flex; align-items: center; gap: 8px;">
-            <span class="badge" style="background:${f.color}20; color:${f.color}; min-width: 90px; text-align: center;">${f.label}</span>
-            <input type="number" id="thresh_${f.key}" value="${t[f.key] ?? f.default}" step="1"
-                   style="width: 80px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; text-align: right;">
-            <span style="color: var(--text-dim); font-size: 12px;">${f.hint}</span>
-        </div>
-    `).join('');
+    renderIVThresholdEditor();
+    renderAvgCostThresholdEditor();
 
     // Signal mode dropdown
     const modeSelect = document.getElementById('defaultSignalMode');
     if (modeSelect) modeSelect.value = _settingsCache?.signalMode || 'avgCost';
 
-    // Live preview
-    updateSignalPreview();
-    container.querySelectorAll('input').forEach(el => el.addEventListener('input', updateSignalPreview));
+    // Top Performer
+    const tpInput = document.getElementById('thresh_topPerformer');
+    if (tpInput) tpInput.value = _settingsCache?.signalThresholds?.topPerformer ?? 30;
 }
 
-function updateSignalPreview() {
-    const preview = document.getElementById('signalPreview');
+function renderIVThresholdEditor() {
+    const t = _settingsCache?.signalThresholds?.iv || {};
+    const container = document.getElementById('ivThresholdEditor');
+    if (!container) return;
+
+    const fields = [
+        { key: 'strongBuy', label: 'Strong Buy', hint: 'below %', color: '#4ade80', default: -15 },
+        { key: 'buy', label: 'Buy', hint: 'below %', color: '#22d3ee', default: 0 },
+        { key: 'expensive', label: 'Expensive', hint: 'above %', color: '#fb923c', default: 15 },
+    ];
+
+    container.innerHTML = fields.map(f => `
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="badge" style="background:${f.color}20; color:${f.color}; min-width: 90px; text-align: center;">${f.label}</span>
+            <input type="number" id="iv_thresh_${f.key}" value="${t[f.key] ?? f.default}" step="1"
+                   style="width: 80px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; text-align: right;">
+            <span style="color: var(--text-dim); font-size: 12px;">${f.hint}</span>
+        </div>
+    `).join('');
+
+    updateIVPreview();
+    container.querySelectorAll('input').forEach(el => el.addEventListener('input', updateIVPreview));
+}
+
+function updateIVPreview() {
+    const preview = document.getElementById('ivSignalPreview');
     if (!preview) return;
-    const sb = document.getElementById('thresh_strongBuy')?.value ?? -5;
-    const b = document.getElementById('thresh_buy')?.value ?? 5;
-    const e = document.getElementById('thresh_expensive')?.value ?? 20;
-    const o = document.getElementById('thresh_overrated')?.value ?? 50;
+    const sb = document.getElementById('iv_thresh_strongBuy')?.value ?? -15;
+    const b = document.getElementById('iv_thresh_buy')?.value ?? 0;
+    const e = document.getElementById('iv_thresh_expensive')?.value ?? 15;
+    preview.innerHTML = `<span style="font-size: 12px; color: var(--text-dim);">
+        <strong style="color:#4ade80">Strong Buy</strong> &le; ${sb}%
+        &middot; <strong style="color:#22d3ee">Buy</strong> &lt; ${b}%
+        &middot; <strong style="color:#fb923c">Expensive</strong> &le; ${e}%
+        &middot; <strong style="color:#f87171">Overrated</strong> &gt; ${e}%
+    </span>`;
+}
+
+function renderAvgCostThresholdEditor() {
+    const t = _settingsCache?.signalThresholds?.avgCost || {};
+    const container = document.getElementById('avgCostThresholdEditor');
+    if (!container) return;
+
+    const fields = [
+        { key: 'strongBuy', label: 'Strong Buy', hint: 'below %', color: '#4ade80', default: -15 },
+        { key: 'buy', label: 'Buy', hint: 'below %', color: '#22d3ee', default: -5 },
+        { key: 'avgCost', label: 'Avg. Cost', hint: 'below %', color: '#60a5fa', default: 5 },
+        { key: 'overcost', label: 'Overcost', hint: 'above %', color: '#fb923c', default: 15 },
+    ];
+
+    container.innerHTML = fields.map(f => `
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="badge" style="background:${f.color}20; color:${f.color}; min-width: 90px; text-align: center;">${f.label}</span>
+            <input type="number" id="ac_thresh_${f.key}" value="${t[f.key] ?? f.default}" step="1"
+                   style="width: 80px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; text-align: right;">
+            <span style="color: var(--text-dim); font-size: 12px;">${f.hint}</span>
+        </div>
+    `).join('');
+
+    updateAvgCostPreview();
+    container.querySelectorAll('input').forEach(el => el.addEventListener('input', updateAvgCostPreview));
+}
+
+function updateAvgCostPreview() {
+    const preview = document.getElementById('avgCostSignalPreview');
+    if (!preview) return;
+    const sb = document.getElementById('ac_thresh_strongBuy')?.value ?? -15;
+    const b = document.getElementById('ac_thresh_buy')?.value ?? -5;
+    const ac = document.getElementById('ac_thresh_avgCost')?.value ?? 5;
+    const oc = document.getElementById('ac_thresh_overcost')?.value ?? 15;
     preview.innerHTML = `<span style="font-size: 12px; color: var(--text-dim);">
         <strong style="color:#4ade80">Strong Buy</strong> &lt; ${sb}%
         &middot; <strong style="color:#22d3ee">Buy</strong> &lt; ${b}%
-        &middot; <strong style="color:#f59e0b">Hold</strong>
-        &middot; <strong style="color:#fb923c">Expensive</strong> &gt; ${e}%
-        &middot; <strong style="color:#f87171">Overrated</strong> &gt; ${o}%
+        &middot; <strong style="color:#60a5fa">Avg. Cost</strong> &lt; ${ac}%
+        &middot; <strong style="color:#fb923c">Overcost</strong> &le; ${oc}%
+        &middot; <strong style="color:#f59e0b">Hold</strong> &gt; ${oc}%
     </span>`;
 }
 
 async function saveSignalThresholds() {
     const signalThresholds = {
-        strongBuy: parseFloat(document.getElementById('thresh_strongBuy').value),
-        buy: parseFloat(document.getElementById('thresh_buy').value),
-        expensive: parseFloat(document.getElementById('thresh_expensive').value),
-        overrated: parseFloat(document.getElementById('thresh_overrated').value),
+        iv: {
+            strongBuy: parseFloat(document.getElementById('iv_thresh_strongBuy').value),
+            buy: parseFloat(document.getElementById('iv_thresh_buy').value),
+            expensive: parseFloat(document.getElementById('iv_thresh_expensive').value),
+        },
+        avgCost: {
+            strongBuy: parseFloat(document.getElementById('ac_thresh_strongBuy').value),
+            buy: parseFloat(document.getElementById('ac_thresh_buy').value),
+            avgCost: parseFloat(document.getElementById('ac_thresh_avgCost').value),
+            overcost: parseFloat(document.getElementById('ac_thresh_overcost').value),
+        },
         topPerformer: parseFloat(document.getElementById('thresh_topPerformer').value),
     };
     const signalMode = document.getElementById('defaultSignalMode')?.value || 'avgCost';

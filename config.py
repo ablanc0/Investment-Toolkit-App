@@ -99,10 +99,17 @@ DEFAULT_SETTINGS = {
     "defaultCategory": "Growth",
     "signalMode": "avgCost",
     "signalThresholds": {
-        "strongBuy": -5,
-        "buy": 5,
-        "expensive": 20,
-        "overrated": 50,
+        "iv": {
+            "strongBuy": -15,
+            "buy": 0,
+            "expensive": 15,
+        },
+        "avgCost": {
+            "strongBuy": -15,
+            "buy": -5,
+            "avgCost": 5,
+            "overcost": 15,
+        },
         "topPerformer": 30,
     },
     "valuationDefaults": {

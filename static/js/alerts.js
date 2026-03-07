@@ -4,8 +4,8 @@ function populateAlerts() {
     if (!portfolioData) return;
 
     const positions = portfolioData.positions || [];
-    const sb = _signalThresholds?.strongBuy ?? -5;
-    const o  = _signalThresholds?.overrated ?? 50;
+    const sb = _signalThresholds?.avgCost?.strongBuy ?? -15;
+    const o  = _signalThresholds?.avgCost?.overcost ?? 15;
 
     const strongBuys = positions.filter(p => p.returnPercent < sb);
     document.getElementById('strongBuyAlerts').innerHTML = strongBuys.length > 0 ?
