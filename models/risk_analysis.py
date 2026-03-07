@@ -171,16 +171,17 @@ def compute_risk_metrics(monthly_data, enriched_positions):
 
     if len(monthly_returns) < 2:
         return {
-            "annualizedReturn": 0, "annualizedVolatility": 0,
+            "twr": 0, "annualizedReturn": 0, "annualizedVolatility": 0,
             "sharpeRatio": 0, "sortinoRatio": 0,
             "maxDrawdown": 0, "maxDrawdownPeriod": "",
             "portfolioBeta": 0, "monthCount": len(monthly_returns),
         }
 
-    # Annualized return (geometric)
+    # TWR (cumulative) and annualized return (geometric)
     cum = 1
     for r in monthly_returns:
         cum *= (1 + r)
+    twr = (cum - 1)  # cumulative TWR
     n_months = len(monthly_returns)
     ann_return = (cum ** (12 / n_months) - 1) if n_months > 0 else 0
 
@@ -234,6 +235,7 @@ def compute_risk_metrics(monthly_data, enriched_positions):
     dd_period = f"{dd_start} - {dd_end}".strip(" -") if dd_start else ""
 
     return {
+        "twr": round(twr * 100, 2),
         "annualizedReturn": round(ann_return * 100, 2),
         "annualizedVolatility": round(ann_vol * 100, 2),
         "sharpeRatio": round(sharpe, 2),
@@ -249,7 +251,7 @@ def compute_market_metrics(monthly_prices):
     """Compute risk metrics for a market benchmark (e.g. SPY) from monthly prices."""
     if len(monthly_prices) < 3:
         return {
-            "annualizedReturn": 0, "annualizedVolatility": 0,
+            "twr": 0, "annualizedReturn": 0, "annualizedVolatility": 0,
             "sharpeRatio": 0, "sortinoRatio": 0, "maxDrawdown": 0,
         }
 
@@ -260,7 +262,7 @@ def compute_market_metrics(monthly_prices):
 
     if len(monthly_returns) < 2:
         return {
-            "annualizedReturn": 0, "annualizedVolatility": 0,
+            "twr": 0, "annualizedReturn": 0, "annualizedVolatility": 0,
             "sharpeRatio": 0, "sortinoRatio": 0, "maxDrawdown": 0,
         }
 
@@ -268,6 +270,7 @@ def compute_market_metrics(monthly_prices):
     cum = 1
     for r in monthly_returns:
         cum *= (1 + r)
+    twr = cum - 1
     ann_return = (cum ** (12 / n) - 1) if n > 0 else 0
 
     mean_r = sum(monthly_returns) / n
@@ -297,6 +300,7 @@ def compute_market_metrics(monthly_prices):
                 max_dd = dd
 
     return {
+        "twr": round(twr * 100, 2),
         "annualizedReturn": round(ann_return * 100, 2),
         "annualizedVolatility": round(ann_vol * 100, 2),
         "sharpeRatio": round(sharpe, 2),
