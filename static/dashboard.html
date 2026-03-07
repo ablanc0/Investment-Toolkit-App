@@ -911,6 +911,56 @@
                     <button class="add-row-btn" onclick="saveValuationDefaults()" style="border-color: var(--green); color: var(--green);">💾 Save Defaults</button>
                 </div>
             </div>
+            <!-- Display & Preferences -->
+            <div class="card" style="margin-top: 16px;">
+                <div class="card-title">🎨 Display & Preferences</div>
+                <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 16px;">Customize number formatting, default tab, and cache duration.</p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 13px; color: var(--text-dim); min-width: 130px;">Currency Symbol</span>
+                        <input type="text" id="pref_currencySymbol" value="$" maxlength="3"
+                               style="width: 60px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; text-align: center;"
+                               oninput="updateFormatPreview()">
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 13px; color: var(--text-dim); min-width: 130px;">Money Decimals</span>
+                        <input type="number" id="pref_decimalPlaces" value="2" min="0" max="4" step="1"
+                               style="width: 60px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; text-align: center;"
+                               oninput="updateFormatPreview()">
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 13px; color: var(--text-dim); min-width: 130px;">Percent Decimals</span>
+                        <input type="number" id="pref_percentDecimals" value="2" min="0" max="4" step="1"
+                               style="width: 60px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; text-align: center;"
+                               oninput="updateFormatPreview()">
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 13px; color: var(--text-dim); min-width: 130px;">Default Tab</span>
+                        <select id="pref_defaultTab"
+                                style="padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px;">
+                            <option value="overview">Overview</option>
+                            <option value="positions">Positions</option>
+                            <option value="performance">Performance</option>
+                            <option value="dividends">Dividends</option>
+                            <option value="watchlist">Watchlist</option>
+                            <option value="rebalancing">Rebalancing</option>
+                            <option value="alerts">Alerts</option>
+                            <option value="analyzer">Stock Analyzer</option>
+                            <option value="projections">Projections</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 13px; color: var(--text-dim); min-width: 130px;">Cache Duration</span>
+                        <input type="number" id="pref_cacheTTL" value="5" min="1" max="60" step="1"
+                               style="width: 60px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; text-align: center;">
+                        <span style="color: var(--text-dim); font-size: 12px;">min</span>
+                    </div>
+                </div>
+                <div id="formatPreview" style="margin-top: 12px;"></div>
+                <div style="margin-top: 12px;">
+                    <button class="add-row-btn" onclick="saveDisplayPreferences()" style="border-color: var(--green); color: var(--green);">💾 Save Preferences</button>
+                </div>
+            </div>
         </div>
 
     </div><!-- /tabContainer -->
