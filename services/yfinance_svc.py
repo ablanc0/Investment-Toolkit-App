@@ -73,6 +73,47 @@ def fetch_all_quotes(tickers):
     return results
 
 
+def fetch_historical_prices(tickers, period="1y"):
+    """Fetch monthly closing prices for multiple tickers.
+    Returns dict of ticker -> list of closing prices (aligned by date).
+    """
+    if not tickers:
+        return {}
+
+    cache_key = f"hist_prices_{'_'.join(sorted(tickers))}_{period}"
+    cached = cache_get(cache_key)
+    if cached:
+        return cached
+
+    try:
+        # Download all tickers at once for efficiency
+        data = yf.download(tickers, period=period, interval="1mo", progress=False)
+
+        result = {}
+        if len(tickers) == 1:
+            # Single ticker: data columns are flat (Open, High, Low, Close, ...)
+            ticker = tickers[0]
+            if "Close" in data.columns and not data["Close"].empty:
+                prices = [float(p) for p in data["Close"].dropna().tolist()]
+                result[ticker] = prices
+        else:
+            # Multiple tickers: data columns are MultiIndex (Close -> AAPL, MSFT, ...)
+            if "Close" in data.columns:
+                close_data = data["Close"]
+                for ticker in tickers:
+                    if ticker in close_data.columns:
+                        col = close_data[ticker].dropna()
+                        if not col.empty:
+                            result[ticker] = [float(p) for p in col.tolist()]
+
+        cache_set(cache_key, result)
+        return result
+
+    except Exception as e:
+        print(f"[yfinance] Error fetching historical prices: {e}")
+        return {}
+
+
 def fetch_dividends(ticker):
     """Fetch dividend history for a ticker."""
     cached = cache_get(f"divs_{ticker}")

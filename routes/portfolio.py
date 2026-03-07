@@ -413,7 +413,7 @@ def api_position_update():
     if not ticker or not field:
         return jsonify({"error": "ticker and field required"}), 400
 
-    allowed_fields = {"shares", "avgCost", "category", "sector", "secType"}
+    allowed_fields = {"shares", "avgCost", "category", "sector", "secType", "buyDate"}
     if field not in allowed_fields:
         return jsonify({"error": f"Field '{field}' not editable"}), 400
 
@@ -452,6 +452,7 @@ def api_position_add():
         "category": body.get("category", "Growth"),
         "sector": body.get("sector", ""),
         "secType": body.get("secType", "Stocks"),
+        "buyDate": body.get("buyDate", ""),
     }
     portfolio["positions"].append(new_pos)
     save_portfolio(portfolio)

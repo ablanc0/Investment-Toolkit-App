@@ -185,3 +185,39 @@ _TAX_NAME_MAP = {
     "E Lansing Nonresident Tax": "City Tax (Non-Resident)",
     "Michigan State Tax": "State Tax",
 }
+
+# ── Investment Tax Constants ───────────────────────────────────────────
+
+LTCG_RATE = 0.15           # Long-term capital gains rate
+STCG_RATE = 0.22           # Short-term capital gains (approx ordinary income)
+HARVEST_LOSS_THRESHOLD = -3.0   # % loss to suggest harvest
+TRIM_GAIN_THRESHOLD = 100.0     # % gain to suggest trim
+HOLDING_PERIOD_DAYS = 365       # Days for long-term classification
+
+# ── Risk Analysis Constants ────────────────────────────────────────────
+
+STRESS_SCENARIOS = [
+    {"name": "Great Depression (1929)", "drop": -86, "description": "Worst bear market in history"},
+    {"name": "Dot-Com Crash (2000)", "drop": -49, "description": "Tech bubble burst"},
+    {"name": "Financial Crisis (2008)", "drop": -57, "description": "Global financial meltdown"},
+    {"name": "COVID Crash (2020)", "drop": -34, "description": "Pandemic-driven selloff"},
+    {"name": "Moderate Correction", "drop": -20, "description": "Standard market correction"},
+    {"name": "Mild Pullback", "drop": -10, "description": "Normal market volatility"},
+]
+
+CONCENTRATION_THRESHOLDS = {"high": 30, "medium": 15}
+
+# ── Dividend Classification ───────────────────────────────────────────
+
+DIVIDEND_KINGS = {
+    "PG": 68, "KO": 62, "JNJ": 62, "CL": 61, "EMR": 67,
+    "MMM": 65, "DOV": 68, "PH": 67, "GPC": 67, "SWK": 56,
+    "ABT": 52, "ABM": 56, "AWR": 69, "NWN": 68, "SJW": 56,
+}
+DIVIDEND_ARISTOCRATS = {
+    "ABBV": 52, "T": 39, "XOM": 41, "CVX": 37, "WMT": 51,
+    "MCD": 48, "PEP": 52, "TGT": 53, "LOW": 51, "ADP": 49,
+    "SHW": 45, "ITW": 51, "BDX": 52, "CTAS": 41, "ROP": 30,
+    "EXPD": 29, "CAT": 30, "BEN": 44, "AFL": 42, "AOS": 30,
+    "CLX": 47, "ED": 50, "FRT": 56, "O": 29, "WBA": 48,
+}

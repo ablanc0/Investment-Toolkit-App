@@ -28,6 +28,7 @@ def create_app(testing=False):
     from routes.salary import bp as salary_bp
     from routes.planning import bp as planning_bp
     from routes.settings import bp as settings_bp
+    from routes.analytics import bp as analytics_bp
 
     application.register_blueprint(portfolio_bp)
     application.register_blueprint(dividends_bp)
@@ -39,6 +40,7 @@ def create_app(testing=False):
     application.register_blueprint(salary_bp)
     application.register_blueprint(planning_bp)
     application.register_blueprint(settings_bp)
+    application.register_blueprint(analytics_bp)
 
     return application
 

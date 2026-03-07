@@ -1,0 +1,135 @@
+// ── Risk Analysis Tab ──
+
+async function fetchRiskAnalysis() {
+    try {
+        const resp = await fetch('/api/risk-analysis');
+        const data = await resp.json();
+        renderRiskKpis(data.riskMetrics);
+        renderSectorConcentration(data.sectorConcentration);
+        renderStressTests(data.stressTests, data.totalMarketValue);
+    } catch (e) {
+        console.error('Error loading risk analysis:', e);
+    }
+}
+
+function renderRiskKpis(m) {
+    const el = document.getElementById('riskKpis');
+    if (!el || !m) return;
+    const sharpeColor = m.sharpeRatio >= 1 ? '#22c55e' : m.sharpeRatio >= 0.5 ? '#f59e0b' : '#ef4444';
+    const ddColor = m.maxDrawdown <= -20 ? '#ef4444' : m.maxDrawdown <= -10 ? '#f59e0b' : '#22c55e';
+    el.innerHTML = `
+        <div class="kpi-card"><div class="kpi-label">Sharpe Ratio</div><div class="kpi-value" style="color:${sharpeColor}">${m.sharpeRatio.toFixed(2)}</div><div class="kpi-sub">${m.sharpeRatio >= 1 ? 'Good' : m.sharpeRatio >= 0.5 ? 'Moderate' : 'Low'} risk-adjusted return</div></div>
+        <div class="kpi-card"><div class="kpi-label">Sortino Ratio</div><div class="kpi-value">${m.sortinoRatio.toFixed(2)}</div><div class="kpi-sub">Downside risk-adjusted</div></div>
+        <div class="kpi-card"><div class="kpi-label">Portfolio Beta</div><div class="kpi-value">${m.portfolioBeta.toFixed(2)}</div><div class="kpi-sub">${m.portfolioBeta > 1.1 ? 'More volatile than market' : m.portfolioBeta < 0.9 ? 'Less volatile' : 'Near market'}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Annualized Volatility</div><div class="kpi-value">${m.annualizedVolatility.toFixed(1)}%</div></div>
+        <div class="kpi-card"><div class="kpi-label">Max Drawdown</div><div class="kpi-value" style="color:${ddColor}">${m.maxDrawdown.toFixed(1)}%</div><div class="kpi-sub">${m.maxDrawdownPeriod || '-'}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Annualized Return</div><div class="kpi-value" style="color:${m.annualizedReturn >= 0 ? '#22c55e' : '#ef4444'}">${m.annualizedReturn.toFixed(1)}%</div><div class="kpi-sub">${m.monthCount} months tracked</div></div>
+    `;
+}
+
+function renderSectorConcentration(sectors) {
+    const el = document.getElementById('sectorConcentrationTable');
+    if (!el) return;
+    let html = '<table style="width:100%; font-size:0.85rem;"><thead><tr><th>Sector</th><th style="text-align:right;">Weight</th><th>Risk</th><th>Recommendation</th></tr></thead><tbody>';
+    sectors.forEach(s => {
+        const badgeColor = s.riskLevel === 'HIGH' ? '#ef4444' : s.riskLevel === 'MEDIUM' ? '#f59e0b' : '#22c55e';
+        const barWidth = Math.min(s.weight, 100);
+        html += `<tr>
+            <td><strong>${s.sector}</strong></td>
+            <td style="text-align:right;">
+                <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;">
+                    <div style="width:80px; height:6px; background:var(--card-hover); border-radius:3px; overflow:hidden;">
+                        <div style="width:${barWidth}%; height:100%; background:${badgeColor}; border-radius:3px;"></div>
+                    </div>
+                    <span>${s.weight.toFixed(1)}%</span>
+                </div>
+            </td>
+            <td><span style="background:${badgeColor}22; color:${badgeColor}; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">${s.riskLevel}</span></td>
+            <td style="font-size:12px; color:var(--text-dim);">${s.recommendation}</td>
+        </tr>`;
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+}
+
+function renderStressTests(scenarios, totalMV) {
+    const el = document.getElementById('stressTestContainer');
+    if (!el) return;
+    el.innerHTML = scenarios.map((sc, idx) => {
+        const posTable = sc.positions.slice(0, 5).map(p => {
+            const color = p.estimatedLoss < 0 ? '#ef4444' : '#22c55e';
+            return `<tr><td>${p.ticker}</td><td style="text-align:right;">${p.beta.toFixed(2)}</td><td style="text-align:right;">${p.adjustedDrop.toFixed(1)}%</td><td style="text-align:right; color:${color};">${formatMoney(p.estimatedLoss)}</td><td><span style="color:${p.priority === 'HIGH' ? '#ef4444' : p.priority === 'MEDIUM' ? '#f59e0b' : '#22c55e'}; font-size:11px; font-weight:600;">${p.priority}</span></td></tr>`;
+        }).join('');
+        const dropColor = Math.abs(sc.drop) >= 50 ? '#ef4444' : Math.abs(sc.drop) >= 20 ? '#f59e0b' : '#6b7280';
+        return `<div style="background:var(--card-hover); padding:12px 16px; border-radius:10px; margin-bottom:8px; cursor:pointer;" onclick="this.querySelector('.stress-detail').style.display = this.querySelector('.stress-detail').style.display === 'none' ? 'block' : 'none'">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <strong>${sc.name}</strong>
+                    <span style="color:var(--text-dim); font-size:12px; margin-left:8px;">${sc.description}</span>
+                </div>
+                <div style="text-align:right;">
+                    <span style="color:${dropColor}; font-weight:600;">${sc.stressedDropPct.toFixed(1)}%</span>
+                    <span style="color:var(--text-dim); font-size:12px; margin-left:8px;">${formatMoney(sc.totalEstimatedLoss)}</span>
+                </div>
+            </div>
+            <div class="stress-detail" style="display:none; margin-top:12px;">
+                <div style="display:flex; gap:16px; margin-bottom:8px; font-size:13px;">
+                    <span>Market Drop: <strong style="color:${dropColor}">${sc.drop}%</strong></span>
+                    <span>Stressed Value: <strong>${formatMoney(sc.stressedValue)}</strong></span>
+                </div>
+                <table style="width:100%; font-size:0.8rem;"><thead><tr><th>Ticker</th><th style="text-align:right;">Beta</th><th style="text-align:right;">Adj. Drop</th><th style="text-align:right;">Est. Loss</th><th>Priority</th></tr></thead><tbody>${posTable}</tbody></table>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function loadCorrelationMatrix() {
+    const btn = document.getElementById('corrMatrixBtn');
+    const container = document.getElementById('correlationContainer');
+    if (!container) return;
+    btn.disabled = true;
+    btn.textContent = 'Loading...';
+    container.innerHTML = '<p style="color:var(--text-dim); font-size:13px;">Fetching historical prices and computing correlations...</p>';
+
+    try {
+        const resp = await fetch('/api/risk-analysis/correlation');
+        const data = await resp.json();
+        renderCorrelationMatrix(data.tickers, data.matrix);
+    } catch (e) {
+        container.innerHTML = '<p style="color:#ef4444;">Failed to load correlation data.</p>';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Reload Matrix';
+    }
+}
+
+function renderCorrelationMatrix(tickers, matrix) {
+    const el = document.getElementById('correlationContainer');
+    if (!el || !tickers.length || !matrix.length) {
+        if (el) el.innerHTML = '<p style="color:var(--text-dim);">Not enough data for correlation.</p>';
+        return;
+    }
+
+    function corrColor(val) {
+        if (val >= 0.8) return '#ef4444';
+        if (val >= 0.5) return '#f59e0b';
+        if (val >= 0.2) return '#fbbf24';
+        if (val >= -0.2) return '#6b7280';
+        return '#22c55e';
+    }
+
+    let html = '<table style="font-size:0.7rem; border-collapse:collapse;"><thead><tr><th></th>';
+    tickers.forEach(t => { html += `<th style="padding:4px 6px; writing-mode:vertical-rl; text-orientation:mixed; transform:rotate(180deg); font-weight:600;">${t}</th>`; });
+    html += '</tr></thead><tbody>';
+    matrix.forEach((row, i) => {
+        html += `<tr><td style="padding:4px 8px; font-weight:600; white-space:nowrap;">${tickers[i]}</td>`;
+        row.forEach((val, j) => {
+            const bg = i === j ? 'var(--card-hover)' : corrColor(Math.abs(val)) + '33';
+            const color = i === j ? 'var(--text-dim)' : corrColor(Math.abs(val));
+            html += `<td style="padding:4px 6px; text-align:center; background:${bg}; color:${color}; font-weight:500;" title="${tickers[i]} vs ${tickers[j]}: ${val}">${i === j ? '1' : val.toFixed(2)}</td>`;
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+}

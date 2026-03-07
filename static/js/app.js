@@ -222,6 +222,9 @@ function loadTabData(tabId) {
         projections: fetchProjections,
         settingsCategories: fetchSettingsData,
         apiHealth: fetchApiHealth,
+        taxOptimization: fetchTaxOptimization,
+        riskAnalysis: fetchRiskAnalysis,
+        divDeep: fetchDividendDeepDive,
     };
     if (loaders[tabId]) loaders[tabId]();
 }

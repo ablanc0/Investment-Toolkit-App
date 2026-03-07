@@ -190,7 +190,11 @@ async function saveDividendCell(year, month, ticker, value) {
 
 async function fetchMonthlyData() {
     try {
-        const data = await fetch('/api/monthly-data').then(r => r.json());
+        const [data, trackerResp] = await Promise.all([
+            fetch('/api/monthly-data').then(r => r.json()),
+            fetch('/api/monthly-tracker-stats').then(r => r.json()),
+        ]);
+        if (trackerResp.stats) renderMonthlyTrackerStats(trackerResp.stats);
         renderMonthlyData(data.monthlyData || []);
         renderIncomeDistribution(data.incomeDistribution || [], data.years || []);
     } catch(e) { console.error(e); }
@@ -391,20 +395,79 @@ async function saveMonthlyCell(index, field, value) {
     } catch(e) { console.error(e); }
 }
 
+// ── Monthly Tracker Stats ──
+
+function renderMonthlyTrackerStats(stats) {
+    const kpis = document.getElementById('monthlyTrackerKpis');
+    if (!kpis || !stats.summary) return;
+    const s = stats.summary;
+    kpis.innerHTML = `
+        <div class="kpi-card"><div class="kpi-label">Best Month</div><div class="kpi-value positive">${formatPercent(s.bestMonth.return)}</div><div class="kpi-sub">${s.bestMonth.month}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Worst Month</div><div class="kpi-value negative">${formatPercent(s.worstMonth.return)}</div><div class="kpi-sub">${s.worstMonth.month}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Win Rate</div><div class="kpi-value">${s.winRate.toFixed(0)}%</div><div class="kpi-sub">${s.positiveMonths} positive / ${s.negativeMonths} negative</div></div>
+        <div class="kpi-card"><div class="kpi-label">Max Drawdown</div><div class="kpi-value negative">${s.maxDrawdown.toFixed(1)}%</div><div class="kpi-sub">${s.maxDrawdownPeriod || '-'}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Time-Weighted Return</div><div class="kpi-value" style="color:${s.timeWeightedReturn >= 0 ? '#22c55e' : '#ef4444'}">${s.timeWeightedReturn.toFixed(1)}%</div></div>
+        <div class="kpi-card"><div class="kpi-label">Total Contributions</div><div class="kpi-value">${formatMoney(s.totalContributions)}</div></div>
+    `;
+
+    // Monthly returns chart
+    renderMonthlyReturnsChart(stats.monthlyReturns || []);
+}
+
+function renderMonthlyReturnsChart(returns) {
+    const canvas = document.getElementById('monthlyReturnsChart');
+    if (!canvas || !returns.length) return;
+    if (canvas._chart) canvas._chart.destroy();
+    canvas._chart = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: returns.map(r => r.month),
+            datasets: [{
+                label: 'Monthly Return %',
+                data: returns.map(r => r.return),
+                backgroundColor: returns.map(r => r.return >= 0 ? '#22c55e66' : '#ef444466'),
+                borderColor: returns.map(r => r.return >= 0 ? '#22c55e' : '#ef4444'),
+                borderWidth: 1,
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { ticks: { color: '#9ca3af', maxRotation: 45, font: { size: 10 } }, grid: { display: false } },
+                y: { ticks: { callback: v => v + '%', color: '#9ca3af' }, grid: { color: '#ffffff10' } },
+            }
+        }
+    });
+}
+
 // ── Annual Data (Computed from Monthly + Dividend Log) ──
 
 async function fetchAnnualData() {
     try {
-        const data = await fetch('/api/annual-data').then(r => r.json());
-        renderAnnualData(data.annualData || []);
+        const [data, bmResp] = await Promise.all([
+            fetch('/api/annual-data').then(r => r.json()),
+            fetch('/api/portfolio-benchmark').then(r => r.json()),
+        ]);
+        const bmYears = bmResp.benchmark || {};
+        renderAnnualData(data.annualData || [], bmYears);
+        if (bmYears.summary) renderBenchmarkKpis(bmYears.summary);
+        if (bmYears.years) renderBenchmarkChart(bmYears.years);
     } catch(e) { console.error(e); }
 }
 
-function renderAnnualData(items) {
+function renderAnnualData(items, bmData) {
     const tbody = document.getElementById('annualBody');
     if (!tbody) return;
+    // Build alpha lookup from benchmark data
+    const alphaMap = {};
+    if (bmData && bmData.years) {
+        bmData.years.forEach(y => { alphaMap[y.year] = y.alpha; });
+    }
     tbody.innerHTML = items.filter(a => a.portfolioValue > 0 || a.annualContributions > 0 || a.dividendIncome > 0).map(a => {
         const retClass = (a.totalReturnPct || 0) >= 0 ? 'positive' : 'negative';
+        const alpha = alphaMap[String(a.year)];
+        const alphaStr = alpha !== undefined ? `<span style="color:${alpha >= 0 ? '#22c55e' : '#ef4444'}; font-weight:600;">${alpha >= 0 ? '+' : ''}${alpha.toFixed(2)}%</span>` : '—';
         return `<tr>
             <td><strong>${a.year}</strong></td>
             <td style="text-align:right;">${formatMoney(a.portfolioValue)}</td>
@@ -412,8 +475,9 @@ function renderAnnualData(items) {
             <td style="text-align:right; color: #4ade80;">${formatMoney(a.dividendIncome)}</td>
             <td style="text-align:right;" class="${retClass}">${formatMoney(a.totalReturn || 0)}</td>
             <td style="text-align:right;" class="${retClass}">${a.totalReturnPct ? (a.totalReturnPct * 100).toFixed(2) + '%' : '—'}</td>
-            <td style="text-align:right;">${a.dividendYield ? (a.dividendYield * 100).toFixed(2) + '%' : '—'}</td>
             <td style="text-align:right;">${a.sp500YieldPct ? (a.sp500YieldPct * 100).toFixed(1) + '%' : '—'}</td>
+            <td style="text-align:right;">${alphaStr}</td>
+            <td style="text-align:right;">${a.dividendYield ? (a.dividendYield * 100).toFixed(2) + '%' : '—'}</td>
         </tr>`;
     }).join('');
 }

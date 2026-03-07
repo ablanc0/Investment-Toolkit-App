@@ -43,4 +43,7 @@ function populatePerformance() {
             <div style="font-size: 12px; color: var(--text-dim);">${formatPercent(worstDay.dayChangePercent)}</div>
         </div>
     `;
+
+    // Load performance attribution (merged into this tab)
+    if (typeof fetchAttribution === 'function') fetchAttribution();
 }
