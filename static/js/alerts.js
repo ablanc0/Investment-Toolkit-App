@@ -10,27 +10,30 @@ function populateScreening() {
     const oc = _signalThresholds?.avgCost?.overcost ?? 15;
     const filter = document.getElementById('portfolioSignalFilter')?.value || 'all';
 
-    // Compute signals for portfolio positions
+    // Compute signals for portfolio positions — ETFs/Funds get no signal
     const signaled = positions.map(p => {
-        let signal;
-        const ret = p.returnPercent || 0;
-        if (ret <= sb) signal = 'Strong Buy';
-        else if (ret <= buy) signal = 'Buy';
-        else if (ret >= oc) signal = 'Overcost';
-        else signal = 'Hold';
-        return { ...p, signal };
+        const isStock = (p.secType || 'Stocks') === 'Stocks';
+        let signal = null;
+        if (isStock) {
+            const ret = p.returnPercent || 0;
+            if (ret <= sb) signal = 'Strong Buy';
+            else if (ret <= buy) signal = 'Buy';
+            else if (ret >= oc) signal = 'Overcost';
+            else signal = 'Hold';
+        }
+        return { ...p, signal, isStock };
     });
 
-    // Filter
+    // Filter (only applies to stocks with signals)
     let filtered = signaled;
     if (filter !== 'all') {
-        const filterMap = { 'strong-buy': 'Strong Buy', 'buy': 'Buy', 'overcost': 'Overcost', 'overrated': 'Overrated' };
+        const filterMap = { 'strong-buy': 'Strong Buy', 'buy': 'Buy', 'overcost': 'Overcost' };
         filtered = signaled.filter(p => p.signal === filterMap[filter]);
     }
 
-    // Sort: Strong Buy first, then Buy, then Overcost
-    const signalOrder = { 'Strong Buy': 0, 'Buy': 1, 'Overcost': 2, 'Overrated': 3, 'Hold': 4 };
-    filtered.sort((a, b) => (signalOrder[a.signal] || 4) - (signalOrder[b.signal] || 4));
+    // Sort: Strong Buy first, then Buy, then Overcost, then Hold, then N/A (ETFs) last
+    const signalOrder = { 'Strong Buy': 0, 'Buy': 1, 'Overcost': 2, 'Hold': 3 };
+    filtered.sort((a, b) => (signalOrder[a.signal] ?? 9) - (signalOrder[b.signal] ?? 9));
 
     // Portfolio signals table
     document.getElementById('portfolioSignalsBody').innerHTML = filtered.length > 0 ?
@@ -40,25 +43,41 @@ function populateScreening() {
                 <td>${formatMoney(p.price)}</td>
                 <td>${formatMoney(p.avgCost)}</td>
                 <td class="${(p.returnPercent || 0) >= 0 ? 'positive' : 'negative'}">${formatPercent(p.returnPercent)}</td>
-                <td>${p.intrinsicValue ? formatMoney(p.intrinsicValue) : '—'}</td>
-                <td class="${(p.distance || 0) <= 0 ? 'positive' : 'negative'}">${p.distance != null ? formatPercent(p.distance) : '—'}</td>
-                <td>${getSignalBadge(p.signal)}</td>
+                <td>${p.isStock ? getSignalBadge(p.signal) : '<span style="color: var(--text-dim);">—</span>'}</td>
                 <td>${p.invtScore ? '<span style="color:' + _invtScoreColor(p.invtScore) + ';font-weight:600">' + Number(p.invtScore).toFixed(1) + '</span>' : '—'}</td>
                 <td>${p.category || '—'}</td>
             </tr>
         `).join('') :
-        '<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:24px;">No signals matching filter</td></tr>';
+        '<tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:24px;">No signals matching filter</td></tr>';
 
-    // Watchlist opportunities - compute signals from distance (same logic as watchlist.js)
+    // Portfolio panel summary
+    const stocks = signaled.filter(p => p.isStock);
+    const sbCount = stocks.filter(p => p.signal === 'Strong Buy').length;
+    const buyCount = stocks.filter(p => p.signal === 'Buy').length;
+    const ocCount = stocks.filter(p => p.signal === 'Overcost').length;
+    const holdCount = stocks.filter(p => p.signal === 'Hold').length;
+    const etfCount = signaled.filter(p => !p.isStock).length;
+    document.getElementById('portfolioSignalsSummary').innerHTML = [
+        sbCount > 0 ? `<span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#4ade8020;color:#4ade80;">${sbCount} Strong Buy</span>` : '',
+        buyCount > 0 ? `<span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#22d3ee20;color:#22d3ee;">${buyCount} Buy</span>` : '',
+        ocCount > 0 ? `<span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#f8717120;color:#f87171;">${ocCount} Overcost</span>` : '',
+        holdCount > 0 ? `<span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#6b728020;color:#9ca3af;">${holdCount} Hold</span>` : '',
+        etfCount > 0 ? `<span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#6b728020;color:#9ca3af;">${etfCount} ETF/Fund</span>` : '',
+    ].filter(Boolean).join('');
+
+    // Watchlist opportunities — ETFs inferred by missing IV
     const wlSignaled = watchlist.map(item => {
+        const hasIV = item.intrinsicValue && item.intrinsicValue > 0;
         const distance = item.distance || 0;
-        let signal;
-        if (distance < -5) signal = 'Strong Buy';
-        else if (distance < 0) signal = 'Buy';
-        else if (distance > 50) signal = 'Overrated';
-        else if (distance > 20) signal = 'Expensive';
-        else signal = 'Hold';
-        return { ...item, signal };
+        let signal = null;
+        if (hasIV) {
+            if (distance < -5) signal = 'Strong Buy';
+            else if (distance < 0) signal = 'Buy';
+            else if (distance > 50) signal = 'Overrated';
+            else if (distance > 20) signal = 'Expensive';
+            else signal = 'Hold';
+        }
+        return { ...item, signal, hasIV };
     }).sort((a, b) => (a.distance || 0) - (b.distance || 0));
 
     document.getElementById('watchlistSignalsBody').innerHTML = wlSignaled.length > 0 ?
@@ -66,9 +85,9 @@ function populateScreening() {
             <tr>
                 <td><strong>${item.ticker}</strong></td>
                 <td>${formatMoney(item.price)}</td>
-                <td>${item.intrinsicValue ? formatMoney(item.intrinsicValue) : '—'}</td>
-                <td class="${(item.distance || 0) <= 0 ? 'positive' : 'negative'}">${formatPercent(item.distance)}</td>
-                <td>${getSignalBadge(item.signal)}</td>
+                <td>${item.intrinsicValue ? formatMoney(item.intrinsicValue) : '<span style="color:var(--text-dim);">—</span>'}</td>
+                <td class="${(item.distance || 0) <= 0 ? 'positive' : 'negative'}">${item.hasIV ? formatPercent(item.distance) : '<span style="color:var(--text-dim);">—</span>'}</td>
+                <td>${item.hasIV ? getSignalBadge(item.signal) : '<span style="color: var(--text-dim);">—</span>'}</td>
                 <td>${item.invtScore ? '<span style="color:' + _invtScoreColor(item.invtScore) + ';font-weight:600">' + Number(item.invtScore).toFixed(1) + '</span>' : '—'}</td>
                 <td>${item.divYield ? item.divYield.toFixed(2) + '%' : '—'}</td>
                 <td>${item.sector || '—'}</td>
@@ -77,23 +96,19 @@ function populateScreening() {
         `).join('') :
         '<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:24px;">No watchlist items</td></tr>';
 
-    // KPI summary
-    const strongBuyCount = signaled.filter(p => p.signal === 'Strong Buy').length;
-    const overcostCount = signaled.filter(p => p.signal === 'Overcost').length;
-    const wlOpportunities = wlSignaled.filter(w => w.signal === 'Strong Buy' || w.signal === 'Buy').length;
-    document.getElementById('screeningKpis').innerHTML = [
-        { label: '🟢 Strong Buy', value: strongBuyCount, sub: 'Portfolio positions' },
-        { label: '🔴 Overcost', value: overcostCount, sub: 'Portfolio positions' },
-        { label: '🔍 WL Opportunities', value: wlOpportunities, sub: 'Watchlist buys' },
-        { label: '📋 Total Watchlist', value: watchlist.length, sub: 'Items tracked' },
-    ].map(kpi => `
-        <div class="kpi-card">
-            <div class="kpi-emoji">${kpi.label.split(' ')[0]}</div>
-            <div class="kpi-label">${kpi.label.split(' ').slice(1).join(' ')}</div>
-            <div class="kpi-value">${kpi.value}</div>
-            <div class="kpi-sub">${kpi.sub}</div>
-        </div>
-    `).join('');
+    // Watchlist panel summary
+    const wlWithIV = wlSignaled.filter(w => w.hasIV);
+    const wlSB = wlWithIV.filter(w => w.signal === 'Strong Buy').length;
+    const wlBuy = wlWithIV.filter(w => w.signal === 'Buy').length;
+    const wlExp = wlWithIV.filter(w => w.signal === 'Expensive' || w.signal === 'Overrated').length;
+    const wlNoIV = wlSignaled.filter(w => !w.hasIV).length;
+    document.getElementById('watchlistSignalsSummary').innerHTML = [
+        wlSB > 0 ? `<span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#4ade8020;color:#4ade80;">${wlSB} Strong Buy</span>` : '',
+        wlBuy > 0 ? `<span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#22d3ee20;color:#22d3ee;">${wlBuy} Buy</span>` : '',
+        wlExp > 0 ? `<span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#f59e0b20;color:#f59e0b;">${wlExp} Expensive</span>` : '',
+        `<span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#6b728020;color:#9ca3af;">${watchlist.length} Total</span>`,
+        wlNoIV > 0 ? `<span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#6b728020;color:#9ca3af;">${wlNoIV} No IV</span>` : '',
+    ].filter(Boolean).join('');
 }
 
 // ── Notes & Goals ──
@@ -101,6 +116,7 @@ function populateScreening() {
 function populateNotesGoals() {
     renderStrategyNotes();
     renderGoalTracker();
+    renderIncomeGoals();
 }
 
 function renderStrategyNotes() {
@@ -295,6 +311,47 @@ function renderGoalTracker() {
             </div>
         `;
     }).join('');
+}
+
+function renderIncomeGoals() {
+    const container = document.getElementById('incomeGoalsContainer');
+    if (!container) return;
+
+    const annualIncome = portfolioData?.summary?.annualDivIncome || 0;
+
+    const milestones = [
+        { label: '$1 a day', target: 365 },
+        { label: '$50 a month', target: 600 },
+        { label: '$100 a month', target: 1200 },
+        { label: '$5 a day', target: 1825 },
+        { label: '$200 a month', target: 2400 },
+        { label: '$500 a month', target: 6000 },
+        { label: '$1,000 a month', target: 12000 },
+        { label: '$2,000 a month', target: 24000 },
+    ];
+
+    container.innerHTML = `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;">
+        ${milestones.map(m => {
+            const progress = Math.min((annualIncome / m.target) * 100, 100);
+            const achieved = progress >= 100;
+            const progressColor = achieved ? '#22c55e' : progress >= 50 ? '#f59e0b' : '#ef4444';
+            return `
+                <div style="padding: 14px; background: var(--card-hover); border-radius: 8px; border-left: 3px solid ${progressColor};">
+                    <div style="font-weight: 600; font-size: 14px; margin-bottom: 6px;">${m.label}</div>
+                    <div style="font-size: 13px; margin-bottom: 8px;">
+                        ${achieved
+                            ? '<span style="color: #22c55e; font-weight: 600;">Achieved</span>'
+                            : `<span style="color: ${progressColor}; font-weight: 600;">In Progress: ${progress.toFixed(0)}%</span>`
+                        }
+                    </div>
+                    <div style="background: var(--bg); border-radius: 4px; height: 6px; overflow: hidden;">
+                        <div style="width: ${progress}%; height: 100%; background: ${progressColor}; border-radius: 4px; transition: width 0.5s ease;"></div>
+                    </div>
+                    <div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">${formatMoney(annualIncome)} / ${formatMoney(m.target)} per year</div>
+                </div>
+            `;
+        }).join('')}
+    </div>`;
 }
 
 async function editGoalTarget(element, key, currentValue) {

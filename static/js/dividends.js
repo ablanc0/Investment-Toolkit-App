@@ -3,27 +3,20 @@
 function populateDividends() {
     if (!dividendData) return;
 
-    const summary = portfolioData.summary || {};
+    const summary = portfolioData?.summary || {};
+    const positions = portfolioData?.positions || [];
     const annualEstimate = dividendData.annualEstimate || 0;
     const marketValue = summary.totalMarketValue || 1;
     const yield_ = (annualEstimate / marketValue) * 100;
 
+    // 6 KPI cards
     const kpis = [
-        {
-            label: '💰 Annual Income',
-            value: formatMoney(annualEstimate),
-            sub: 'Estimated yearly'
-        },
-        {
-            label: '📦 Total Received',
-            value: formatMoney(dividendData.totalReceived || 0),
-            sub: 'All time'
-        },
-        {
-            label: '📊 Dividend Yield',
-            value: formatPercent(yield_),
-            sub: 'vs market value'
-        }
+        { label: '💰 Annual Income', value: formatMoney(annualEstimate), sub: 'Estimated yearly' },
+        { label: '📦 Total Received', value: formatMoney(dividendData.totalReceived || 0), sub: 'All time' },
+        { label: '📊 Dividend Yield', value: formatPercent(yield_), sub: 'vs market value' },
+        { label: '🎯 Yield on Cost', value: formatPercent(summary.portfolioYOC || 0), sub: 'vs cost basis' },
+        { label: '🗓️ Monthly Income', value: formatMoney(summary.monthlyDivIncome || 0), sub: 'Expected per month' },
+        { label: '⏰ Daily Income', value: formatMoney(summary.dailyDivIncome || 0), sub: 'Expected per day' },
     ];
 
     const kpiGrid = document.getElementById('dividendKpis');
@@ -36,13 +29,136 @@ function populateDividends() {
         </div>
     `).join('');
 
-    if (dividendData.monthlyTotals) {
-        createMonthlyDividendChart(dividendData.monthlyTotals);
-    }
+    // Income Rank — Top 5 and Bottom 5 by totalDivsReceived
+    renderIncomeRank(positions, dividendData.totalReceived || summary.lifetimeDivsReceived || 0);
 
-    if (dividendData.byHolding) {
-        createHoldingDividendChart(dividendData.byHolding);
+    // Charts
+    if (dividendData.monthlyTotals) createMonthlyDividendChart(dividendData.monthlyTotals);
+    if (dividendData.byHolding) createHoldingDividendChart(dividendData.byHolding);
+
+    // New charts
+    renderDivYieldChart(positions);
+    renderIncomeDistChart(positions);
+}
+
+function renderIncomeRank(positions, totalReceived) {
+    const withDivs = positions
+        .filter(p => (p.totalDivsReceived || 0) > 0)
+        .sort((a, b) => (b.totalDivsReceived || 0) - (a.totalDivsReceived || 0));
+
+    const top5 = withDivs.slice(0, 5);
+    const bottom5 = withDivs.slice(-5).reverse();
+    const topTotal = top5.reduce((s, p) => s + (p.totalDivsReceived || 0), 0);
+    const bottomTotal = bottom5.reduce((s, p) => s + (p.totalDivsReceived || 0), 0);
+    const total = totalReceived || withDivs.reduce((s, p) => s + (p.totalDivsReceived || 0), 0) || 1;
+
+    const renderList = (items, container) => {
+        const el = document.getElementById(container);
+        if (!el) return;
+        el.innerHTML = items.length > 0 ? `
+            ${items.map((p, i) => `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border);">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="color: var(--text-dim); font-size: 12px; width: 24px;">${i + 1}${i === 0 ? 'st' : i === 1 ? 'nd' : i === 2 ? 'rd' : 'th'}</span>
+                        <strong>${p.ticker}</strong>
+                    </div>
+                    <span style="font-weight: 600;">${formatMoney(p.totalDivsReceived)}</span>
+                </div>
+            `).join('')}
+        ` : '<p style="color: var(--text-dim);">No dividend data</p>';
+    };
+
+    renderList(top5, 'topDivPayers');
+    renderList(bottom5, 'bottomDivPayers');
+
+    // Add percentage footer
+    const topEl = document.getElementById('topDivPayers');
+    if (topEl && top5.length > 0) {
+        topEl.innerHTML += `<div style="margin-top: 8px; padding-top: 8px; border-top: 2px solid var(--border); font-size: 13px; color: var(--text-dim);">Percent of Total Income: <strong style="color: var(--text);">${((topTotal / total) * 100).toFixed(2)}%</strong></div>`;
     }
+    const bottomEl = document.getElementById('bottomDivPayers');
+    if (bottomEl && bottom5.length > 0) {
+        bottomEl.innerHTML += `<div style="margin-top: 8px; padding-top: 8px; border-top: 2px solid var(--border); font-size: 13px; color: var(--text-dim);">Percent of Total Income: <strong style="color: var(--text);">${((bottomTotal / total) * 100).toFixed(2)}%</strong></div>`;
+    }
+}
+
+function renderDivYieldChart(positions) {
+    const ctx = document.getElementById('divYieldChart');
+    if (!ctx) return;
+    const withYield = positions
+        .filter(p => (p.divYield || 0) > 0)
+        .sort((a, b) => (b.divYield || 0) - (a.divYield || 0))
+        .slice(0, 10);
+
+    if (withYield.length === 0) return;
+
+    if (charts.divYield) charts.divYield.destroy();
+    charts.divYield = new Chart(ctx.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: withYield.map(p => p.ticker),
+            datasets: [{
+                label: 'Div Yield %',
+                data: withYield.map(p => p.divYield || 0),
+                backgroundColor: withYield.map((_, i) => {
+                    const colors = ['#4ade80', '#22d3ee', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#f97316', '#6366f1'];
+                    return colors[i % colors.length];
+                }),
+                borderRadius: 4,
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { ticks: { color: getChartTextColor(), callback: v => v + '%' }, grid: { color: getChartGridColor() } },
+                y: { ticks: { color: getChartTextColor() }, grid: { display: false } }
+            }
+        }
+    });
+}
+
+function renderIncomeDistChart(positions) {
+    const ctx = document.getElementById('incomeDistChart');
+    if (!ctx) return;
+    const withIncome = positions
+        .filter(p => (p.annualDivIncome || 0) > 0)
+        .sort((a, b) => (b.annualDivIncome || 0) - (a.annualDivIncome || 0))
+        .slice(0, 10);
+
+    if (withIncome.length === 0) return;
+
+    const colors = ['#4ade80', '#22d3ee', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#f97316', '#6366f1'];
+
+    if (charts.incomeDist) charts.incomeDist.destroy();
+    charts.incomeDist = new Chart(ctx.getContext('2d'), {
+        type: 'doughnut',
+        data: {
+            labels: withIncome.map(p => p.ticker),
+            datasets: [{
+                data: withIncome.map(p => p.annualDivIncome || 0),
+                backgroundColor: withIncome.map((_, i) => colors[i % colors.length]),
+                borderWidth: 0,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                    labels: { color: getChartTextColor(), padding: 8, font: { size: 11 } }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => `${ctx.label}: $${ctx.raw.toFixed(2)} (${((ctx.raw / withIncome.reduce((s, p) => s + (p.annualDivIncome || 0), 0)) * 100).toFixed(1)}%)`
+                    }
+                }
+            }
+        }
+    });
 }
 
 // ── Dividend Log (Calendar Matrix with Collapsible Years) ──
