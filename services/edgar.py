@@ -3,6 +3,8 @@ InvToolkit — SEC EDGAR XBRL company-facts helpers.
 Fetches and translates XBRL data into unified info/financials dicts.
 """
 
+import time
+
 import requests as http_requests
 
 from config import EDGAR_USER_AGENT, EDGAR_FACTS_URL, EDGAR_TICKERS_URL
@@ -42,10 +44,12 @@ def _get_cik(ticker):
 def _fetch_edgar_facts(ticker):
     """Fetch ALL XBRL data from SEC EDGAR companyfacts (1 call, ~3-7MB).
     Returns the 'facts' sub-dict or None on failure."""
+    from services.api_health import record_api_call
     cik = _get_cik(ticker)
     if not cik:
         print(f"[EDGAR] No CIK found for {ticker}")
         return None
+    start = time.time()
     try:
         url = EDGAR_FACTS_URL.format(cik=cik)
         r = http_requests.get(
@@ -53,12 +57,17 @@ def _fetch_edgar_facts(ticker):
             headers={"User-Agent": EDGAR_USER_AGENT},
             timeout=20,
         )
+        latency = int((time.time() - start) * 1000)
         if r.status_code != 200:
             print(f"[EDGAR] HTTP {r.status_code} for {ticker} (CIK {cik})")
+            record_api_call("edgar", success=False, latency_ms=latency, error_msg=f"HTTP {r.status_code}")
             return None
+        record_api_call("edgar", success=True, latency_ms=latency)
         return r.json().get("facts")
     except Exception as e:
+        latency = int((time.time() - start) * 1000)
         print(f"[EDGAR] Request failed for {ticker}: {e}")
+        record_api_call("edgar", success=False, latency_ms=latency, error_msg=str(e)[:80])
         return None
 
 

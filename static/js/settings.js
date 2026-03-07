@@ -531,3 +531,79 @@ async function saveApiKeys() {
         showAlert('Failed to save API key', 'error');
     }
 }
+
+// ── API Health ──────────────────────────────────────────────────
+
+async function fetchApiHealth() {
+    try {
+        const resp = await fetch('/api/health');
+        const data = await resp.json();
+        renderApiHealthTable(data);
+    } catch (e) {
+        console.error('Error fetching API health:', e);
+    }
+}
+
+function renderApiHealthTable(data) {
+    const container = document.getElementById('apiHealthTable');
+    if (!container) return;
+
+    const apis = [
+        { key: 'fmp', name: 'FMP (Financial Modeling Prep) — 250 calls/day', icon: '📈' },
+        { key: 'yfinance', name: 'Yahoo Finance', icon: '📊' },
+        { key: 'fred', name: 'FRED (AAA Bond Yield)', icon: '🏛' },
+        { key: 'edgar', name: 'SEC EDGAR', icon: '📋' },
+    ];
+
+    const dotColor = (status) => {
+        const colors = { ok: '#22c55e', degraded: '#f59e0b', error: '#ef4444', unknown: '#6b7280' };
+        return colors[status] || colors.unknown;
+    };
+
+    let html = '<table style="width:100%; border-collapse:collapse; font-size:13px;">';
+    html += '<thead><tr>';
+    html += '<th style="text-align:left; padding:8px; border-bottom:2px solid var(--border); font-weight:600; font-size:12px; text-transform:uppercase;">API</th>';
+    html += '<th style="text-align:center; padding:8px; border-bottom:2px solid var(--border); font-weight:600; font-size:12px; text-transform:uppercase;">Status</th>';
+    html += '<th style="text-align:right; padding:8px; border-bottom:2px solid var(--border); font-weight:600; font-size:12px; text-transform:uppercase;">Latency</th>';
+    html += '<th style="text-align:right; padding:8px; border-bottom:2px solid var(--border); font-weight:600; font-size:12px; text-transform:uppercase;">Last Success</th>';
+    html += '</tr></thead><tbody>';
+
+    for (const api of apis) {
+        const h = (data.apis || {})[api.key] || {};
+        const latency = h.latencyMs != null ? h.latencyMs + 'ms' : '—';
+        const lastSuccess = h.lastSuccess ? new Date(h.lastSuccess).toLocaleTimeString() : 'Never';
+        const color = dotColor(h.status);
+        html += '<tr>';
+        html += `<td style="padding:8px; border-bottom:1px solid var(--border);">${api.icon} ${api.name}</td>`;
+        html += `<td style="padding:8px; text-align:center; border-bottom:1px solid var(--border);"><span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${color}; margin-right:6px; vertical-align:middle;"></span><span style="font-size:12px; color:${color}; text-transform:uppercase;">${h.status || 'unknown'}</span></td>`;
+        html += `<td style="padding:8px; text-align:right; border-bottom:1px solid var(--border); color:var(--text-dim);">${latency}</td>`;
+        html += `<td style="padding:8px; text-align:right; border-bottom:1px solid var(--border); color:var(--text-dim);">${lastSuccess}</td>`;
+        html += '</tr>';
+        if (h.lastErrorMsg) {
+            html += `<tr><td colspan="4" style="padding:2px 8px 8px 32px; font-size:11px; color:#ef4444; border-bottom:1px solid var(--border);">Last error: ${h.lastErrorMsg}</td></tr>`;
+        }
+    }
+    html += '</tbody></table>';
+
+    container.innerHTML = html;
+    updateHealthBadge(data);
+}
+
+async function runHealthCheck() {
+    const btn = document.getElementById('healthCheckBtn');
+    const status = document.getElementById('healthCheckStatus');
+    btn.disabled = true;
+    status.textContent = 'Checking...';
+    status.style.color = 'var(--gold)';
+    try {
+        const resp = await fetch('/api/health/check', { method: 'POST' });
+        const data = await resp.json();
+        renderApiHealthTable(data);
+        status.textContent = 'Done — ' + new Date().toLocaleTimeString();
+        status.style.color = 'var(--green)';
+    } catch (e) {
+        status.textContent = 'Error running health check';
+        status.style.color = 'var(--red)';
+    }
+    btn.disabled = false;
+}

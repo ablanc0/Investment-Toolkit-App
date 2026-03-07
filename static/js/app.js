@@ -73,6 +73,29 @@ function toggleTheme() {
     if (btn) btn.textContent = next === 'dark' ? '\u{1F319}' : '\u{2600}\u{FE0F}';
 }
 
+// ── API Health Badge ─────────────────────────────────────────────
+function updateHealthBadge(data) {
+    const dot = document.getElementById('apiHealthDot');
+    const text = document.getElementById('apiHealthText');
+    if (!dot || !text) return;
+    const statuses = Object.values(data.apis || {}).map(a => a.status);
+    const okCount = statuses.filter(s => s === 'ok').length;
+    if (statuses.every(s => s === 'ok')) {
+        dot.style.background = '#22c55e';
+        text.textContent = 'APIS OK';
+        text.style.color = '#22c55e';
+    } else if (statuses.some(s => s === 'error')) {
+        const errCount = statuses.filter(s => s === 'error').length;
+        dot.style.background = '#ef4444';
+        text.textContent = `APIS ${okCount}/${statuses.length}`;
+        text.style.color = '#ef4444';
+    } else {
+        dot.style.background = '#6b7280';
+        text.textContent = 'APIS';
+        text.style.color = '';
+    }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     setupTabNavigation();
@@ -87,6 +110,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const input = document.getElementById('analyzerTicker');
         if (input) { input.value = lastTicker; analyzeStock(false); }
     }
+    // Auto health check on startup
+    fetch('/api/health/check', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => updateHealthBadge(data))
+        .catch(() => {});
 });
 
 // Two-Level Navigation
@@ -193,6 +221,7 @@ function loadTabData(tabId) {
         costOfLiving: fetchCostOfLiving,
         projections: fetchProjections,
         settingsCategories: fetchSettingsData,
+        apiHealth: fetchApiHealth,
     };
     if (loaders[tabId]) loaders[tabId]();
 }

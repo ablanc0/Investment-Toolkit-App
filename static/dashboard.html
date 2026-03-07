@@ -28,6 +28,10 @@
             <button id="themeToggle" onclick="toggleTheme()" title="Toggle theme"
                     style="background:none; border:1px solid var(--border); border-radius:6px; cursor:pointer; font-size:16px; padding:4px 8px; color:var(--text-dim);">🌙</button>
             <button class="refresh-btn" id="refreshBtn">🔄 Refresh</button>
+            <div class="status-badge" id="apiHealthBadge" onclick="switchTab('apiHealth')" style="cursor:pointer;" title="API Health — click for details">
+                <div class="status-dot" id="apiHealthDot"></div>
+                <span id="apiHealthText">APIS</span>
+            </div>
             <button class="refresh-btn" id="settingsBtn" title="Settings" onclick="switchTab('settingsCategories')">⚙</button>
             <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
                 <div class="timestamp">
@@ -825,6 +829,20 @@
                     <span id="simScenarioStatus" style="font-size: 0.85rem;"></span>
                 </div>
                 <div id="simDetailTable"></div>
+            </div>
+        </div>
+        <!-- API Health Tab -->
+        <div class="tab-content" id="apiHealth">
+            <div class="card" style="margin-bottom: 16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                    <div class="card-title" style="margin-bottom:0;">🏥 API Health</div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <span id="healthCheckStatus" style="font-size:12px; color:var(--text-dim);"></span>
+                        <button class="add-row-btn" onclick="runHealthCheck()" id="healthCheckBtn">🔍 Run Health Check</button>
+                    </div>
+                </div>
+                <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 16px;">Status of external data sources. Health is checked automatically on startup.</p>
+                <div id="apiHealthTable"></div>
             </div>
         </div>
         <!-- Settings: Categories Tab -->
