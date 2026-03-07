@@ -59,20 +59,29 @@ function renderRiskKpis(m, mkt) {
     const fDec = v => v.toFixed(2);
 
     var sortinoColor = m.sortinoRatio >= 2 ? '#22c55e' : m.sortinoRatio >= 1 ? '#f59e0b' : '#ef4444';
+    var betaColor = m.portfolioBeta <= 0.9 ? '#22c55e' : m.portfolioBeta <= 1.1 ? '#f59e0b' : '#ef4444';
     var betaLabel = m.portfolioBeta > 1.1 ? 'More volatile than market' : m.portfolioBeta < 0.9 ? 'Less volatile' : 'Near market';
+    var volColor = m.annualizedVolatility <= 12 ? '#22c55e' : m.annualizedVolatility <= 20 ? '#f59e0b' : '#ef4444';
 
     el.innerHTML = `
         <div class="kpi-card"><div class="kpi-label">TWR</div><div class="kpi-value" style="color:${m.twr >= 0 ? '#22c55e' : '#ef4444'}">${m.twr.toFixed(1)}%</div><div class="kpi-sub">Total return over ${m.monthCount} months, adjusted for contributions</div>${mktSub('S&P', mkt && mkt.twr, fPct)}</div>
         <div class="kpi-card"><div class="kpi-label">Annualized Return</div><div class="kpi-value" style="color:${m.annualizedReturn >= 0 ? '#22c55e' : '#ef4444'}">${m.annualizedReturn.toFixed(1)}%</div><div class="kpi-sub">Yearly equivalent of cumulative TWR</div>${mktSub('S&P', mkt && mkt.annualizedReturn, fPct)}</div>
         <div class="kpi-card"><div class="kpi-label">Sharpe Ratio</div><div class="kpi-value" style="color:${sharpeColor}">${m.sharpeRatio.toFixed(2)}</div><div class="kpi-sub">Return per unit of total risk. &gt;1 good, &gt;2 great</div>${mktSub('S&P', mkt && mkt.sharpeRatio, fDec)}</div>
         <div class="kpi-card"><div class="kpi-label">Sortino Ratio</div><div class="kpi-value" style="color:${sortinoColor}">${m.sortinoRatio.toFixed(2)}</div><div class="kpi-sub">Like Sharpe but only penalizes losses. &gt;2 good</div>${mktSub('S&P', mkt && mkt.sortinoRatio, fDec)}</div>
-        <div class="kpi-card"><div class="kpi-label">Portfolio Beta</div><div class="kpi-value">${m.portfolioBeta.toFixed(2)}</div><div class="kpi-sub">${betaLabel}. 1.0 = moves with S&P 500</div></div>
-        <div class="kpi-card"><div class="kpi-label">Annualized Volatility</div><div class="kpi-value">${m.annualizedVolatility.toFixed(1)}%</div><div class="kpi-sub">How much returns swing. Lower = smoother ride</div>${mktSub('S&P', mkt && mkt.annualizedVolatility, fPct)}</div>
+        <div class="kpi-card"><div class="kpi-label">Portfolio Beta</div><div class="kpi-value" style="color:${betaColor}">${m.portfolioBeta.toFixed(2)}</div><div class="kpi-sub">${betaLabel}. 1.0 = moves with S&P 500</div></div>
+        <div class="kpi-card"><div class="kpi-label">Annualized Volatility</div><div class="kpi-value" style="color:${volColor}">${m.annualizedVolatility.toFixed(1)}%</div><div class="kpi-sub">How much returns swing. Lower = smoother ride</div>${mktSub('S&P', mkt && mkt.annualizedVolatility, fPct)}</div>
         <div class="kpi-card"><div class="kpi-label">Max Drawdown</div><div class="kpi-value" style="color:${ddColor}">${m.maxDrawdown.toFixed(1)}%</div><div class="kpi-sub">Largest peak-to-trough drop. ${m.maxDrawdownPeriod || '-'}</div>${mktSub('S&P', mkt && mkt.maxDrawdown, fPct)}</div>
     `;
     let disc = document.getElementById('riskKpisDisclaimer');
     if (!disc) {
-        el.insertAdjacentHTML('afterend', '<p id="riskKpisDisclaimer" style="color:var(--text-dim); font-size:11px; margin-top:8px; font-style:italic;">Approximate — based on monthly snapshots with simplified contribution adjustments. Ratios may differ from tools using daily TWR.</p>');
+        el.insertAdjacentHTML('afterend', '<div id="riskKpisDisclaimer" style="color:var(--text-dim); font-size:11px; margin-top:8px;">'
+            + '<div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:4px;">'
+            + '<span><span style="color:#22c55e; font-weight:600;">Green</span> = healthy</span>'
+            + '<span><span style="color:#f59e0b; font-weight:600;">Amber</span> = moderate / watch</span>'
+            + '<span><span style="color:#ef4444; font-weight:600;">Red</span> = elevated risk</span>'
+            + '</div>'
+            + '<span style="font-style:italic;">Approximate — based on monthly snapshots with simplified contribution adjustments. Ratios may differ from tools using daily TWR.</span>'
+            + '</div>');
     }
 }
 
