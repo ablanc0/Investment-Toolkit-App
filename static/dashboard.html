@@ -248,7 +248,8 @@
             </div>
 
             <!-- Performance Attribution (merged from Analytics) -->
-            <h3 style="color: var(--text-dim); margin: 24px 0 12px 0; font-size: 15px; text-transform: uppercase; letter-spacing: 1px;">Performance Attribution</h3>
+            <h3 style="color: var(--text-dim); margin: 24px 0 4px 0; font-size: 15px; text-transform: uppercase; letter-spacing: 1px;">Performance Attribution</h3>
+            <p style="color:var(--text-dim); font-size:12px; margin:0 0 12px 0;">Which categories and sectors are driving your returns. Positive contribution means that group is helping your portfolio; negative means it's dragging it down.</p>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                 <div class="card">
                     <div class="card-title">Returns by Category</div>
@@ -415,6 +416,7 @@
                 <div class="card">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                         <div class="card-title" style="margin-bottom: 0;">💼 Portfolio Signals</div>
+                        <p style="color:var(--text-dim); font-size:11px; margin:4px 0 0 0;">Signals based on price vs intrinsic value and average cost. Strong Buy = undervalued, Buy = near fair value, Expensive = overvalued, Overrated = well above IV.</p>
                         <select id="portfolioSignalFilter" onchange="populateScreening()" style="padding: 6px 12px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 13px;">
                             <option value="all">All Signals</option>
                             <option value="strong-buy">Strong Buy</option>
@@ -520,6 +522,7 @@
             <div class="kpi-grid" id="benchmarkKpis" style="margin-bottom: 16px;"></div>
             <div class="card" style="margin-bottom: 16px;">
                 <div class="card-title">Portfolio vs S&P 500</div>
+                <p style="color:var(--text-dim); font-size:12px; margin:0 0 8px 0;">Your portfolio total return compared to the S&P 500 benchmark. Alpha is the excess return above the market — positive means you're beating it.</p>
                 <div><canvas id="benchmarkChart" style="max-height: 300px;"></canvas></div>
             </div>
             <div class="card">
@@ -586,6 +589,7 @@
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
                     <div class="card-title" style="margin-bottom: 0;">💎 Intrinsic Values List</div>
+                    <p style="color:var(--text-dim); font-size:11px; margin:4px 0 0 0;">Fair value estimates from DCF, Graham, and relative valuation models. Distance shows how far the current price is from your estimated intrinsic value.</p>
                     <div id="ivKpis" style="display: flex; gap: 16px; font-size: 0.85rem;"></div>
                 </div>
                 <div class="table-wrapper"><table style="font-size: 0.82rem;">
@@ -604,6 +608,7 @@
             <div class="card" style="margin-bottom: 24px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
                     <div class="card-title" style="margin-bottom: 0;">Super Investor 13F Holdings</div>
+                    <p style="color:var(--text-dim); font-size:11px; margin:4px 0 0 0;">13F filings are quarterly SEC reports showing what institutional investors hold. Track what top fund managers are buying and selling.</p>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <select id="siInvestorSelect" onchange="fetch13F(this.value)" style="padding: 6px 12px; background: var(--card-hover); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem;">
                             <option value="">Select Investor...</option>
@@ -645,6 +650,7 @@
         <div class="tab-content" id="projections">
             <div class="card">
                 <div class="card-title">Portfolio Projections</div>
+                <p style="color:var(--text-dim); font-size:12px; margin:0 0 8px 0;">Compound growth projections under three scenarios: Base (expected return), Bull (+2%), and Bear (-2%). Assumes consistent monthly contributions and dividend reinvestment.</p>
                 <!-- KPI Cards -->
                 <div id="projKpis" class="kpi-grid" style="margin-bottom: 18px;"></div>
                 <!-- Input Panel -->
@@ -793,6 +799,7 @@
             <!-- FIRE Calculator -->
             <div class="card">
                 <div class="card-title">💰 Rule 4% - FIRE Calculator</div>
+                <p style="color:var(--text-dim); font-size:12px; margin:0 0 8px 0;">Tests whether your portfolio can sustain withdrawals through retirement. Success rate = % of historical 30-year periods where you didn't run out of money. Higher is safer.</p>
                 <div class="fire-calculator">
                     <div class="fire-inputs">
                         <div class="form-group">
@@ -1082,6 +1089,7 @@
             <div class="kpi-grid" id="taxKpis"></div>
             <div class="card" style="margin-top: 16px;">
                 <div class="card-title">Tax Loss Harvesting Analysis</div>
+                <p style="color:var(--text-dim); font-size:12px; margin:0 0 8px 0;">Positions with unrealized losses you could sell to offset capital gains and reduce your tax bill. Long-term (held >1 year) is taxed at 15%; short-term at your income rate.</p>
                 <div class="table-wrapper">
                     <table style="font-size: 0.82rem;">
                         <thead><tr>
@@ -1134,6 +1142,7 @@
             <div class="kpi-grid" id="divDeepKpis"></div>
             <div class="card" style="margin-top: 16px;">
                 <div class="card-title">Dividend Deep Dive</div>
+                <p style="color:var(--text-dim); font-size:12px; margin:0 0 8px 0;">Per-position dividend analysis. Yield on Cost (YoC) = dividend relative to what you paid, not current price. Safety rates payout sustainability. Kings have 50+ years of consecutive increases, Aristocrats 25+.</p>
                 <div class="table-wrapper">
                     <table style="font-size: 0.82rem;">
                         <thead><tr>

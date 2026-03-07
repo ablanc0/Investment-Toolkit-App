@@ -702,6 +702,7 @@ function renderInvtScore(data) {
 
     // Section 1: Hero Banner
     let html = `
+    <p style="color:var(--text-dim); font-size:12px; margin:0 0 16px 0;">Composite quality score (0–10) across four dimensions: Growth, Profitability, Debt Health, and Efficiency. Each metric is scored against sector benchmarks. 8+ is strong, 6–8 average, below 6 needs attention.</p>
     <div style="display:flex; align-items:center; gap:24px; margin-bottom:24px; flex-wrap:wrap;">
         <div style="position:relative; width:110px; height:110px; flex-shrink:0;">
             <svg viewBox="0 0 110 110" style="width:110px; height:110px; transform:rotate(-90deg);">
