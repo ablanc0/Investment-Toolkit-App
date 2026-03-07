@@ -34,6 +34,10 @@ function renderRiskKpis(m, mkt) {
         <div class="kpi-card"><div class="kpi-label">Max Drawdown</div><div class="kpi-value" style="color:${ddColor}">${m.maxDrawdown.toFixed(1)}%</div><div class="kpi-sub">${m.maxDrawdownPeriod || '-'}</div>${mktSub('S&P', mkt && mkt.maxDrawdown, fPct)}</div>
         <div class="kpi-card"><div class="kpi-label">Annualized Return</div><div class="kpi-value" style="color:${m.annualizedReturn >= 0 ? '#22c55e' : '#ef4444'}">${m.annualizedReturn.toFixed(1)}%</div><div class="kpi-sub">${m.monthCount} months tracked</div>${mktSub('S&P', mkt && mkt.annualizedReturn, fPct)}</div>
     `;
+    let disc = document.getElementById('riskKpisDisclaimer');
+    if (!disc) {
+        el.insertAdjacentHTML('afterend', '<p id="riskKpisDisclaimer" style="color:var(--text-dim); font-size:11px; margin-top:8px; font-style:italic;">Approximate — based on monthly snapshots with simplified contribution adjustments. Ratios may differ from tools using daily TWR.</p>');
+    }
 }
 
 function renderSectorConcentration(sectors) {
