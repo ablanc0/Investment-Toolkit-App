@@ -1,3 +1,9 @@
+// Theme initialization (runs immediately to prevent flash)
+(function() {
+    const saved = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', saved);
+})();
+
 // ── App Initialization & Navigation ─────────────────────────────
 // Extracted from dashboard.html — keep in global scope (no modules)
 
@@ -58,11 +64,23 @@ class CrudTable {
     }
 }
 
+function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme') || 'dark';
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+    const btn = document.getElementById('themeToggle');
+    if (btn) btn.textContent = next === 'dark' ? '\u{1F319}' : '\u{2600}\u{FE0F}';
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     setupTabNavigation();
     setupRefreshButton();
     fetchAllData();
+    // Set theme toggle icon
+    const themeBtn = document.getElementById('themeToggle');
+    if (themeBtn) themeBtn.textContent = (localStorage.getItem('theme') || 'dark') === 'dark' ? '\u{1F319}' : '\u{2600}\u{FE0F}';
     // Auto-load last analyzed ticker from saved data (no API calls)
     const lastTicker = localStorage.getItem('analyzerLastTicker');
     if (lastTicker) {

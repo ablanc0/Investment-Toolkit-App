@@ -13,6 +13,7 @@ async function fetchSettingsData() {
         renderTargetAllocEditor();
         renderValuationDefaults();
         renderDisplayPreferences();
+        renderApiKeys();
     } catch (e) {
         console.error('Error loading settings:', e);
     }
@@ -375,6 +376,8 @@ function renderValuationDefaults() {
         { key: 'discountRate', label: 'Discount Rate', unit: '%', default: 10, step: 0.25 },
         { key: 'marginOfSafety', label: 'Margin of Safety', unit: '%', default: 25, step: 1 },
         { key: 'terminalGrowth', label: 'Terminal Growth', unit: '%', default: 3, step: 0.25 },
+        { key: 'riskFreeRate', label: 'Risk-Free Rate', unit: '%', default: 4.25, step: 0.25 },
+        { key: 'marketReturn', label: 'Market Return', unit: '%', default: 9.9, step: 0.1 },
     ];
 
     container.innerHTML = fields.map(f => `
@@ -392,6 +395,8 @@ async function saveValuationDefaults() {
         discountRate: parseFloat(document.getElementById('valdef_discountRate').value),
         marginOfSafety: parseFloat(document.getElementById('valdef_marginOfSafety').value),
         terminalGrowth: parseFloat(document.getElementById('valdef_terminalGrowth').value),
+        riskFreeRate: parseFloat(document.getElementById('valdef_riskFreeRate').value),
+        marketReturn: parseFloat(document.getElementById('valdef_marketReturn').value),
     };
 
     try {
@@ -463,5 +468,66 @@ async function saveDisplayPreferences() {
         showSaveToast('Display preferences saved');
     } catch (e) {
         showAlert('Failed to save preferences', 'error');
+    }
+}
+
+// ── API Keys ────────────────────────────────────────────────────
+
+function renderApiKeys() {
+    const current = document.getElementById('apiKeyFmpCurrent');
+    if (!current) return;
+    const masked = (_settingsCache?.apiKeys?.fmp) || '';
+    if (masked) {
+        current.textContent = 'Current key: ' + masked;
+    } else {
+        current.textContent = 'No API key configured (using default)';
+    }
+}
+
+async function testApiKey(provider) {
+    const input = document.getElementById('apiKeyFmp');
+    const status = document.getElementById('apiKeyFmpStatus');
+    if (!input || !status) return;
+
+    const key = input.value.trim();
+    if (!key) {
+        status.innerHTML = '<span style="color: var(--red);">Enter a key first</span>';
+        return;
+    }
+
+    status.innerHTML = '<span style="color: var(--gold);">Testing...</span>';
+    try {
+        const resp = await fetch('/api/settings/test-api-key', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key })
+        });
+        const data = await resp.json();
+        if (data.valid) {
+            status.innerHTML = '<span style="color: var(--green);">\u2713 Valid</span>';
+        } else {
+            status.innerHTML = '<span style="color: var(--red);">\u2715 Invalid</span>';
+        }
+    } catch (e) {
+        status.innerHTML = '<span style="color: var(--red);">\u2715 Error</span>';
+    }
+}
+
+async function saveApiKeys() {
+    const fmpKey = document.getElementById('apiKeyFmp')?.value?.trim();
+    if (!fmpKey) return;
+
+    try {
+        const resp = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ apiKeys: { fmp: fmpKey } })
+        });
+        _settingsCache = await resp.json();
+        renderApiKeys();
+        document.getElementById('apiKeyFmp').value = '';
+        showSaveToast('API key saved');
+    } catch (e) {
+        showAlert('Failed to save API key', 'error');
     }
 }

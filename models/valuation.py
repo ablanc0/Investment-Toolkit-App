@@ -34,10 +34,13 @@ def _trimmean(values, pct=0.2):
     return sum(trimmed) / len(trimmed) if trimmed else 0
 
 
-def _compute_wacc(info, income):
+def _compute_wacc(info, income, val_defaults=None):
     """Compute WACC from CAPM. Returns (wacc_decimal, details_dict) or (None, None)."""
+    vd = val_defaults or {}
+    rf = vd.get("riskFreeRate", RISK_FREE_RATE * 100) / 100  # settings in %, convert to decimal
+    mr = vd.get("marketReturn", MARKET_RETURN * 100) / 100
     beta = info.get("beta") or 1.0
-    cost_of_equity = RISK_FREE_RATE + beta * (MARKET_RETURN - RISK_FREE_RATE)
+    cost_of_equity = rf + beta * (mr - rf)
 
     total_debt = info.get("totalDebt") or 0
     total_cash = info.get("totalCash") or 0
@@ -109,10 +112,15 @@ def _compute_historical_fcf(info, cashflow):
     return historical_fcf, hist_avg_growth
 
 
-def compute_dcf(info, income, balance, cashflow):
+def compute_dcf(info, income, balance, cashflow, val_defaults=None):
     """Pure DCF valuation: WACC → single growth rate → Future FCF → discount → IV/share."""
     try:
-        wacc, wacc_details = _compute_wacc(info, income)
+        vd = val_defaults or {}
+        mos_factor = 1 - (vd.get("marginOfSafety", 25) / 100)
+        perp_growth = vd.get("terminalGrowth", PERPETUAL_GROWTH * 100) / 100
+        rf = vd.get("riskFreeRate", RISK_FREE_RATE * 100) / 100
+        mr = vd.get("marketReturn", MARKET_RETURN * 100) / 100
+        wacc, wacc_details = _compute_wacc(info, income, val_defaults=val_defaults)
         if wacc is None:
             return None
 
@@ -156,20 +164,20 @@ def compute_dcf(info, income, balance, cashflow):
             projected_fcf.append({"year": yr, "fcf": round(fcf_val), "pvFcf": round(pv)})
 
         # Terminal value (Gordon Growth)
-        if wacc <= PERPETUAL_GROWTH:
+        if wacc <= perp_growth:
             return None
-        terminal = fcf_val * (1 + PERPETUAL_GROWTH) / (wacc - PERPETUAL_GROWTH)
+        terminal = fcf_val * (1 + perp_growth) / (wacc - perp_growth)
         pv_terminal = terminal / ((1 + wacc) ** 9)
 
         enterprise_val = pv_sum + pv_terminal
         equity_val = enterprise_val - total_debt + total_cash
         iv = equity_val / shares
-        mos_iv = iv * MARGIN_OF_SAFETY
+        mos_iv = iv * mos_factor
         upside = ((mos_iv - price) / price * 100) if price > 0 else 0
 
         return {
-            "riskFreeRate": round(RISK_FREE_RATE * 100, 2),
-            "marketReturn": round(MARKET_RETURN * 100, 2),
+            "riskFreeRate": round(rf * 100, 2),
+            "marketReturn": round(mr * 100, 2),
             "beta": round(beta, 2),
             "costOfEquity": round(cost_of_equity * 100, 2),
             "costOfDebt": round(cost_of_debt * 100, 2),
@@ -220,13 +228,15 @@ def _run_dcf_scenario(fcf_ps, growth1, growth2, terminal_factor, discount_rate):
     }
 
 
-def compute_dcf_scenarios(info, income, balance, cashflow):
+def compute_dcf_scenarios(info, income, balance, cashflow, val_defaults=None):
     """DCF scenario-based two-phase growth valuation using FCF per share.
 
     Three weighted scenarios (Base 50%, Best 25%, Worst 25%),
     each with two-phase growth (years 1-5, years 6-10) and terminal multiple.
     """
     try:
+        vd = val_defaults or {}
+        mos_factor = 1 - (vd.get("marginOfSafety", 25) / 100)
         fcf = info.get("freeCashflow") or 0
         shares = info.get("sharesOutstanding") or 0
         if fcf <= 0 or shares <= 0:
@@ -235,7 +245,7 @@ def compute_dcf_scenarios(info, income, balance, cashflow):
         price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
 
         # WACC as default discount rate
-        wacc, _ = _compute_wacc(info, income)
+        wacc, _ = _compute_wacc(info, income, val_defaults=val_defaults)
         if wacc is None:
             wacc = 0.10
         discount_rate = wacc
@@ -289,7 +299,7 @@ def compute_dcf_scenarios(info, income, balance, cashflow):
             }
             composite_iv += result["ivPerShare"] * (sd["probability"] / 100)
 
-        mos_iv = composite_iv * MARGIN_OF_SAFETY
+        mos_iv = composite_iv * mos_factor
         upside = ((mos_iv - price) / price * 100) if price > 0 else 0
 
         return {
@@ -309,9 +319,11 @@ def compute_dcf_scenarios(info, income, balance, cashflow):
         return None
 
 
-def compute_graham(info, aaa_yield_live=None, aaa_date=None):
+def compute_graham(info, aaa_yield_live=None, aaa_date=None, val_defaults=None):
     """Graham Revised Formula: IV = EPS × (basePE + Cg × g) × Y / C"""
     try:
+        vd = val_defaults or {}
+        mos_factor = 1 - (vd.get("marginOfSafety", 25) / 100)
         eps = info.get("trailingEps") or 0
         if eps <= 0:
             return {"negativeEps": True, "eps": round(eps, 2)}
@@ -329,7 +341,7 @@ def compute_graham(info, aaa_yield_live=None, aaa_date=None):
         if iv <= 0:
             return {"negativeEps": True, "eps": round(eps, 2)}
 
-        mos_iv = iv * MARGIN_OF_SAFETY
+        mos_iv = iv * mos_factor
         price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
         upside = ((mos_iv - price) / price * 100) if price > 0 else 0
 
@@ -353,7 +365,7 @@ def compute_graham(info, aaa_yield_live=None, aaa_date=None):
         return None
 
 
-def compute_relative(info):
+def compute_relative(info, val_defaults=None):
     """Relative valuation using sector average multiples.
 
     All financial inputs (EPS, book value, EV, EBITDA, shares) come from FMP
@@ -361,6 +373,8 @@ def compute_relative(info):
     (editable in the frontend).
     """
     try:
+        vd = val_defaults or {}
+        mos_factor = 1 - (vd.get("marginOfSafety", 25) / 100)
         sector = info.get("sector", "")
         avgs = SECTOR_AVERAGES.get(sector)
         if not avgs:
@@ -422,7 +436,7 @@ def compute_relative(info):
             return None
 
         iv = sum(implied_prices) / len(implied_prices)
-        mos_iv = iv * MARGIN_OF_SAFETY
+        mos_iv = iv * mos_factor
         upside = ((mos_iv - price) / price * 100) if price > 0 else 0
 
         return {
@@ -442,9 +456,11 @@ def compute_relative(info):
         return None
 
 
-def compute_valuation_summary(dcf, graham, relative, dcf_scenarios, info):
+def compute_valuation_summary(dcf, graham, relative, dcf_scenarios, info, val_defaults=None):
     """Composite weighted IV based on stock category (Growth/Value/Blend)."""
     try:
+        vd = val_defaults or {}
+        mos_factor = 1 - (vd.get("marginOfSafety", 25) / 100)
         pe = info.get("trailingPE") or 0
         rev_growth = (info.get("revenueGrowth") or 0) * 100
         div_yield = info.get("dividendYield") or 0
@@ -479,7 +495,7 @@ def compute_valuation_summary(dcf, graham, relative, dcf_scenarios, info):
         if total_w <= 0:
             return None
         composite = sum(models[k] * weights[k] / total_w for k in models)
-        mos_iv = composite * MARGIN_OF_SAFETY
+        mos_iv = composite * mos_factor
 
         price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
         upside = ((mos_iv - price) / price * 100) if price > 0 else 0

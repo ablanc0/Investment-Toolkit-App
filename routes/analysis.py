@@ -39,6 +39,7 @@ from models.invt_score import (
     INVT_METRIC_UNITS,
 )
 from config import ANALYZER_FILE
+from services.data_store import get_settings
 
 bp = Blueprint('analysis', __name__)
 
@@ -219,6 +220,10 @@ def api_stock_analyzer(ticker):
             "lastUpdated": datetime.now().isoformat(),
         }
 
+        # Load valuation defaults from user settings
+        settings = get_settings()
+        val_defaults = settings.get("valuationDefaults", {})
+
         # Fetch live AAA yield from FRED for Graham model
         aaa_yield_live, aaa_date = _fetch_fred_aaa_yield()
 
@@ -240,11 +245,11 @@ def api_stock_analyzer(ticker):
         fmp_bench_thread.start()
 
         # Valuation models (run while peers fetch in background)
-        dcf = compute_dcf(info, income, balance, cashflow)
-        graham = compute_graham(info, aaa_yield_live=aaa_yield_live, aaa_date=aaa_date)
-        relative = compute_relative(info)
-        dcf_scenarios = compute_dcf_scenarios(info, income, balance, cashflow)
-        summary = compute_valuation_summary(dcf, graham, relative, dcf_scenarios, info)
+        dcf = compute_dcf(info, income, balance, cashflow, val_defaults=val_defaults)
+        graham = compute_graham(info, aaa_yield_live=aaa_yield_live, aaa_date=aaa_date, val_defaults=val_defaults)
+        relative = compute_relative(info, val_defaults=val_defaults)
+        dcf_scenarios = compute_dcf_scenarios(info, income, balance, cashflow, val_defaults=val_defaults)
+        summary = compute_valuation_summary(dcf, graham, relative, dcf_scenarios, info, val_defaults=val_defaults)
 
         # Wait for peers and FMP benchmarks (max 10s)
         peer_thread.join(timeout=10)
