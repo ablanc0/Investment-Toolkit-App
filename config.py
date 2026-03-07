@@ -88,6 +88,7 @@ SECTOR_AVERAGES = {
 # ── Default User Settings ──────────────────────────────────────────────
 
 DEFAULT_SETTINGS = {
+    "portfolioName": "My Portfolio",
     "categories": [
         {"name": "Growth", "color": "#8b5cf6"},
         {"name": "Value Stocks", "color": "#3b82f6"},
@@ -102,6 +103,7 @@ DEFAULT_SETTINGS = {
         "buy": 5,
         "expensive": 20,
         "overrated": 50,
+        "topPerformer": 30,
     },
 }
 
