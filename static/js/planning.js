@@ -475,7 +475,7 @@ function filterCOL(type, btn) {
         btn.classList.add('active');
     }
     tbody.innerHTML = filtered.sort((a, b) => a.rent - b.rent).map(c => {
-        const realIdx = allCOLData.indexOf(c);
+        const metroEsc = c.metro.replace(/'/g, "\\'");
         const isApi = c.source === 'api';
         const apiBadge = isApi ? ' <span style="font-size:0.65rem; padding:1px 4px; border-radius:3px; background:#6366f120; color:#6366f1; vertical-align:middle;">API</span>' : '';
         const costs = c.monthlyCostsNoRent ? formatMoney(c.monthlyCostsNoRent) : '—';
@@ -485,12 +485,15 @@ function filterCOL(type, btn) {
             ? '<span style="font-size:0.65rem; padding:1px 6px; border-radius:3px; background:#22c55e20; color:#22c55e;">DIRECT</span>'
             : '<span style="font-size:0.65rem; padding:1px 6px; border-radius:3px; background:#f59e0b20; color:#f59e0b;">WEIGHTED</span>';
         const pp = c.purchasingPower ? c.purchasingPower.toFixed(0) : '—';
-        return `<tr>
-            <td><strong>${c.metro}</strong>${apiBadge}</td>
+        const isPinned = c.pinned !== false; // default to pinned for legacy entries
+        const rowStyle = isPinned ? '' : 'opacity:0.7; border-left:3px solid #f59e0b;';
+        return `<tr style="${rowStyle}">
+            <td style="text-align:center;"><input type="checkbox" ${isPinned ? 'checked' : ''} onchange="toggleCOLCity('${metroEsc}', this.checked)" title="${isPinned ? 'Uncheck to remove' : 'Check to pin'}"></td>
+            <td><strong>${c.metro}</strong>${apiBadge}${!isPinned ? ' <span style="font-size:0.6rem; color:#f59e0b;">TEMP</span>' : ''}</td>
             <td>${c.area}</td>
             <td><span style="padding:2px 6px; border-radius:4px; font-size:0.75rem; background:${c.type==='Downtown'?'#f59e0b20':'#22c55e20'}; color:${c.type==='Downtown'?'#f59e0b':'#22c55e'};">${c.type}</span></td>
             <td style="text-align:right; cursor:pointer;" class="editable"
-                onclick="editCOLCell(this, ${realIdx}, 'rent', ${c.rent})">${formatMoney(c.rent)}</td>
+                onclick="editCOLCell(this, '${metroEsc}', 'rent', ${c.rent})">${formatMoney(c.rent)}</td>
             <td style="text-align:right; color:var(--text-dim);">${costs}</td>
             <td style="text-align:right; font-weight:500;">${totalCost}</td>
             <td style="text-align:right; font-weight:600;">${(c.overallFactor || 0).toFixed(2)}x</td>
@@ -498,12 +501,11 @@ function filterCOL(type, btn) {
             <td style="text-align:right; font-weight:600; color:#4ade80;">${formatMoney(c.equivalentSalary)}</td>
             <td style="text-align:right; color:#60a5fa;">${formatMoney(c.elEquivalent)}</td>
             <td style="text-align:right; color:${parseFloat(pp) >= 100 ? '#4ade80' : parseFloat(pp) > 0 ? '#f59e0b' : 'var(--text-dim)'};">${pp}</td>
-            <td><button class="delete-row-btn" onclick="deleteCOLCity(${realIdx})" title="Remove">&#10005;</button></td>
         </tr>`;
     }).join('');
 }
 
-function editCOLCell(td, index, field, currentValue) {
+function editCOLCell(td, metro, field, currentValue) {
     if (td.querySelector('input')) return;
     const originalHTML = td.innerHTML;
     const input = document.createElement('input');
@@ -526,10 +528,10 @@ function editCOLCell(td, index, field, currentValue) {
         try {
             await fetch('/api/cost-of-living/update', {
                 method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ index, updates: { [field]: newValue } })
+                body: JSON.stringify({ metro, updates: { [field]: newValue } })
             });
             await fetch('/api/cost-of-living/recompute', { method: 'POST' });
-            showSaveToast(`${allCOLData[index].metro} updated`);
+            showSaveToast(`${metro} updated`);
             fetchCostOfLiving();
         } catch(e) {
             td.innerHTML = originalHTML;
@@ -590,19 +592,40 @@ async function addCOLCity() {
     } catch(e) { showAlert('Failed to add city', 'error'); }
 }
 
-async function deleteCOLCity(index) {
-    const city = allCOLData[index];
-    if (!confirm(`Remove ${city.metro} — ${city.area}?`)) return;
-    try {
-        const resp = await fetch('/api/cost-of-living/delete', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ index })
-        });
-        if (resp.ok) {
-            showSaveToast(`${city.metro} removed`);
-            fetchCostOfLiving();
-        }
-    } catch(e) { showAlert('Failed to delete', 'error'); }
+async function toggleCOLCity(metro, checked) {
+    if (checked) {
+        // Pin the city (keep in comparison)
+        try {
+            const resp = await fetch('/api/cost-of-living/pin', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ metro, pinned: true })
+            });
+            if (resp.ok) {
+                showSaveToast(`${metro} pinned`);
+                fetchCostOfLiving();
+            }
+        } catch(e) { showAlert('Failed to pin', 'error'); }
+    } else {
+        // Uncheck = remove from comparison
+        try {
+            const resp = await fetch('/api/cost-of-living/delete', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ metro })
+            });
+            if (resp.ok) {
+                showSaveToast(`${metro} removed`);
+                fetchCostOfLiving();
+            }
+        } catch(e) { showAlert('Failed to remove', 'error'); }
+    }
+}
+
+async function toggleAllCOLCities(checked) {
+    if (checked) return; // can't re-add all at once, only uncheck makes sense
+    // Uncheck all = remove all cities (dangerous, re-check the header instead)
+    const headerCb = document.querySelector('#colBody')?.closest('table')?.querySelector('thead input[type="checkbox"]');
+    if (headerCb) headerCb.checked = true;
+    showAlert('Uncheck individual cities to remove them from comparison.', 'info');
 }
 
 async function upgradeCOLFromApi() {
@@ -737,10 +760,10 @@ async function addCOLApiCity(metro, area, type, rent, nonHousingMult, apiData) {
     try {
         const resp = await fetch('/api/cost-of-living/add', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ metro, area, type, rent, nonHousingMult, source: 'api', apiData })
+            body: JSON.stringify({ metro, area, type, rent, nonHousingMult, source: 'api', apiData, pinned: false })
         });
         if (resp.ok) {
-            showSaveToast(`${metro} added from API`);
+            showSaveToast(`${metro} added (check to keep)`);
             hideAddCOLApiForm();
             fetchCostOfLiving();
         }

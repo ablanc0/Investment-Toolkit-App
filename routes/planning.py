@@ -185,30 +185,41 @@ def api_cost_of_living_add():
         "equivalentSalary": 0,
         "elEquivalent": 0,
     }
+    pinned = b.get("pinned", True)
+    item["pinned"] = pinned
     if source == "api":
         item["source"] = "api"
         item["rentOverride"] = False
         item["nhmOverride"] = False
         item["apiData"] = b.get("apiData", {})
-    # Prevent duplicate metro names
     portfolio = load_portfolio()
     existing = portfolio.get("costOfLiving", [])
     metro_lower = item["metro"].lower().strip()
+    # If adding unpinned (temporary), remove any existing unpinned entry first
+    if not pinned:
+        existing[:] = [c for c in existing if c.get("pinned", True)]
+    # Prevent duplicate metro names
     if any(c.get("metro", "").lower().strip() == metro_lower for c in existing):
         return jsonify({"ok": False, "error": f"{item['metro']} already exists"}), 400
     config = portfolio.get("colConfig", _default_col_config())
     _compute_col_entry(item, config)
-    return crud_add("costOfLiving", item)
+    existing.append(item)
+    save_portfolio(portfolio)
+    return jsonify({"ok": True, "item": item})
 
 
 @bp.route("/api/cost-of-living/update", methods=["POST"])
 def api_cost_of_living_update():
     b = request.get_json()
-    index = int(b.get("index", -1))
     updates = b.get("updates", {})
-    # Track manual overrides on API-sourced entries
     portfolio = load_portfolio()
     items = portfolio.get("costOfLiving", [])
+    # Resolve index from metro name or direct index
+    metro = b.get("metro")
+    index = int(b.get("index", -1))
+    if metro:
+        index = next((i for i, item in enumerate(items) if item.get("metro") == metro), -1)
+    # Track manual overrides on API-sourced entries
     if 0 <= index < len(items) and items[index].get("source") == "api":
         if "rent" in updates:
             updates["rentOverride"] = True
@@ -220,7 +231,32 @@ def api_cost_of_living_update():
 @bp.route("/api/cost-of-living/delete", methods=["POST"])
 def api_cost_of_living_delete():
     b = request.get_json()
+    metro = b.get("metro")
+    if metro:
+        portfolio = load_portfolio()
+        items = portfolio.get("costOfLiving", [])
+        for i, item in enumerate(items):
+            if item.get("metro") == metro:
+                removed = items.pop(i)
+                save_portfolio(portfolio)
+                return jsonify({"ok": True, "removed": removed})
+        return jsonify({"error": f"City '{metro}' not found"}), 404
     return crud_delete("costOfLiving", int(b.get("index", -1)))
+
+
+@bp.route("/api/cost-of-living/pin", methods=["POST"])
+def api_cost_of_living_pin():
+    b = request.get_json()
+    metro = b.get("metro", "")
+    pinned = b.get("pinned", True)
+    portfolio = load_portfolio()
+    items = portfolio.get("costOfLiving", [])
+    for item in items:
+        if item.get("metro") == metro:
+            item["pinned"] = pinned
+            save_portfolio(portfolio)
+            return jsonify({"ok": True})
+    return jsonify({"error": f"City '{metro}' not found"}), 404
 
 
 @bp.route("/api/cost-of-living/config/update", methods=["POST"])
