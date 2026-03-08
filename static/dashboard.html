@@ -789,20 +789,70 @@
             </div>
         </div>
 
-        <!-- Cost of Living Tab (independent) -->
+        <!-- Cost of Living Tab -->
         <div class="tab-content" id="costOfLiving">
+            <!-- KPI Cards -->
+            <div class="kpi-grid" id="colKpis" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));"></div>
+
+            <!-- Config Inputs -->
+            <div class="card" style="margin-bottom: 16px;">
+                <div class="card-title">Reference Inputs</div>
+                <div id="colConfigInputs"></div>
+            </div>
+
+            <!-- Chart -->
+            <div class="card" style="margin-bottom: 16px;">
+                <div class="card-title">Equivalent Salary by City</div>
+                <div style="height: 550px;">
+                    <canvas id="colChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Table -->
             <div class="card">
-                <div class="card-title">🏙️ Cost of Living Comparison</div>
-                <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-                    <button class="filter-btn active" onclick="filterCOL('all', this)">All</button>
-                    <button class="filter-btn" onclick="filterCOL('Downtown', this)">Downtown</button>
-                    <button class="filter-btn" onclick="filterCOL('Suburban', this)">Suburban</button>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                    <div class="card-title" style="margin-bottom: 0;">Cost of Living Comparison</div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <div id="colFilters" style="display: flex; gap: 8px;">
+                            <button class="filter-btn active" data-type="all" onclick="filterCOL('all', this)">All</button>
+                            <button class="filter-btn" data-type="Downtown" onclick="filterCOL('Downtown', this)">Downtown</button>
+                            <button class="filter-btn" data-type="Suburban" onclick="filterCOL('Suburban', this)">Suburban</button>
+                        </div>
+                        <button class="btn-primary" id="addCOLBtn" onclick="showAddCOLForm()" style="font-size: 0.82rem; padding: 6px 12px;">+ Add City</button>
+                    </div>
+                </div>
+                <!-- Add City Form (hidden) -->
+                <div id="addCOLForm" style="display:none; padding: 12px; background: var(--card-hover); border-radius: 8px; margin-bottom: 12px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; align-items: end;">
+                        <div><label class="form-label">Metro</label>
+                            <input type="text" id="newCOLMetro" class="form-input" placeholder="e.g. Chicago" style="font-size:0.82rem;"></div>
+                        <div><label class="form-label">Area</label>
+                            <input type="text" id="newCOLArea" class="form-input" placeholder="e.g. Loop" style="font-size:0.82rem;"></div>
+                        <div><label class="form-label">Type</label>
+                            <select id="newCOLType" class="form-input" style="font-size:0.82rem;">
+                                <option value="Downtown">Downtown</option>
+                                <option value="Suburban">Suburban</option>
+                            </select></div>
+                        <div><label class="form-label">Rent/mo</label>
+                            <input type="number" id="newCOLRent" class="form-input" placeholder="2500" style="font-size:0.82rem;"></div>
+                        <div><label class="form-label">Non-Hsg Mult</label>
+                            <input type="number" id="newCOLNonHousingMult" class="form-input" value="1.0" step="0.01" style="font-size:0.82rem;"></div>
+                        <div style="display: flex; gap: 6px;">
+                            <button class="btn-primary" onclick="addCOLCity()" style="font-size:0.82rem;">Add</button>
+                            <button class="btn-secondary" onclick="hideAddCOLForm()" style="font-size:0.82rem;">Cancel</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="table-wrapper"><table style="font-size: 0.82rem;">
                     <thead><tr>
-                        <th>Metro</th><th>Area</th><th>Type</th><th style="text-align:right;">Rent/mo</th>
-                        <th style="text-align:right;">Housing Mult</th><th style="text-align:right;">Overall Factor</th>
-                        <th style="text-align:right;">Equiv. Salary</th><th style="text-align:right;">EL Equivalent</th>
+                        <th>Metro</th><th>Area</th><th>Type</th>
+                        <th style="text-align:right;">Rent/mo</th>
+                        <th style="text-align:right;">Housing Mult</th>
+                        <th style="text-align:right;">Non-Hsg Mult</th>
+                        <th style="text-align:right;">Overall Factor</th>
+                        <th style="text-align:right; color:#4ade80;">Equiv. Salary</th>
+                        <th style="text-align:right; color:#60a5fa;">EL Equivalent</th>
+                        <th style="width: 40px;"></th>
                     </tr></thead><tbody id="colBody"></tbody>
                 </table></div>
             </div>
