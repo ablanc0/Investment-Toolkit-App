@@ -38,7 +38,7 @@ def fetch_ticker_data(ticker):
             "industry": info.get("industry", ""),
             "divYield": round(info.get("dividendYield") or info.get("trailingAnnualDividendYield") or 0, 2),
             "divRate": info.get("dividendRate") or info.get("trailingAnnualDividendRate", 0),
-            "beta": info.get("beta", 0),
+            "beta": info.get("beta") or info.get("beta3Year", 0),
             "fiftyTwoWeekHigh": info.get("fiftyTwoWeekHigh", 0),
             "fiftyTwoWeekLow": info.get("fiftyTwoWeekLow", 0),
             "targetMeanPrice": info.get("targetMeanPrice", 0),
@@ -71,6 +71,92 @@ def fetch_all_quotes(tickers):
     for ticker in tickers:
         results[ticker] = fetch_ticker_data(ticker)
     return results
+
+
+def fetch_historical_prices(tickers, period="1y"):
+    """Fetch monthly closing prices for multiple tickers.
+    Returns dict of ticker -> list of closing prices (aligned by date).
+    """
+    if not tickers:
+        return {}
+
+    cache_key = f"hist_prices_{'_'.join(sorted(tickers))}_{period}"
+    cached = cache_get(cache_key)
+    if cached:
+        return cached
+
+    try:
+        # Download all tickers at once for efficiency
+        data = yf.download(tickers, period=period, interval="1mo", progress=False)
+
+        result = {}
+        if "Close" in data.columns:
+            close_data = data["Close"]
+            # Handle both MultiIndex and flat columns
+            if hasattr(close_data, 'columns'):
+                # MultiIndex or DataFrame with ticker columns
+                for ticker in tickers:
+                    if ticker in close_data.columns:
+                        col = close_data[ticker].dropna()
+                        if not col.empty:
+                            result[ticker] = [float(p) for p in col.tolist()]
+            else:
+                # Single Series (flat columns, single ticker)
+                ticker = tickers[0]
+                prices = [float(p) for p in close_data.dropna().tolist()]
+                if prices:
+                    result[ticker] = prices
+
+        cache_set(cache_key, result)
+        return result
+
+    except Exception as e:
+        print(f"[yfinance] Error fetching historical prices: {e}")
+        return {}
+
+
+def fetch_sp500_annual_returns():
+    """Fetch S&P 500 annual returns from ^GSPC historical data.
+    Returns dict of year (str) -> annual return (percentage, e.g. 26.3 for 26.3%).
+    """
+    cached = cache_get("sp500_annual_returns")
+    if cached:
+        return cached
+
+    try:
+        data = yf.download("^GSPC", period="max", interval="1mo", progress=False)
+        if data.empty:
+            return {}
+
+        close = data["Close"]
+        if hasattr(close, "columns"):
+            close = close.iloc[:, 0]
+
+        # Group by year, get first and last close
+        yearly = {}
+        for date, price in close.items():
+            year = str(date.year)
+            if year not in yearly:
+                yearly[year] = {"first": float(price), "last": float(price)}
+            yearly[year]["last"] = float(price)
+
+        result = {}
+        years_sorted = sorted(yearly.keys())
+        for i, year in enumerate(years_sorted):
+            if i == 0:
+                continue
+            prev_last = yearly[years_sorted[i - 1]]["last"]
+            curr_last = yearly[year]["last"]
+            if prev_last > 0:
+                ret = ((curr_last - prev_last) / prev_last) * 100
+                result[year] = round(ret, 2)
+
+        cache_set("sp500_annual_returns", result)
+        return result
+
+    except Exception as e:
+        print(f"[yfinance] Error fetching S&P 500 annual returns: {e}")
+        return {}
 
 
 def fetch_dividends(ticker):

@@ -50,15 +50,16 @@
         <button class="group-btn" data-group="portfolio" style="--group-color: #4A86E8">💼 Portfolio</button>
         <button class="group-btn" data-group="dividends" style="--group-color: #6AA84F">💰 Dividends</button>
         <button class="group-btn" data-group="research" style="--group-color: #993333">🔍 Research</button>
-        <button class="group-btn" data-group="analysis" style="--group-color: #1BBC9D">🔬 Analysis</button>
         <button class="group-btn" data-group="planning" style="--group-color: #E69138">🏦 Planning</button>
+        <button class="group-btn" data-group="analytics" style="--group-color: #1BBC9D">📈 Analytics</button>
     </div>
 
     <div class="nav-tabs" id="navTabs">
         <div class="tab-row" data-group="dashboard">
             <button class="tab-btn active" data-tab="overview">Overview</button>
             <button class="tab-btn" data-tab="performance">Performance</button>
-            <button class="tab-btn" data-tab="alerts">Alerts</button>
+            <button class="tab-btn" data-tab="screening">Screening</button>
+            <button class="tab-btn" data-tab="notesGoals">Notes & Goals</button>
         </div>
         <div class="tab-row" data-group="portfolio" style="display:none">
             <button class="tab-btn" data-tab="positions">Positions</button>
@@ -70,6 +71,7 @@
             <button class="tab-btn" data-tab="divlog">Dividend Log</button>
             <button class="tab-btn" data-tab="monthly">Monthly Data</button>
             <button class="tab-btn" data-tab="annual">Annual Data</button>
+            <button class="tab-btn" data-tab="divDeep">Deep Dive</button>
         </div>
         <div class="tab-row" data-group="research" style="display:none">
             <button class="tab-btn" data-tab="watchlist">Watchlist</button>
@@ -78,14 +80,16 @@
             <button class="tab-btn" data-tab="superinv">Super Investors</button>
             <button class="tab-btn" data-tab="projections">Projections</button>
         </div>
-        <div class="tab-row" data-group="analysis" style="display:none">
-            <button class="tab-btn" data-tab="analyzer">Stock Analyzer</button>
-        </div>
         <div class="tab-row" data-group="planning" style="display:none">
             <button class="tab-btn" data-tab="salary">Salary</button>
             <button class="tab-btn" data-tab="passive">Passive Income</button>
             <button class="tab-btn" data-tab="rule4pct">Rule 4%</button>
             <button class="tab-btn" data-tab="costOfLiving">Cost of Living</button>
+        </div>
+        <div class="tab-row" data-group="analytics" style="display:none">
+            <button class="tab-btn" data-tab="analyzer">Stock Analyzer</button>
+            <button class="tab-btn" data-tab="taxOptimization">Tax Optimization</button>
+            <button class="tab-btn" data-tab="riskAnalysis">Risk Analysis</button>
         </div>
     </div>
 
@@ -96,6 +100,7 @@
             <!-- Section 1: Portfolio Overview -->
             <h3 style="color: var(--text); margin: 0 0 12px 0; font-size: 15px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim);">Portfolio Overview</h3>
             <div class="kpi-grid" id="overviewKpis"></div>
+            <div id="healthSummaryBar" style="margin: 12px 0 0 0; display: flex; gap: 12px; flex-wrap: wrap;"></div>
 
             <!-- Section 2: Dividend Stats -->
             <h3 style="color: var(--text); margin: 24px 0 12px 0; font-size: 15px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim);">Dividend Stats</h3>
@@ -143,10 +148,8 @@
             </div>
 
             <div class="card">
-                <div class="card-title">🎨 Strategy Mix</div>
-                <div class="chart-container">
-                    <canvas id="strategyChart"></canvas>
-                </div>
+                <div class="card-title">📊 Day Movers</div>
+                <div id="dayMoversContainer"></div>
             </div>
         </div>
 
@@ -243,24 +246,68 @@
                     <div id="worstDayChange"></div>
                 </div>
             </div>
+
+            <!-- Performance Attribution (merged from Analytics) -->
+            <h3 style="color: var(--text-dim); margin: 24px 0 4px 0; font-size: 15px; text-transform: uppercase; letter-spacing: 1px;">Performance Attribution</h3>
+            <p style="color:var(--text-dim); font-size:12px; margin:0 0 12px 0;">Which categories and sectors are driving your returns. Positive contribution means that group is helping your portfolio; negative means it's dragging it down.</p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="card">
+                    <div class="card-title">Returns by Category</div>
+                    <div id="categoryAttributionTable"></div>
+                    <div style="margin-top: 16px;"><canvas id="categoryAttrChart" style="max-height: 280px;"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Returns by Sector</div>
+                    <div id="sectorAttributionTable"></div>
+                    <div style="margin-top: 16px;"><canvas id="sectorAttrChart" style="max-height: 280px;"></canvas></div>
+                </div>
+            </div>
         </div>
 
         <!-- Dividends Tab -->
         <div class="tab-content" id="dividends">
             <div class="kpi-grid" id="dividendKpis"></div>
 
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px; margin-bottom: 32px;">
+            <!-- Income Rank -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 24px 0;">
+                <div class="card">
+                    <div class="card-title">✅ Top Dividend Payers</div>
+                    <div id="topDivPayers"></div>
+                </div>
+                <div class="card">
+                    <div class="card-title">❌ Bottom Dividend Payers</div>
+                    <div id="bottomDivPayers"></div>
+                </div>
+            </div>
+
+            <!-- Charts Row 1: Bar charts -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px; margin-bottom: 24px;">
+                <div class="card">
+                    <div class="card-title">🏆 Dividend by Holding</div>
+                    <div class="chart-container">
+                        <canvas id="holdingDividendChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title">📈 Dividend Yield by Position</div>
+                    <div class="chart-container">
+                        <canvas id="divYieldChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row 2: Monthly + Distribution -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px; margin-bottom: 24px;">
                 <div class="card">
                     <div class="card-title">📊 Monthly Dividend Income</div>
                     <div class="chart-container">
                         <canvas id="monthlyDividendChart"></canvas>
                     </div>
                 </div>
-
                 <div class="card">
-                    <div class="card-title">🏆 Dividend by Holding</div>
+                    <div class="card-title">🥧 Income Distribution</div>
                     <div class="chart-container">
-                        <canvas id="holdingDividendChart"></canvas>
+                        <canvas id="incomeDistChart"></canvas>
                     </div>
                 </div>
             </div>
@@ -363,33 +410,57 @@
             </div>
         </div>
 
-        <!-- Alerts Tab -->
-        <div class="tab-content" id="alerts">
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-bottom: 32px;">
+        <!-- Screening Tab (was Alerts) -->
+        <div class="tab-content" id="screening">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
                 <div class="card">
-                    <div class="card-title">🎯 Strong Buy Signals</div>
-                    <div id="strongBuyAlerts"></div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <div class="card-title" style="margin-bottom: 0;">💼 Portfolio Signals</div>
+                        <p style="color:var(--text-dim); font-size:11px; margin:4px 0 0 0;">Signals based on price vs intrinsic value and average cost. Strong Buy = undervalued, Buy = near fair value, Expensive = overvalued, Overrated = well above IV.</p>
+                        <select id="portfolioSignalFilter" onchange="populateScreening()" style="padding: 6px 12px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 13px;">
+                            <option value="all">All Signals</option>
+                            <option value="strong-buy">Strong Buy</option>
+                            <option value="buy">Buy</option>
+                            <option value="overcost">Overcost</option>
+                        </select>
+                    </div>
+                    <div id="portfolioSignalsSummary" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;"></div>
+                    <div class="table-wrapper">
+                        <table><thead><tr>
+                            <th>Ticker</th><th>Price</th><th>Avg Cost</th><th>Return %</th><th>Signal</th><th>InvT Score</th><th>Category</th>
+                        </tr></thead><tbody id="portfolioSignalsBody"></tbody></table>
+                    </div>
                 </div>
-
                 <div class="card">
-                    <div class="card-title">⚠️ Overvalued Warnings</div>
-                    <div id="overvaluedAlerts"></div>
-                </div>
-
-                <div class="card">
-                    <div class="card-title">⭐ Top Performers</div>
-                    <div id="topPerformerAlerts"></div>
+                    <div class="card-title">🔍 Watchlist Opportunities</div>
+                    <div id="watchlistSignalsSummary" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;"></div>
+                    <div class="table-wrapper">
+                        <table><thead><tr>
+                            <th>Ticker</th><th>Price</th><th>Signal</th><th>InvT Score</th><th>Div Yield</th><th>Sector</th><th>Priority</th>
+                        </tr></thead><tbody id="watchlistSignalsBody"></tbody></table>
+                    </div>
                 </div>
             </div>
+        </div>
 
-            <div class="card">
-                <div class="card-title">📋 Strategy Notes</div>
-                <div id="strategyNotes"></div>
+        <!-- Notes & Goals Tab -->
+        <div class="tab-content" id="notesGoals">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <div class="card-title" style="margin-bottom: 0;">📋 Strategy Notes</div>
+                        <button class="wl-add-btn" onclick="addStrategyNote()" style="font-size: 13px; padding: 6px 14px;">+ Add Note</button>
+                    </div>
+                    <div id="strategyNotesContainer"></div>
+                </div>
+                <div class="card">
+                    <div class="card-title">🎯 Goal Tracker</div>
+                    <div id="goalTrackerContainer"></div>
+                </div>
             </div>
-
             <div class="card">
-                <div class="card-title">🎯 Goal Tracker</div>
-                <div id="goalTracker"></div>
+                <div class="card-title">💰 Forward Income Goals</div>
+                <div id="incomeGoalsContainer"></div>
             </div>
         </div>
 
@@ -427,6 +498,8 @@
 
         <!-- ═══ MONTHLY DATA TAB ═══ -->
         <div class="tab-content" id="monthly">
+            <div class="kpi-grid" id="monthlyTrackerKpis" style="margin-bottom: 16px;"></div>
+            <div style="margin-bottom: 24px; position: relative; height: 250px;"><canvas id="monthlyReturnsChart"></canvas></div>
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                     <div class="card-title" style="margin-bottom: 0;">📅 Monthly Data</div>
@@ -445,12 +518,19 @@
 
         <!-- ═══ ANNUAL DATA TAB ═══ -->
         <div class="tab-content" id="annual">
+            <!-- Benchmark KPIs + Chart (merged from Analytics) -->
+            <div class="kpi-grid" id="benchmarkKpis" style="margin-bottom: 16px;"></div>
+            <div class="card" style="margin-bottom: 16px;">
+                <div class="card-title">Portfolio vs S&P 500</div>
+                <p style="color:var(--text-dim); font-size:12px; margin:0 0 8px 0;">Your portfolio total return compared to the S&P 500 benchmark. Alpha is the excess return above the market — positive means you're beating it.</p>
+                <div><canvas id="benchmarkChart" style="max-height: 300px;"></canvas></div>
+            </div>
             <div class="card">
                 <div class="card-title">📊 Annual Summary</div>
                 <div class="table-wrapper">
                     <table><thead><tr>
                         <th>Year</th><th>Portfolio Value</th><th>Contributions</th><th>Dividend Income</th>
-                        <th>Total Return</th><th>Return %</th><th>Div Yield</th><th>S&P 500 %</th>
+                        <th>Total Return</th><th>Return %</th><th>S&P 500 %</th><th>Alpha</th><th>Div Yield</th>
                     </tr></thead><tbody id="annualBody"></tbody></table>
                 </div>
             </div>
@@ -509,6 +589,7 @@
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
                     <div class="card-title" style="margin-bottom: 0;">💎 Intrinsic Values List</div>
+                    <p style="color:var(--text-dim); font-size:11px; margin:4px 0 0 0;">Fair value estimates from DCF, Graham, and relative valuation models. Distance shows how far the current price is from your estimated intrinsic value.</p>
                     <div id="ivKpis" style="display: flex; gap: 16px; font-size: 0.85rem;"></div>
                 </div>
                 <div class="table-wrapper"><table style="font-size: 0.82rem;">
@@ -525,7 +606,7 @@
 
         <div class="tab-content" id="superinv">
             <div class="card" style="margin-bottom: 24px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; flex-wrap: wrap; gap: 10px;">
                     <div class="card-title" style="margin-bottom: 0;">Super Investor 13F Holdings</div>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <select id="siInvestorSelect" onchange="fetch13F(this.value)" style="padding: 6px 12px; background: var(--card-hover); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem;">
@@ -536,6 +617,7 @@
                         <button onclick="exportSuperInvCSV()" style="padding: 6px 14px; background: var(--card-hover); color: var(--text); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 0.82rem;">CSV</button>
                     </div>
                 </div>
+                <p style="color:var(--text-dim); font-size:11px; margin:0 0 16px 0;">13F filings are quarterly SEC reports showing what institutional investors hold. Track what top fund managers are buying and selling.</p>
                 <div id="si13fProgress" style="display: none; padding: 10px 14px; background: var(--card-hover); border-radius: 8px; margin-bottom: 12px; font-size: 0.85rem; color: var(--text-dim);"></div>
                 <div id="siInvestorNote" style="display: none; font-size: 0.82rem; color: var(--text-dim); font-style: italic; margin-bottom: 12px;"></div>
                 <div id="si13fMeta" style="display: none; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;"></div>
@@ -568,6 +650,7 @@
         <div class="tab-content" id="projections">
             <div class="card">
                 <div class="card-title">Portfolio Projections</div>
+                <p style="color:var(--text-dim); font-size:12px; margin:0 0 8px 0;">Compound growth projections under three scenarios: Base (expected return), Bull (+2%), and Bear (-2%). Assumes consistent monthly contributions and dividend reinvestment.</p>
                 <!-- KPI Cards -->
                 <div id="projKpis" class="kpi-grid" style="margin-bottom: 18px;"></div>
                 <!-- Input Panel -->
@@ -639,7 +722,8 @@
                     <div class="card-title" style="margin-bottom: 0;" id="salTableTitle">Tax Filing</div>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <label class="form-label" style="margin-bottom: 0; font-size: 0.8rem;">Year:</label>
-                        <select id="salaryYearSelect" class="form-input" style="width: 90px; font-size: 0.85rem;" onchange="switchSalaryYear()"></select>
+                        <input type="number" id="salaryYearInput" class="form-input" style="width: 80px; font-size: 0.85rem; text-align:center;" min="2020" max="2040" onchange="switchSalaryYear()">
+                        <button class="add-row-btn" onclick="saveHistoryYear()" style="font-size: 0.78rem; padding: 4px 10px;">Save</button>
                     </div>
                 </div>
                 <div id="salaryBreakdownTable"></div>
@@ -665,9 +749,8 @@
 
             <!-- History -->
             <div class="card" style="margin-top: 16px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div style="margin-bottom: 12px;">
                     <div class="card-title" style="margin-bottom: 0;">Salary History</div>
-                    <button class="add-row-btn" onclick="saveHistoryYear()" style="font-size: 0.78rem; padding: 4px 10px;" id="saveHistoryBtn">Save <span id="saveHistoryYear"></span></button>
                 </div>
                 <div id="salHistory"></div>
             </div>
@@ -716,6 +799,7 @@
             <!-- FIRE Calculator -->
             <div class="card">
                 <div class="card-title">💰 Rule 4% - FIRE Calculator</div>
+                <p style="color:var(--text-dim); font-size:12px; margin:0 0 8px 0;">Tests whether your portfolio can sustain withdrawals through retirement. Success rate = % of historical 30-year periods where you didn't run out of money. Higher is safer.</p>
                 <div class="fire-calculator">
                     <div class="fire-inputs">
                         <div class="form-group">
@@ -981,7 +1065,7 @@
                             <option value="dividends">Dividends</option>
                             <option value="watchlist">Watchlist</option>
                             <option value="rebalancing">Rebalancing</option>
-                            <option value="alerts">Alerts</option>
+                            <option value="screening">Screening</option>
                             <option value="analyzer">Stock Analyzer</option>
                             <option value="projections">Projections</option>
                         </select>
@@ -997,6 +1081,90 @@
                 <div style="margin-top: 12px;">
                     <button class="add-row-btn" onclick="saveDisplayPreferences()" style="border-color: var(--green); color: var(--green);">💾 Save Preferences</button>
                 </div>
+            </div>
+        </div>
+
+        <!-- Tax Optimization Tab -->
+        <div class="tab-content" id="taxOptimization">
+            <div class="kpi-grid" id="taxKpis"></div>
+            <div class="card" style="margin-top: 16px;">
+                <div class="card-title">Tax Loss Harvesting Analysis</div>
+                <p style="color:var(--text-dim); font-size:12px; margin:0 0 8px 0;">Positions with unrealized losses you could sell to offset capital gains and reduce your tax bill. Long-term (held >1 year) is taxed at 15%; short-term at your income rate.</p>
+                <div class="table-wrapper">
+                    <table style="font-size: 0.82rem;">
+                        <thead><tr>
+                            <th>Ticker</th>
+                            <th style="text-align:right;">Cost Basis</th>
+                            <th style="text-align:right;">Market Value</th>
+                            <th style="text-align:right;">Unrealized G/L</th>
+                            <th style="text-align:right;">G/L %</th>
+                            <th style="text-align:right;">Tax Impact</th>
+                            <th>Harvest?</th>
+                            <th>Holding</th>
+                            <th>Action</th>
+                        </tr></thead>
+                        <tbody id="taxBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Risk Analysis Tab -->
+        <div class="tab-content" id="riskAnalysis">
+            <div class="kpi-grid" id="riskKpis"></div>
+            <div class="card" style="margin-top: 16px;">
+                <div class="card-title">Sector Concentration</div>
+                <p style="color:var(--text-dim); font-size:12px; margin:0 0 12px 0;">How much of your portfolio is in each sector. Over 30% in one sector is high risk — a sector downturn could drag the whole portfolio.</p>
+                <div id="sectorConcentrationTable"></div>
+            </div>
+            <div class="card" style="margin-top: 16px;">
+                <div class="card-title">Stress Test Scenarios</div>
+                <p style="color:var(--text-dim); font-size:12px; margin:0 0 12px 0;">Normal (beta-adjusted) and Max Stress (VIX-amplified) estimated losses per historical crisis. Click to expand per-position detail.</p>
+                <div id="stressTestContainer"></div>
+            </div>
+            <div class="card" style="margin-top: 16px;">
+                <div class="card-title">Recovery Projections</div>
+                <p style="color:var(--text-dim); font-size:12px; margin:0 0 12px 0;">Modeled recovery paths with dividend reinvestment. Solid line = normal scenario, dashed = max stress. Band shows the range of outcomes.</p>
+                <div id="recoveryProjectionContainer"></div>
+            </div>
+            <div class="card" style="margin-top: 16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px;">
+                    <div class="card-title" style="margin-bottom:0;">Correlation Matrix</div>
+                    <button class="add-row-btn" onclick="loadCorrelationMatrix()" id="corrMatrixBtn">Load Matrix</button>
+                </div>
+                <p style="color:var(--text-dim); font-size:12px; margin:0 0 12px 0;">Shows how your positions move together. High correlation (red, &gt;0.8) means they rise and fall in sync — less diversification benefit. Low or negative correlation (green) means they offset each other, reducing overall risk. Aim for a mix of uncorrelated assets.</p>
+                <div id="correlationContainer" style="overflow-x: auto;"></div>
+            </div>
+        </div>
+
+        <!-- Dividend Deep Dive Tab -->
+        <div class="tab-content" id="divDeep">
+            <div class="kpi-grid" id="divDeepKpis"></div>
+            <div class="card" style="margin-top: 16px;">
+                <div class="card-title">Dividend Deep Dive</div>
+                <p style="color:var(--text-dim); font-size:12px; margin:0 0 8px 0;">Per-position dividend analysis. Yield on Cost (YoC) = dividend relative to what you paid, not current price. Safety rates payout sustainability. Kings have 50+ years of consecutive increases, Aristocrats 25+.</p>
+                <div class="table-wrapper">
+                    <table style="font-size: 0.82rem;">
+                        <thead><tr>
+                            <th>Ticker</th>
+                            <th>Company</th>
+                            <th style="text-align:right;">Div/Share</th>
+                            <th style="text-align:right;">Yield</th>
+                            <th style="text-align:right;">YoC</th>
+                            <th style="text-align:right;">Annual $</th>
+                            <th style="text-align:right;">Monthly $</th>
+                            <th style="text-align:right;">% Total</th>
+                            <th>Safety</th>
+                            <th>Status</th>
+                            <th style="text-align:right;">5yr FV</th>
+                        </tr></thead>
+                        <tbody id="divDeepBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card" style="margin-top: 16px;">
+                <div class="card-title">Income Distribution</div>
+                <div><canvas id="divDeepChart" style="max-height: 300px;"></canvas></div>
             </div>
         </div>
 
@@ -1026,5 +1194,9 @@
     <script src="/static/js/salary.js"></script>
     <script src="/static/js/planning.js"></script>
     <script src="/static/js/settings.js"></script>
+    <script src="/static/js/tax.js"></script>
+    <script src="/static/js/risk.js"></script>
+    <script src="/static/js/attribution.js"></script>
+    <script src="/static/js/divdeep.js"></script>
 </body>
 </html>

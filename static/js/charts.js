@@ -125,8 +125,11 @@ function createMonthlyDividendChart(monthlyTotals) {
 }
 
 function createHoldingDividendChart(byHolding) {
-    const entries = Object.entries(byHolding).sort((a, b) => b[1] - a[1]).slice(0, 10);
-    const ctx = document.getElementById('holdingDividendChart').getContext('2d');
+    const entries = Object.entries(byHolding).sort((a, b) => b[1] - a[1]);
+    const canvas = document.getElementById('holdingDividendChart');
+    const ctx = canvas.getContext('2d');
+    // Dynamic height: 30px per bar, min 300px
+    canvas.parentElement.style.height = Math.max(300, entries.length * 30) + 'px';
     if (charts.holdingDividend) charts.holdingDividend.destroy();
 
     charts.holdingDividend = new Chart(ctx, {

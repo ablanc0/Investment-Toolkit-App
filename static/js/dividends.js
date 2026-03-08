@@ -3,27 +3,20 @@
 function populateDividends() {
     if (!dividendData) return;
 
-    const summary = portfolioData.summary || {};
+    const summary = portfolioData?.summary || {};
+    const positions = portfolioData?.positions || [];
     const annualEstimate = dividendData.annualEstimate || 0;
     const marketValue = summary.totalMarketValue || 1;
     const yield_ = (annualEstimate / marketValue) * 100;
 
+    // 6 KPI cards
     const kpis = [
-        {
-            label: '💰 Annual Income',
-            value: formatMoney(annualEstimate),
-            sub: 'Estimated yearly'
-        },
-        {
-            label: '📦 Total Received',
-            value: formatMoney(dividendData.totalReceived || 0),
-            sub: 'All time'
-        },
-        {
-            label: '📊 Dividend Yield',
-            value: formatPercent(yield_),
-            sub: 'vs market value'
-        }
+        { label: '💰 Annual Income', value: formatMoney(annualEstimate), sub: 'Estimated yearly' },
+        { label: '📦 Total Received', value: formatMoney(dividendData.totalReceived || 0), sub: 'All time' },
+        { label: '📊 Dividend Yield', value: formatPercent(yield_), sub: 'vs market value' },
+        { label: '🎯 Yield on Cost', value: formatPercent(summary.portfolioYOC || 0), sub: 'vs cost basis' },
+        { label: '🗓️ Monthly Income', value: formatMoney(summary.monthlyDivIncome || 0), sub: 'Expected per month' },
+        { label: '⏰ Daily Income', value: formatMoney(summary.dailyDivIncome || 0), sub: 'Expected per day' },
     ];
 
     const kpiGrid = document.getElementById('dividendKpis');
@@ -36,13 +29,137 @@ function populateDividends() {
         </div>
     `).join('');
 
-    if (dividendData.monthlyTotals) {
-        createMonthlyDividendChart(dividendData.monthlyTotals);
-    }
+    // Income Rank — Top 5 and Bottom 5 by totalDivsReceived
+    renderIncomeRank(positions, dividendData.totalReceived || summary.lifetimeDivsReceived || 0);
 
-    if (dividendData.byHolding) {
-        createHoldingDividendChart(dividendData.byHolding);
+    // Charts
+    if (dividendData.monthlyTotals) createMonthlyDividendChart(dividendData.monthlyTotals);
+    if (dividendData.byHolding) createHoldingDividendChart(dividendData.byHolding);
+
+    // New charts
+    renderDivYieldChart(positions);
+    renderIncomeDistChart(positions);
+}
+
+function renderIncomeRank(positions, totalReceived) {
+    const withDivs = positions
+        .filter(p => (p.totalDivsReceived || 0) > 0)
+        .sort((a, b) => (b.totalDivsReceived || 0) - (a.totalDivsReceived || 0));
+
+    const top5 = withDivs.slice(0, 5);
+    const bottom5 = withDivs.slice(-5).reverse();
+    const topTotal = top5.reduce((s, p) => s + (p.totalDivsReceived || 0), 0);
+    const bottomTotal = bottom5.reduce((s, p) => s + (p.totalDivsReceived || 0), 0);
+    const total = totalReceived || withDivs.reduce((s, p) => s + (p.totalDivsReceived || 0), 0) || 1;
+
+    const renderList = (items, container) => {
+        const el = document.getElementById(container);
+        if (!el) return;
+        el.innerHTML = items.length > 0 ? `
+            ${items.map((p, i) => `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border);">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="color: var(--text-dim); font-size: 12px; width: 24px;">${i + 1}${i === 0 ? 'st' : i === 1 ? 'nd' : i === 2 ? 'rd' : 'th'}</span>
+                        <strong>${p.ticker}</strong>
+                    </div>
+                    <span style="font-weight: 600;">${formatMoney(p.totalDivsReceived)}</span>
+                </div>
+            `).join('')}
+        ` : '<p style="color: var(--text-dim);">No dividend data</p>';
+    };
+
+    renderList(top5, 'topDivPayers');
+    renderList(bottom5, 'bottomDivPayers');
+
+    // Add percentage footer
+    const topEl = document.getElementById('topDivPayers');
+    if (topEl && top5.length > 0) {
+        topEl.innerHTML += `<div style="margin-top: 8px; padding-top: 8px; border-top: 2px solid var(--border); font-size: 13px; color: var(--text-dim);">Percent of Total Income: <strong style="color: var(--text);">${((topTotal / total) * 100).toFixed(2)}%</strong></div>`;
     }
+    const bottomEl = document.getElementById('bottomDivPayers');
+    if (bottomEl && bottom5.length > 0) {
+        bottomEl.innerHTML += `<div style="margin-top: 8px; padding-top: 8px; border-top: 2px solid var(--border); font-size: 13px; color: var(--text-dim);">Percent of Total Income: <strong style="color: var(--text);">${((bottomTotal / total) * 100).toFixed(2)}%</strong></div>`;
+    }
+}
+
+function renderDivYieldChart(positions) {
+    const ctx = document.getElementById('divYieldChart');
+    if (!ctx) return;
+    const withYield = positions
+        .filter(p => (p.divYield || 0) > 0)
+        .sort((a, b) => (b.divYield || 0) - (a.divYield || 0));
+
+    if (withYield.length === 0) return;
+
+    // Dynamic height: 30px per bar, min 300px
+    ctx.parentElement.style.height = Math.max(300, withYield.length * 30) + 'px';
+
+    if (charts.divYield) charts.divYield.destroy();
+    charts.divYield = new Chart(ctx.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: withYield.map(p => p.ticker),
+            datasets: [{
+                label: 'Div Yield %',
+                data: withYield.map(p => p.divYield || 0),
+                backgroundColor: withYield.map((_, i) => {
+                    const colors = ['#4ade80', '#22d3ee', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#f97316', '#6366f1'];
+                    return colors[i % colors.length];
+                }),
+                borderRadius: 4,
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { ticks: { color: getChartTextColor(), callback: v => v + '%' }, grid: { color: getChartGridColor() } },
+                y: { ticks: { color: getChartTextColor() }, grid: { display: false } }
+            }
+        }
+    });
+}
+
+function renderIncomeDistChart(positions) {
+    const ctx = document.getElementById('incomeDistChart');
+    if (!ctx) return;
+    const withIncome = positions
+        .filter(p => (p.annualDivIncome || 0) > 0)
+        .sort((a, b) => (b.annualDivIncome || 0) - (a.annualDivIncome || 0));
+
+    if (withIncome.length === 0) return;
+
+    const colors = ['#4ade80', '#22d3ee', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#f97316', '#6366f1'];
+
+    if (charts.incomeDist) charts.incomeDist.destroy();
+    charts.incomeDist = new Chart(ctx.getContext('2d'), {
+        type: 'doughnut',
+        data: {
+            labels: withIncome.map(p => p.ticker),
+            datasets: [{
+                data: withIncome.map(p => p.annualDivIncome || 0),
+                backgroundColor: withIncome.map((_, i) => colors[i % colors.length]),
+                borderWidth: 0,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                    labels: { color: getChartTextColor(), padding: 8, font: { size: 11 } }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => `${ctx.label}: $${ctx.raw.toFixed(2)} (${((ctx.raw / withIncome.reduce((s, p) => s + (p.annualDivIncome || 0), 0)) * 100).toFixed(1)}%)`
+                    }
+                }
+            }
+        }
+    });
 }
 
 // ── Dividend Log (Calendar Matrix with Collapsible Years) ──
@@ -190,7 +307,11 @@ async function saveDividendCell(year, month, ticker, value) {
 
 async function fetchMonthlyData() {
     try {
-        const data = await fetch('/api/monthly-data').then(r => r.json());
+        const [data, trackerResp] = await Promise.all([
+            fetch('/api/monthly-data').then(r => r.json()),
+            fetch('/api/monthly-tracker-stats').then(r => r.json()),
+        ]);
+        if (trackerResp.stats) renderMonthlyTrackerStats(trackerResp.stats);
         renderMonthlyData(data.monthlyData || []);
         renderIncomeDistribution(data.incomeDistribution || [], data.years || []);
     } catch(e) { console.error(e); }
@@ -200,6 +321,19 @@ function renderMonthlyData(items) {
     const container = document.getElementById('monthlyContainer');
     const kpis = document.getElementById('mdKpis');
     if (!container) return;
+
+    // Pre-compute month-over-month returns
+    const moReturns = [null]; // first entry has no prior month
+    for (let i = 1; i < items.length; i++) {
+        const prevVal = items[i - 1].portfolioValue || 0;
+        const currVal = items[i].portfolioValue || 0;
+        const contrib = items[i].contributions || 0;
+        if (prevVal > 0 && currVal > 0) {
+            moReturns.push(((currVal - prevVal - contrib) / prevVal) * 100);
+        } else {
+            moReturns.push(null);
+        }
+    }
 
     // Group by year
     const years = {};
@@ -250,13 +384,16 @@ function renderMonthlyData(items) {
                         <th>Month</th><th style="text-align:right;">Portfolio Value</th><th style="text-align:right;">Contributions</th>
                         <th style="text-align:right;">Dividend Income</th><th style="text-align:right;">Accum. Investment</th>
                         <th style="text-align:right;">Total Return</th><th style="text-align:right;">Return %</th>
+                        <th style="text-align:right;">Mo. Return %</th>
                     </tr></thead><tbody>`;
 
         for (const entry of entries) {
             const shortMonth = entry.month.split(' ')[0].substring(0, 3);
             const hasVal = entry.portfolioValue > 0 || entry.contributions > 0;
             const rowStyle = hasVal ? '' : 'opacity: 0.35;';
-            const retPct = entry.totalReturnPct || 0;
+            const rawRetPct = entry.totalReturnPct || 0;
+            // Normalize: values > 1 or < -1 are legacy percentage format (e.g. 19.35 = 19.35%)
+            const retPct = Math.abs(rawRetPct) > 1 ? rawRetPct / 100 : rawRetPct;
             const retClass = retPct > 0 ? 'positive' : retPct < 0 ? 'negative' : '';
 
             html += `<tr style="${rowStyle}">
@@ -288,6 +425,7 @@ function renderMonthlyData(items) {
                 </td>
                 <td style="text-align:right; color: ${(entry.totalReturn||0) >= 0 ? '#4ade80' : '#f87171'};">${entry.totalReturn ? formatMoney(entry.totalReturn) : '—'}</td>
                 <td style="text-align:right;" class="${retClass}">${retPct ? (retPct * 100).toFixed(2) + '%' : '—'}</td>
+                <td style="text-align:right; color: ${moReturns[entry._idx] > 0 ? '#4ade80' : moReturns[entry._idx] < 0 ? '#f87171' : 'var(--text-dim)'}; font-weight:600;">${moReturns[entry._idx] !== null ? moReturns[entry._idx].toFixed(2) + '%' : '—'}</td>
             </tr>`;
         }
         html += `</tbody></table></div></div></div>`;
@@ -391,20 +529,87 @@ async function saveMonthlyCell(index, field, value) {
     } catch(e) { console.error(e); }
 }
 
+// ── Monthly Tracker Stats ──
+
+function renderMonthlyTrackerStats(stats) {
+    const kpis = document.getElementById('monthlyTrackerKpis');
+    if (!kpis || !stats.summary) return;
+    const s = stats.summary;
+    const avgColor = s.avgMonthlyReturn >= 0 ? '#22c55e' : '#ef4444';
+    const twrColor = s.timeWeightedReturn >= 0 ? '#22c55e' : '#ef4444';
+    const mgColor = s.totalMarketGains >= 0 ? '#22c55e' : '#ef4444';
+    kpis.innerHTML = `
+        <div class="kpi-card"><div class="kpi-label">Best Month</div><div class="kpi-value positive">${formatPercent(s.bestMonth.return)}</div><div class="kpi-sub">${s.bestMonth.month}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Worst Month</div><div class="kpi-value negative">${formatPercent(s.worstMonth.return)}</div><div class="kpi-sub">${s.worstMonth.month}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Average Month</div><div class="kpi-value" style="color:${avgColor}">${formatPercent(s.avgMonthlyReturn)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Positive Months</div><div class="kpi-value positive">${s.positiveMonths}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Negative Months</div><div class="kpi-value negative">${s.negativeMonths}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Win Rate</div><div class="kpi-value">${s.winRate.toFixed(1)}%</div></div>
+        <div class="kpi-card"><div class="kpi-label">Total Contributions</div><div class="kpi-value">${formatMoney(s.totalContributions)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Total Market Gains</div><div class="kpi-value" style="color:${mgColor}">${formatMoney(s.totalMarketGains)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Total Dividends</div><div class="kpi-value positive">${formatMoney(s.totalDividends)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Time-Weighted Return</div><div class="kpi-value" style="color:${twrColor}">${s.timeWeightedReturn.toFixed(1)}%</div><div class="kpi-sub">Max DD: ${s.maxDrawdown.toFixed(1)}% ${s.maxDrawdownPeriod ? '(' + s.maxDrawdownPeriod + ')' : ''}</div></div>
+    `;
+
+    // Monthly returns chart
+    renderMonthlyReturnsChart(stats.monthlyReturns || []);
+}
+
+function renderMonthlyReturnsChart(returns) {
+    const canvas = document.getElementById('monthlyReturnsChart');
+    if (!canvas || !returns.length) return;
+    if (canvas._chart) canvas._chart.destroy();
+    canvas._chart = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: returns.map(r => r.month),
+            datasets: [{
+                label: 'Monthly Return %',
+                data: returns.map(r => r.return),
+                backgroundColor: returns.map(r => r.return >= 0 ? '#22c55e66' : '#ef444466'),
+                borderColor: returns.map(r => r.return >= 0 ? '#22c55e' : '#ef4444'),
+                borderWidth: 1,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { ticks: { color: getChartTextColor(), maxRotation: 45, font: { size: 10 } }, grid: { display: false } },
+                y: { ticks: { callback: v => v + '%', color: getChartTextColor() }, grid: { color: getChartGridColor() } },
+            }
+        }
+    });
+}
+
 // ── Annual Data (Computed from Monthly + Dividend Log) ──
 
 async function fetchAnnualData() {
     try {
-        const data = await fetch('/api/annual-data').then(r => r.json());
-        renderAnnualData(data.annualData || []);
+        const [data, bmResp] = await Promise.all([
+            fetch('/api/annual-data').then(r => r.json()),
+            fetch('/api/portfolio-benchmark').then(r => r.json()),
+        ]);
+        const bmYears = bmResp.benchmark || {};
+        renderAnnualData(data.annualData || [], bmYears);
+        if (bmYears.summary) renderBenchmarkKpis(bmYears.summary);
+        if (bmYears.years) renderBenchmarkChart(bmYears.years);
     } catch(e) { console.error(e); }
 }
 
-function renderAnnualData(items) {
+function renderAnnualData(items, bmData) {
     const tbody = document.getElementById('annualBody');
     if (!tbody) return;
+    // Build alpha lookup from benchmark data
+    const alphaMap = {};
+    if (bmData && bmData.years) {
+        bmData.years.forEach(y => { alphaMap[y.year] = y.alpha; });
+    }
     tbody.innerHTML = items.filter(a => a.portfolioValue > 0 || a.annualContributions > 0 || a.dividendIncome > 0).map(a => {
         const retClass = (a.totalReturnPct || 0) >= 0 ? 'positive' : 'negative';
+        const alpha = alphaMap[String(a.year)];
+        const alphaStr = alpha !== undefined ? `<span style="color:${alpha >= 0 ? '#22c55e' : '#ef4444'}; font-weight:600;">${alpha >= 0 ? '+' : ''}${alpha.toFixed(2)}%</span>` : '—';
         return `<tr>
             <td><strong>${a.year}</strong></td>
             <td style="text-align:right;">${formatMoney(a.portfolioValue)}</td>
@@ -412,8 +617,9 @@ function renderAnnualData(items) {
             <td style="text-align:right; color: #4ade80;">${formatMoney(a.dividendIncome)}</td>
             <td style="text-align:right;" class="${retClass}">${formatMoney(a.totalReturn || 0)}</td>
             <td style="text-align:right;" class="${retClass}">${a.totalReturnPct ? (a.totalReturnPct * 100).toFixed(2) + '%' : '—'}</td>
-            <td style="text-align:right;">${a.dividendYield ? (a.dividendYield * 100).toFixed(2) + '%' : '—'}</td>
             <td style="text-align:right;">${a.sp500YieldPct ? (a.sp500YieldPct * 100).toFixed(1) + '%' : '—'}</td>
+            <td style="text-align:right;">${alphaStr}</td>
+            <td style="text-align:right;">${a.dividendYield ? (a.dividendYield * 100).toFixed(2) + '%' : '—'}</td>
         </tr>`;
     }).join('');
 }

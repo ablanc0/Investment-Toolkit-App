@@ -4,6 +4,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request
 
 from services.data_store import load_portfolio, save_portfolio, crud_list, crud_add, crud_update, crud_delete
+from services.yfinance_svc import fetch_sp500_annual_returns
 
 bp = Blueprint('dividends', __name__)
 
@@ -228,7 +229,7 @@ def api_monthly_data_update():
     entry["totalReturn"] = round(portfolio_value - accumulated, 2)
 
     if accumulated > 0:
-        entry["totalReturnPct"] = round(((portfolio_value - accumulated) / accumulated) * 100, 2)
+        entry["totalReturnPct"] = round((portfolio_value - accumulated) / accumulated, 6)
     else:
         entry["totalReturnPct"] = 0
 
@@ -245,12 +246,16 @@ def api_annual_data():
     dividend_log = portfolio.get("dividendLog", [])
     existing_annual = portfolio.get("annualData", [])
 
-    # Build a map of existing sp500YieldPct by year
-    sp500_map = {}
+    # Fetch live S&P 500 annual returns from yfinance (returns %, e.g. 23.31)
+    # Convert to decimal (0.2331) to match stored format used by frontend
+    sp500_live = fetch_sp500_annual_returns()
+    sp500_map = {y: round(r / 100, 6) for y, r in sp500_live.items()}
+
+    # Fallback to stored data for any years not covered by live data
     for item in existing_annual:
         year = item.get("year")
         sp500_yield = item.get("sp500YieldPct", 0)
-        if year:
+        if year and str(year) not in sp500_map and sp500_yield:
             sp500_map[str(year)] = sp500_yield
 
     # Group monthly data by year
@@ -267,6 +272,7 @@ def api_annual_data():
 
     # Compute annual summaries
     result = []
+    prev_year_end_value = 0
     for year_str in sorted(annual_by_year.keys()):
         months = annual_by_year[year_str]
 
@@ -296,8 +302,12 @@ def api_annual_data():
         total_return = portfolio_value - last_accumulated
 
         # totalReturnPct = totalReturn / accumulatedInvestment (as decimal, e.g. 0.06)
+        # Fallback for current/partial year: use previous year's end value as baseline
         if last_accumulated > 0:
             total_return_pct = total_return / last_accumulated
+        elif prev_year_end_value > 0:
+            total_return = portfolio_value - prev_year_end_value - annual_contributions
+            total_return_pct = total_return / prev_year_end_value
         else:
             total_return_pct = 0
 
@@ -317,5 +327,6 @@ def api_annual_data():
         }
 
         result.append(annual_entry)
+        prev_year_end_value = portfolio_value
 
     return jsonify({"annualData": result, "lastUpdated": datetime.now().isoformat()})

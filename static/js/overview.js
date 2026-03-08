@@ -68,6 +68,9 @@ function populateOverview() {
         cashValue.onclick = () => editCashValue(cashValue, summary.cash);
     }
 
+    // Health summary bar
+    renderHealthSummary();
+
     // Section 2: Dividend Stats
     const divStatsKpis = [
         {
@@ -147,9 +150,83 @@ function populateOverview() {
     if (allocations.securityType) {
         createAllocationChart('securityChart', allocations.securityType, 'Security Type');
     }
-    if (allocations.category) {
-        createAllocationChart('strategyChart', allocations.category, 'Strategy Mix');
+    // Day Movers — top 5 gainers/losers by day change
+    renderDayMovers();
+}
+
+function renderHealthSummary() {
+    const bar = document.getElementById('healthSummaryBar');
+    if (!bar) return;
+
+    const positions = portfolioData?.positions || [];
+    const watchlist = watchlistData?.watchlist || [];
+    const sb = _signalThresholds?.avgCost?.strongBuy ?? -15;
+    const oc = _signalThresholds?.avgCost?.overcost ?? 15;
+
+    const strongBuys = positions.filter(p => (p.returnPercent || 0) <= sb).length;
+    const overcost = positions.filter(p => (p.returnPercent || 0) >= oc).length;
+    const wlOpps = watchlist.filter(w => (w.distance || 0) < 0).length;
+
+    const items = [];
+    if (strongBuys > 0) items.push(`<span style="color: #4ade80; cursor: pointer;" onclick="switchTab('screening')">${strongBuys} Strong Buy</span>`);
+    if (overcost > 0) items.push(`<span style="color: #f87171; cursor: pointer;" onclick="switchTab('screening')">${overcost} Overcost</span>`);
+    if (wlOpps > 0) items.push(`<span style="color: #22d3ee; cursor: pointer;" onclick="switchTab('screening')">${wlOpps} WL Opportunities</span>`);
+    items.push(`<span style="color: var(--text-dim);">${positions.length} Holdings</span>`);
+
+    bar.innerHTML = items.map(item =>
+        `<div style="padding: 4px 12px; background: var(--card-hover); border-radius: 6px; font-size: 13px; font-weight: 500;">${item}</div>`
+    ).join('');
+}
+
+function renderDayMovers() {
+    const container = document.getElementById('dayMoversContainer');
+    if (!container) return;
+
+    const positions = portfolioData?.positions || [];
+    if (positions.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-dim);">No positions data</p>';
+        return;
     }
+
+    const sorted = [...positions].sort((a, b) => (b.dayChangePercent || b.dayChangePct || 0) - (a.dayChangePercent || a.dayChangePct || 0));
+    const gainers = sorted.slice(0, 5).filter(p => (p.dayChangePercent || p.dayChangePct || 0) > 0);
+    const losers = sorted.slice(-5).reverse().filter(p => (p.dayChangePercent || p.dayChangePct || 0) < 0);
+
+    const renderRow = (p, isGainer) => {
+        const pct = p.dayChangePercent || p.dayChangePct || 0;
+        const chg = p.dayChange || p.dayChangeShare || 0;
+        const maxWidth = 60;
+        const absMax = Math.max(...positions.map(x => Math.abs(x.dayChangePercent || x.dayChangePct || 0)), 1);
+        const barWidth = Math.min(Math.abs(pct) / absMax * maxWidth, maxWidth);
+        const color = isGainer ? '#22c55e' : '#ef4444';
+        return `
+            <div style="display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border);">
+                <span style="width: 60px; font-weight: 600; font-size: 13px;">${p.ticker}</span>
+                <div style="flex: 1; display: flex; align-items: center; ${isGainer ? '' : 'flex-direction: row-reverse;'}">
+                    <div style="width: ${barWidth}%; height: 6px; background: ${color}; border-radius: 3px;"></div>
+                </div>
+                <span style="width: 70px; text-align: right; color: ${color}; font-weight: 600; font-size: 13px;">${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</span>
+                <span style="width: 70px; text-align: right; color: var(--text-dim); font-size: 12px;">${formatMoney(chg)}</span>
+            </div>
+        `;
+    };
+
+    let html = '';
+    if (gainers.length > 0) {
+        html += '<div style="margin-bottom: 12px;"><div style="font-size: 12px; text-transform: uppercase; color: #22c55e; font-weight: 600; margin-bottom: 6px;">Gainers</div>';
+        html += gainers.map(p => renderRow(p, true)).join('');
+        html += '</div>';
+    }
+    if (losers.length > 0) {
+        html += '<div><div style="font-size: 12px; text-transform: uppercase; color: #ef4444; font-weight: 600; margin-bottom: 6px;">Losers</div>';
+        html += losers.map(p => renderRow(p, false)).join('');
+        html += '</div>';
+    }
+    if (gainers.length === 0 && losers.length === 0) {
+        html = '<p style="color: var(--text-dim);">No day change data available</p>';
+    }
+
+    container.innerHTML = html;
 }
 
 function editCashValue(element, currentValue) {

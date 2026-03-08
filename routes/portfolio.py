@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request
 
-from services.data_store import load_portfolio, save_portfolio, get_settings
+from services.data_store import load_portfolio, save_portfolio, get_settings, crud_add, crud_delete
 from services.yfinance_svc import fetch_ticker_data, fetch_all_quotes, fetch_dividends
 
 bp = Blueprint('portfolio', __name__)
@@ -101,8 +101,8 @@ def api_portfolio():
         # IV fields
         iv_data = iv_map.get(ticker, {})
         intrinsic_value = iv_data.get("intrinsicValue", 0) or 0
-        invt_score_data = iv_data.get("invtScore")
-        invt_score = invt_score_data.get("score", 0) if isinstance(invt_score_data, dict) else 0
+        invt_score_data = iv_data.get("invtScore", 0)
+        invt_score = invt_score_data.get("score", 0) if isinstance(invt_score_data, dict) else (float(invt_score_data) if invt_score_data else 0)
         dist_from_iv = ((price - intrinsic_value) / intrinsic_value) if intrinsic_value > 0 else 0
         dist_from_avg = ((price - avg_cost) / avg_cost) if avg_cost > 0 else 0
 
@@ -206,7 +206,7 @@ def api_portfolio():
     if raw_goals.get("portfolioTarget"):
         goals_array.append({"name": f"${raw_goals['portfolioTarget']:,} Portfolio Goal", "current": round(total_market_value, 2), "target": raw_goals["portfolioTarget"]})
     if raw_goals.get("dividendTarget"):
-        goals_array.append({"name": f"${raw_goals['dividendTarget']:,} Annual Dividend Goal", "current": 0, "target": raw_goals["dividendTarget"]})
+        goals_array.append({"name": f"${raw_goals['dividendTarget']:,} Annual Dividend Goal", "current": round(total_annual_div_income, 2), "target": raw_goals["dividendTarget"]})
     if raw_goals.get("maxHoldings"):
         goals_array.append({"name": f"Diversification ({raw_goals['maxHoldings']} Holdings Max)", "current": len(enriched), "target": raw_goals["maxHoldings"]})
 
@@ -314,8 +314,8 @@ def api_watchlist():
         dist_pct = round(((price - intrinsic) / intrinsic * 100) if intrinsic > 0 else 0, 2)
 
         # InvT Score from IV list
-        invt_score_data = iv_entry.get("invtScore")
-        invt_score = invt_score_data.get("score", 0) if isinstance(invt_score_data, dict) else 0
+        invt_score_data = iv_entry.get("invtScore", 0)
+        invt_score = invt_score_data.get("score", 0) if isinstance(invt_score_data, dict) else (float(invt_score_data) if invt_score_data else 0)
 
         result.append({
             "ticker": ticker,
@@ -413,7 +413,7 @@ def api_position_update():
     if not ticker or not field:
         return jsonify({"error": "ticker and field required"}), 400
 
-    allowed_fields = {"shares", "avgCost", "category", "sector", "secType"}
+    allowed_fields = {"shares", "avgCost", "category", "sector", "secType", "buyDate"}
     if field not in allowed_fields:
         return jsonify({"error": f"Field '{field}' not editable"}), 400
 
@@ -445,6 +445,7 @@ def api_position_add():
         if p["ticker"] == ticker:
             return jsonify({"error": f"'{ticker}' already exists"}), 400
 
+    now = datetime.now()
     new_pos = {
         "ticker": ticker,
         "shares": float(body.get("shares", 0)),
@@ -452,6 +453,8 @@ def api_position_add():
         "category": body.get("category", "Growth"),
         "sector": body.get("sector", ""),
         "secType": body.get("secType", "Stocks"),
+        "buyDate": body.get("buyDate", ""),
+        "entryDate": body.get("entryDate", now.strftime("%Y-%m")),
     }
     portfolio["positions"].append(new_pos)
     save_portfolio(portfolio)
@@ -570,3 +573,43 @@ def api_targets_update():
     portfolio["targets"] = targets
     save_portfolio(portfolio)
     return jsonify({"ok": True, "targets": targets})
+
+
+@bp.route("/api/strategy/add", methods=["POST"])
+def api_strategy_add():
+    """Add a strategy note. Body: {"note": "text"}"""
+    body = request.get_json()
+    note = body.get("note", "").strip()
+    if not note:
+        return jsonify({"error": "Note text required"}), 400
+    crud_add("strategy", note)
+    return jsonify({"ok": True})
+
+
+@bp.route("/api/strategy/update", methods=["POST"])
+def api_strategy_update():
+    """Update a strategy note. Body: {"index": N, "note": "new text"}"""
+    body = request.get_json()
+    index = body.get("index")
+    note = body.get("note", "").strip()
+    if index is None or not note:
+        return jsonify({"error": "Index and note text required"}), 400
+    portfolio = load_portfolio()
+    items = portfolio.get("strategy", [])
+    idx = int(index)
+    if 0 <= idx < len(items):
+        items[idx] = note
+        save_portfolio(portfolio)
+        return jsonify({"ok": True})
+    return jsonify({"error": "Index out of range"}), 404
+
+
+@bp.route("/api/strategy/delete", methods=["POST"])
+def api_strategy_delete():
+    """Delete a strategy note. Body: {"index": N}"""
+    body = request.get_json()
+    index = body.get("index")
+    if index is None:
+        return jsonify({"error": "Index required"}), 400
+    crud_delete("strategy", int(index))
+    return jsonify({"ok": True})

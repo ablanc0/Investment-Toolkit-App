@@ -109,15 +109,11 @@ function renderTaxTable(breakdown) {
     const profile = currentSalaryData?.profile || {};
     const taxes = profile.taxes || {};
 
-    // Year selector
-    const yearSelect = document.getElementById('salaryYearSelect');
-    if (yearSelect) {
-        const hist = profile.history || [];
+    // Year input
+    const yearInput = document.getElementById('salaryYearInput');
+    if (yearInput) {
         const curYear = profile.year || new Date().getFullYear();
-        const years = hist.map(h => h.year).filter(y => y);
-        if (!years.includes(curYear)) years.push(curYear);
-        years.sort((a,b) => b - a);
-        yearSelect.innerHTML = years.map(y => `<option value="${y}" ${y === curYear ? 'selected' : ''}>${y}</option>`).join('');
+        yearInput.value = curYear;
     }
 
     let html = `<div class="table-wrapper"><table style="width:100%; font-size:0.82rem; border-collapse:collapse;">
@@ -237,10 +233,8 @@ function renderProjectedSalary(projected, projAmount, currentSumm) {
 
 function renderSalaryHistory(profile) {
     const histDiv = document.getElementById('salHistory');
-    const saveYearSpan = document.getElementById('saveHistoryYear');
     if (!histDiv) return;
     const curYear = profile.year || new Date().getFullYear();
-    if (saveYearSpan) saveYearSpan.textContent = curYear;
 
     const hist = profile.history || [];
     let html = `<div class="table-wrapper"><table style="width:100%; font-size:0.85rem;"><thead><tr>
@@ -311,7 +305,7 @@ async function updateProjectedSalary(value) {
 }
 
 function switchSalaryYear() {
-    const yr = parseInt(document.getElementById('salaryYearSelect').value);
+    const yr = parseInt(document.getElementById('salaryYearInput').value);
     if (!yr) return;
     saveSalaryUpdate({year: yr});
 }
