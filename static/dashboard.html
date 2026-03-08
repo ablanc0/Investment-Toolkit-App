@@ -82,6 +82,7 @@
         </div>
         <div class="tab-row" data-group="planning" style="display:none">
             <button class="tab-btn" data-tab="salary">Salary</button>
+            <button class="tab-btn" data-tab="retirement">Retirement</button>
             <button class="tab-btn" data-tab="passive">Passive Income</button>
             <button class="tab-btn" data-tab="rule4pct">Rule 4%</button>
             <button class="tab-btn" data-tab="costOfLiving">Cost of Living</button>
@@ -754,6 +755,37 @@
                     <div class="card-title" style="margin-bottom: 0;">Salary History</div>
                 </div>
                 <div id="salHistory"></div>
+            </div>
+
+        </div>
+
+        <!-- Retirement Tab -->
+        <div class="tab-content" id="retirement">
+            <!-- KPI row -->
+            <div id="retirementKpis" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px;"></div>
+
+            <!-- Inputs card -->
+            <div class="card" style="margin-bottom: 16px;">
+                <div class="card-title">Retirement Assumptions</div>
+                <div id="retirementInputs"></div>
+            </div>
+
+            <!-- Projection chart -->
+            <div class="card" style="margin-bottom: 16px;">
+                <div class="card-title">Portfolio Growth Projection</div>
+                <div class="chart-container"><canvas id="retirementChart"></canvas></div>
+            </div>
+
+            <!-- Results table -->
+            <div class="card" style="margin-bottom: 16px;">
+                <div class="card-title">Retirement Summary</div>
+                <div id="retirementResults"></div>
+            </div>
+
+            <!-- Sensitivity table -->
+            <div class="card">
+                <div class="card-title">Return Rate Sensitivity</div>
+                <div id="retirementSensitivity"></div>
             </div>
         </div>
 

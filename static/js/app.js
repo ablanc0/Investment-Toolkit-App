@@ -216,6 +216,7 @@ function loadTabData(tabId) {
         ivlist: fetchIntrinsicValues,
         superinv: fetchSuperInvestors,
         salary: fetchSalaryData,
+        retirement: fetchRetirementData,
         passive: fetchPassiveIncome,
         rule4pct: fetchRule4Pct,
         costOfLiving: fetchCostOfLiving,
