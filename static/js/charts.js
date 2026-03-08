@@ -125,7 +125,7 @@ function createMonthlyDividendChart(monthlyTotals) {
 }
 
 function createHoldingDividendChart(byHolding) {
-    const entries = Object.entries(byHolding).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const entries = Object.entries(byHolding).sort((a, b) => b[1] - a[1]);
     const ctx = document.getElementById('holdingDividendChart').getContext('2d');
     if (charts.holdingDividend) charts.holdingDividend.destroy();
 

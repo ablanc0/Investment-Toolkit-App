@@ -87,8 +87,7 @@ function renderDivYieldChart(positions) {
     if (!ctx) return;
     const withYield = positions
         .filter(p => (p.divYield || 0) > 0)
-        .sort((a, b) => (b.divYield || 0) - (a.divYield || 0))
-        .slice(0, 10);
+        .sort((a, b) => (b.divYield || 0) - (a.divYield || 0));
 
     if (withYield.length === 0) return;
 
@@ -125,8 +124,7 @@ function renderIncomeDistChart(positions) {
     if (!ctx) return;
     const withIncome = positions
         .filter(p => (p.annualDivIncome || 0) > 0)
-        .sort((a, b) => (b.annualDivIncome || 0) - (a.annualDivIncome || 0))
-        .slice(0, 10);
+        .sort((a, b) => (b.annualDivIncome || 0) - (a.annualDivIncome || 0));
 
     if (withIncome.length === 0) return;
 
