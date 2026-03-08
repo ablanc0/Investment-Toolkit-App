@@ -91,6 +91,9 @@ function renderDivYieldChart(positions) {
 
     if (withYield.length === 0) return;
 
+    // Dynamic height: 30px per bar, min 300px
+    ctx.parentElement.style.height = Math.max(300, withYield.length * 30) + 'px';
+
     if (charts.divYield) charts.divYield.destroy();
     charts.divYield = new Chart(ctx.getContext('2d'), {
         type: 'bar',
