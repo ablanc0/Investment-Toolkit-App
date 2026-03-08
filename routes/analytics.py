@@ -261,7 +261,7 @@ def api_portfolio_benchmark():
     else:
         historic_data = portfolio.get("historicData", [])
 
-    # Build simple annual data from monthlyData
+    # Build simple annual data from monthlyData (skip empty future years)
     annual_map = {}
     for entry in monthly_data:
         year = entry.get("year")
@@ -276,13 +276,30 @@ def api_portfolio_benchmark():
                 "dividendYield": 0,
                 "sp500YieldPct": 0,
             }
-        annual_map[year_str]["portfolioValue"] = entry.get("portfolioValue", 0)
+        pv = entry.get("portfolioValue", 0)
+        if pv > 0:
+            annual_map[year_str]["portfolioValue"] = pv
         annual_map[year_str]["totalReturnPct"] = entry.get("totalReturnPct", 0)
         if entry.get("dividendIncome"):
-            pv = entry.get("portfolioValue", 1)
-            annual_map[year_str]["dividendYield"] = entry.get("dividendIncome", 0) / pv * 100 if pv > 0 else 0
+            if pv > 0:
+                annual_map[year_str]["dividendYield"] = entry.get("dividendIncome", 0) / pv * 100
 
-    annual_data = sorted(annual_map.values(), key=lambda x: x["year"])
+    # Filter to years with actual portfolio data and compute YTD for current year
+    annual_data = []
+    prev_year_end = 0
+    for year_str in sorted(annual_map.keys()):
+        item = annual_map[year_str]
+        if item["portfolioValue"] <= 0:
+            continue
+        # If totalReturnPct is 0 and we have a previous year, compute YTD
+        if item["totalReturnPct"] == 0 and prev_year_end > 0:
+            contributions = sum(
+                m.get("contributions", 0) for m in monthly_data
+                if str(m.get("year")) == year_str
+            )
+            item["totalReturnPct"] = (item["portfolioValue"] - prev_year_end - contributions) / prev_year_end
+        prev_year_end = item["portfolioValue"]
+        annual_data.append(item)
     comparison = compute_benchmark_comparison(annual_data, historic_data)
     return jsonify({
         "benchmark": comparison,

@@ -80,10 +80,11 @@ async function fetchBenchmark() {
 function renderBenchmarkKpis(s) {
     const el = document.getElementById('benchmarkKpis');
     if (!el || !s) return;
-    const alphaColor = s.cumulativeAlpha >= 0 ? '#22c55e' : '#ef4444';
+    const cumColor = s.cumulativeAlpha >= 0 ? '#22c55e' : '#ef4444';
+    const avgColor = s.avgAlpha >= 0 ? '#22c55e' : '#ef4444';
     el.innerHTML = `
-        <div class="kpi-card"><div class="kpi-label">Cumulative Alpha</div><div class="kpi-value" style="color:${alphaColor}">${s.cumulativeAlpha >= 0 ? '+' : ''}${s.cumulativeAlpha.toFixed(2)}%</div><div class="kpi-sub">${s.yearsTracked} years tracked</div></div>
-        <div class="kpi-card"><div class="kpi-label">Avg. Annual Alpha</div><div class="kpi-value" style="color:${alphaColor}">${s.avgAlpha >= 0 ? '+' : ''}${s.avgAlpha.toFixed(2)}%</div><div class="kpi-sub">vs S&P 500</div></div>
+        <div class="kpi-card"><div class="kpi-label">Cumulative Alpha</div><div class="kpi-value" style="color:${cumColor}">${s.cumulativeAlpha >= 0 ? '+' : ''}${s.cumulativeAlpha.toFixed(2)}%</div><div class="kpi-sub">${s.yearsTracked} year${s.yearsTracked !== 1 ? 's' : ''} tracked &mdash; sum of yearly excess returns vs S&P 500</div></div>
+        <div class="kpi-card"><div class="kpi-label">Avg. Annual Alpha</div><div class="kpi-value" style="color:${avgColor}">${s.avgAlpha >= 0 ? '+' : ''}${s.avgAlpha.toFixed(2)}%</div><div class="kpi-sub">Average yearly over/underperformance vs S&P 500</div></div>
     `;
 }
 
