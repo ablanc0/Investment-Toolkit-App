@@ -51,7 +51,7 @@ def api_salary_update():
     if "taxes" in b:
         profile["taxes"] = b["taxes"]
     # Update simple fields
-    for key in ("year", "projectedSalary", "name"):
+    for key in ("year", "projectedSalary", "hsaExtraIncome", "name"):
         if key in b:
             profile[key] = int(b[key]) if key == "year" else b[key]
     # Update shared fields

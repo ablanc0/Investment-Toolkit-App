@@ -339,6 +339,7 @@ async function crudDeleteItem(apiPath, section, index, refreshFn) {
                     monthlyData: fetchMonthlyData, myLab: fetchMyLab,
                     intrinsicValues: fetchIntrinsicValues, superInvestorBuys: fetchSuperInvestors,
                     passiveIncome: fetchPassiveIncome,
+                    hsaExpenses: fetchTaxAccounts,
                 };
                 if (loaderMap[section]) loaderMap[section]();
             }
