@@ -80,13 +80,7 @@ function renderCOLConfig() {
                                 onchange="onHomeStateChange(this.value)">`
                         }</div>
                 </div>
-                <div style="margin-bottom:10px;">
-                    <label class="form-label" style="font-size:0.72rem;">City Name</label>
-                    <input type="text" value="${colConfig.homeCityName || ''}" class="form-input"
-                        style="width:100%; font-size:0.82rem;" placeholder="Your city name"
-                        onchange="updateCOLConfig('homeCityName', this.value)">
-                </div>
-                ${renderHomeCityResolution()}
+                ${renderHomeCitySelector()}
                 <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:10px;">
                     <div><label class="form-label" style="font-size:0.72rem;">Your Rent/mo</label>
                         <input type="number" value="${colConfig.currentRent || 0}" class="form-input"
@@ -152,6 +146,65 @@ async function updateCOLConfig(key, value) {
             showSaveToast('Config updated');
         }
     } catch(e) { console.error(e); }
+}
+
+function renderHomeCitySelector() {
+    const homeCountry = colConfig.homeCountry || 'United States';
+    const homeState = colConfig.homeState || '';
+    const homeName = colConfig.homeCityName || '';
+
+    // Get cities in the selected state/region
+    const stateCities = colApiCities.filter(c => {
+        if (homeState) return (c.state || '').toLowerCase() === homeState.toLowerCase();
+        return c.country === homeCountry;
+    }).sort((a, b) => a.name.localeCompare(b.name));
+
+    const isManualEntry = homeName && !stateCities.some(c => c.name.toLowerCase() === homeName.toLowerCase().trim());
+    const isOtherSelected = colConfig._manualCityEntry || (isManualEntry && homeName);
+
+    let html = '<div style="margin-bottom:10px;">';
+    html += '<label class="form-label" style="font-size:0.72rem;">City</label>';
+
+    if (stateCities.length > 0) {
+        const cityOpts = stateCities.map(c =>
+            `<option value="${c.name}" ${c.name.toLowerCase() === homeName.toLowerCase().trim() ? 'selected' : ''}>${c.name} — COL ${c.colIndex}, $${c.monthlyCostsNoRent?.toLocaleString()}/mo</option>`
+        ).join('');
+        html += `<select class="form-input" style="width:100%; font-size:0.82rem;"
+            onchange="onHomeCitySelect(this.value)">
+            <option value="" ${!homeName ? 'selected' : ''}>Select your city...</option>
+            ${cityOpts}
+            <option value="__other__" ${isOtherSelected ? 'selected' : ''}>Other (enter manually)</option>
+        </select>`;
+    } else {
+        // No cities in state — show text input directly
+        html += `<input type="text" value="${homeName}" class="form-input"
+            style="width:100%; font-size:0.82rem;" placeholder="Your city name"
+            onchange="updateCOLConfig('homeCityName', this.value)">`;
+    }
+
+    // If "Other" is selected, show text input for custom city name
+    if (isOtherSelected && stateCities.length > 0) {
+        html += `<input type="text" value="${homeName}" class="form-input"
+            style="width:100%; font-size:0.82rem; margin-top:6px;" placeholder="Enter city name..."
+            onchange="updateCOLConfig('homeCityName', this.value)">`;
+    }
+
+    html += '</div>';
+
+    // Show resolution for the selected city
+    html += renderHomeCityResolution();
+    return html;
+}
+
+function onHomeCitySelect(value) {
+    if (value === '__other__') {
+        // Switch to manual entry mode
+        colConfig._manualCityEntry = true;
+        renderCOLConfig();
+        return;
+    }
+    colConfig._manualCityEntry = false;
+    updateCOLConfig('homeCityName', value);
 }
 
 function renderHomeCityResolution() {

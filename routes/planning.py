@@ -252,10 +252,22 @@ def api_col_config_update():
         config["homeMonthlyCosts"] = float(val) if val is not None else None
     if "homeCountry" in b:
         config["homeCountry"] = b["homeCountry"]
-    # Auto-resolve from proxy/stateAvg
+    # Auto-resolve home city data
+    from services.col_api import get_col_cities
+    api_cities = get_col_cities()
+    # If home city matches an API city, auto-resolve directly
+    home_name = (config.get("homeCityName") or "").lower().strip()
+    matched = next((c for c in api_cities if c["name"].lower() == home_name), None)
+    if matched:
+        config["homeColSource"] = "apiCity"
+        config["homeColIndex"] = matched.get("colIndex")
+        config["homeMonthlyCosts"] = matched.get("monthlyCostsNoRent")
+    elif config.get("homeColSource") == "apiCity":
+        # City was apiCity but no longer matches — reset to manual
+        config["homeColSource"] = "manual"
+    # Resolve from proxy/stateAvg
     if config.get("homeColSource") in ("proxy", "stateAvg"):
-        from services.col_api import get_col_cities
-        resolved_col, resolved_costs = _resolve_home_col(config, get_col_cities())
+        resolved_col, resolved_costs = _resolve_home_col(config, api_cities)
         if resolved_col is not None:
             config["homeColIndex"] = resolved_col
         if resolved_costs is not None:
