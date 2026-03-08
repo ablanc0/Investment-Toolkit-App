@@ -21,7 +21,43 @@ def _default_col_config():
         "comparisonSalary": 200000,
         "bedroomCount": 1,       # 1 or 3
         "locationType": "city",  # "city" or "suburb"
+        # Home city COL parameters (for relative ratio formula)
+        "homeColIndex": None,       # COL index for home city (None = legacy /100)
+        "homeMonthlyCosts": None,   # non-housing monthly costs for home
+        "homeColSource": "manual",  # "manual" | "proxy" | "stateAvg"
+        "homeProxyCity": None,      # API city name if source is "proxy"
+        "homeState": None,          # state name if source is "stateAvg"
     }
+
+
+def _resolve_home_col(config, api_cities):
+    """Resolve homeColIndex and homeMonthlyCosts from the configured source."""
+    source = config.get("homeColSource", "manual")
+
+    if source == "manual":
+        return config.get("homeColIndex"), config.get("homeMonthlyCosts")
+
+    if source == "proxy":
+        proxy_name = (config.get("homeProxyCity") or "").lower()
+        if not proxy_name:
+            return None, None
+        for c in api_cities:
+            if c["name"].lower() == proxy_name:
+                return c.get("colIndex"), c.get("monthlyCostsNoRent")
+        return None, None
+
+    if source == "stateAvg":
+        state = (config.get("homeState") or "").lower()
+        if not state:
+            return None, None
+        state_cities = [c for c in api_cities if (c.get("state") or "").lower() == state.lower()]
+        if not state_cities:
+            return None, None
+        avg_col = sum(c.get("colIndex", 0) for c in state_cities) / len(state_cities)
+        avg_costs = sum(c.get("monthlyCostsNoRent", 0) for c in state_cities) / len(state_cities)
+        return round(avg_col, 2), round(avg_costs, 2)
+
+    return None, None
 
 
 def _compute_col_entry(entry, config):
@@ -41,10 +77,12 @@ def _compute_col_entry(entry, config):
             rent_key = f"rent{br}br{'City' if loc == 'city' else 'Suburb'}"
             entry["rent"] = api_data.get(rent_key, entry.get("rent", 0))
             entry["type"] = "Downtown" if loc == "city" else "Suburban"
-        # Derive nonHousingMult from colIndex (unless user overrode)
+        # Derive nonHousingMult from colIndex relative to home (unless user overrode)
         if not entry.get("nhmOverride") and api_data:
             col_index = float(api_data.get("colIndex", 100))
-            entry["nonHousingMult"] = round(col_index / 100, 2) if col_index > 0 else 1.0
+            home_col = float(config.get("homeColIndex") or 0)
+            divisor = home_col if home_col > 0 else 100
+            entry["nonHousingMult"] = round(col_index / divisor, 2) if col_index > 0 else 1.0
         # Populate extra API metrics for display
         if api_data:
             entry["groceriesIndex"] = float(api_data.get("groceriesIndex", 0))
@@ -130,7 +168,12 @@ def api_cost_of_living_add():
         item["rentOverride"] = False
         item["nhmOverride"] = False
         item["apiData"] = b.get("apiData", {})
+    # Prevent duplicate metro names
     portfolio = load_portfolio()
+    existing = portfolio.get("costOfLiving", [])
+    metro_lower = item["metro"].lower().strip()
+    if any(c.get("metro", "").lower().strip() == metro_lower for c in existing):
+        return jsonify({"ok": False, "error": f"{item['metro']} already exists"}), 400
     config = portfolio.get("colConfig", _default_col_config())
     _compute_col_entry(item, config)
     return crud_add("costOfLiving", item)
@@ -172,6 +215,27 @@ def api_col_config_update():
         config["locationType"] = b["locationType"]
     if "homeCityName" in b:
         config["homeCityName"] = b["homeCityName"]
+    # Home COL parameters
+    if "homeColSource" in b:
+        config["homeColSource"] = b["homeColSource"]
+    if "homeProxyCity" in b:
+        config["homeProxyCity"] = b["homeProxyCity"]
+    if "homeState" in b:
+        config["homeState"] = b["homeState"]
+    if "homeColIndex" in b:
+        val = b["homeColIndex"]
+        config["homeColIndex"] = float(val) if val is not None else None
+    if "homeMonthlyCosts" in b:
+        val = b["homeMonthlyCosts"]
+        config["homeMonthlyCosts"] = float(val) if val is not None else None
+    # Auto-resolve from proxy/stateAvg
+    if config.get("homeColSource") in ("proxy", "stateAvg"):
+        from services.col_api import get_col_cities
+        resolved_col, resolved_costs = _resolve_home_col(config, get_col_cities())
+        if resolved_col is not None:
+            config["homeColIndex"] = resolved_col
+        if resolved_costs is not None:
+            config["homeMonthlyCosts"] = resolved_costs
     if "referenceSalarySource" in b:
         source = b["referenceSalarySource"]
         config["referenceSalarySource"] = source
@@ -289,6 +353,26 @@ def api_col_upgrade():
     portfolio["costOfLiving"] = cities
     save_portfolio(portfolio)
     return jsonify({"ok": True, "upgraded": upgraded, "costOfLiving": cities})
+
+
+@bp.route("/api/cost-of-living/dedup", methods=["POST"])
+def api_col_dedup():
+    """Remove duplicate cities, keeping the first occurrence of each metro name."""
+    portfolio = load_portfolio()
+    cities = portfolio.get("costOfLiving", [])
+    seen = set()
+    unique = []
+    removed = 0
+    for city in cities:
+        key = city.get("metro", "").lower().strip()
+        if key in seen:
+            removed += 1
+            continue
+        seen.add(key)
+        unique.append(city)
+    portfolio["costOfLiving"] = unique
+    save_portfolio(portfolio)
+    return jsonify({"ok": True, "removed": removed, "remaining": len(unique), "costOfLiving": unique})
 
 
 @bp.route("/api/cost-of-living/api-cities")

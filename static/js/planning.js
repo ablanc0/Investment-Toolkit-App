@@ -75,6 +75,18 @@ function renderCOLConfig() {
                     <option value="suburb" ${colConfig.locationType==='suburb'?'selected':''}>Outside Centre</option>
                 </select></div>
         </div>
+        <div style="margin-top:10px; padding:10px; background:var(--bg); border-radius:6px; border:1px solid var(--border);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <span style="font-size:0.78rem; font-weight:600; color:var(--text);">Home City COL Parameters</span>
+                <select class="form-input" style="width:auto; font-size:0.75rem; padding:2px 8px;"
+                    onchange="updateHomeColSource(this.value)">
+                    <option value="manual" ${(colConfig.homeColSource||'manual')==='manual'?'selected':''}>Manual</option>
+                    <option value="proxy" ${colConfig.homeColSource==='proxy'?'selected':''}>Proxy City</option>
+                    <option value="stateAvg" ${colConfig.homeColSource==='stateAvg'?'selected':''}>State Average</option>
+                </select>
+            </div>
+            ${renderHomeColDetails()}
+        </div>
         <div style="margin-top:8px; font-size:0.75rem; color:var(--text-dim);">
             ${colApiMeta.fetchedAt
                 ? `<span style="color:#4ade80;">&#9679;</span> ${colApiMeta.cityCount} US cities in database${colApiMeta.totalKnownCities ? ' / ' + colApiMeta.totalKnownCities + ' global' : ''} (updated ${new Date(colApiMeta.fetchedAt).toLocaleDateString()})`
@@ -102,6 +114,117 @@ async function updateCOLConfig(key, value) {
     } catch(e) { console.error(e); }
 }
 
+function renderHomeColDetails() {
+    const source = colConfig.homeColSource || 'manual';
+    const resolvedCol = colConfig.homeColIndex;
+    const resolvedCosts = colConfig.homeMonthlyCosts;
+    const resolvedLine = `<div style="margin-top:6px; font-size:0.72rem; color:var(--text-dim);">
+        Resolved: COL Index = <strong style="color:${resolvedCol ? '#4ade80' : '#f59e0b'};">${resolvedCol != null ? resolvedCol : 'not set (using NYC=100)'}</strong>
+        &nbsp;|&nbsp; Monthly Costs = <strong style="color:${resolvedCosts ? '#4ade80' : 'var(--text-dim)'};">${resolvedCosts != null ? formatMoney(resolvedCosts) : 'not set'}</strong></div>`;
+
+    if (source === 'manual') {
+        return `<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <div><label class="form-label" style="font-size:0.72rem;">Home COL Index</label>
+                <input type="number" value="${resolvedCol || ''}" class="form-input" step="0.1"
+                    placeholder="e.g. 70" style="width:100%; font-size:0.82rem;"
+                    onchange="updateCOLConfig('homeColIndex', this.value ? parseFloat(this.value) : null)"></div>
+            <div><label class="form-label" style="font-size:0.72rem;">Home Monthly Costs (no rent)</label>
+                <input type="number" value="${resolvedCosts || ''}" class="form-input"
+                    placeholder="e.g. 1100" style="width:100%; font-size:0.82rem;"
+                    onchange="updateCOLConfig('homeMonthlyCosts', this.value ? parseFloat(this.value) : null)"></div>
+        </div>${resolvedLine}`;
+    }
+
+    if (source === 'proxy') {
+        const proxyName = colConfig.homeProxyCity || '';
+        return `<div><label class="form-label" style="font-size:0.72rem;">Proxy City (nearest API city)</label>
+            <input type="text" value="${proxyName}" class="form-input" id="homeProxyInput"
+                placeholder="Type to search..." style="width:100%; font-size:0.82rem;"
+                oninput="onHomeProxyCitySearch(this.value)">
+            <div id="homeProxyResults" style="max-height:150px; overflow-y:auto;"></div>
+        </div>${resolvedLine}`;
+    }
+
+    if (source === 'stateAvg') {
+        const states = [...new Set(colApiCities.map(c => c.state).filter(Boolean))].sort();
+        const stateOpts = states.map(s =>
+            `<option value="${s}" ${colConfig.homeState === s ? 'selected' : ''}>${s} (${colApiCities.filter(c => c.state === s).length} cities)</option>`
+        ).join('');
+        return `<div><label class="form-label" style="font-size:0.72rem;">State</label>
+            <select class="form-input" style="width:100%; font-size:0.82rem;"
+                onchange="updateCOLConfig('homeState', this.value)">
+                <option value="">Select state...</option>
+                ${stateOpts}
+            </select></div>${resolvedLine}`;
+    }
+
+    return resolvedLine;
+}
+
+function updateHomeColSource(value) {
+    updateCOLConfig('homeColSource', value);
+}
+
+function onHomeProxyCitySearch(query) {
+    const results = document.getElementById('homeProxyResults');
+    if (!results || query.length < 2) { if (results) results.innerHTML = ''; return; }
+    const q = query.toLowerCase();
+    const matches = colApiCities
+        .filter(c => c.name.toLowerCase().includes(q) || (c.state || '').toLowerCase().includes(q))
+        .slice(0, 8);
+    results.innerHTML = matches.map(c =>
+        `<div style="padding:4px 8px; cursor:pointer; font-size:0.78rem; border-bottom:1px solid var(--border);"
+            onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''"
+            onclick="selectHomeProxyCity('${c.name.replace(/'/g, "\\'")}')">
+            <strong>${c.name}</strong>, ${c.state || ''} — COL ${c.colIndex} | $${c.monthlyCostsNoRent}/mo
+        </div>`
+    ).join('');
+}
+
+async function selectHomeProxyCity(cityName) {
+    const results = document.getElementById('homeProxyResults');
+    if (results) results.innerHTML = '';
+    const input = document.getElementById('homeProxyInput');
+    if (input) input.value = cityName;
+    try {
+        const resp = await fetch('/api/cost-of-living/config/update', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ homeProxyCity: cityName, homeColSource: 'proxy' })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            colConfig = data.colConfig;
+            allCOLData = data.costOfLiving;
+            renderCOLConfig();
+            renderCOLKpis();
+            renderCOLChart();
+            const activeType = document.querySelector('#colFilters .filter-btn.active');
+            filterCOL(activeType?.dataset?.type || 'all');
+            showSaveToast('Home proxy set to ' + cityName);
+        }
+    } catch(e) { console.error(e); }
+}
+
+async function dedupCOLCities() {
+    const btn = document.getElementById('colDedupBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Deduping...'; }
+    try {
+        const resp = await fetch('/api/cost-of-living/dedup', { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            showSaveToast(`Removed ${data.removed} duplicates (${data.remaining} remaining)`);
+            allCOLData = data.costOfLiving || [];
+            renderCOLKpis();
+            renderCOLChart();
+            const activeType = document.querySelector('#colFilters .filter-btn.active');
+            filterCOL(activeType?.dataset?.type || 'all');
+        } else {
+            showAlert(data.error || 'Dedup failed', 'error');
+        }
+    } catch(e) { showAlert('Dedup failed: ' + e.message, 'error'); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = 'Dedup'; } }
+}
+
 function renderCOLKpis() {
     const div = document.getElementById('colKpis');
     if (!div || !allCOLData.length) return;
@@ -111,10 +234,12 @@ function renderCOLKpis() {
     const cheapest = sorted[0];
     const mostExp = sorted[sorted.length - 1];
     const avgFactor = allCOLData.reduce((s, c) => s + (c.overallFactor || 0), 0) / allCOLData.length;
+    const homeCol = colConfig.homeColIndex;
+    const homeColLabel = homeCol ? `COL ${homeCol}` : 'COL not set';
     div.innerHTML = `
         <div class="kpi-card"><div class="kpi-label">Home City (Baseline)</div>
             <div class="kpi-value" style="font-size:1.2rem;">${homeName}</div>
-            <div class="kpi-sub">1.00x | ${formatMoney(homeRent)}/mo</div></div>
+            <div class="kpi-sub">1.00x | ${formatMoney(homeRent)}/mo | ${homeColLabel}</div></div>
         <div class="kpi-card"><div class="kpi-label">Cheapest City</div>
             <div class="kpi-value positive" style="font-size:1.2rem;">${cheapest.metro}</div>
             <div class="kpi-sub">${cheapest.overallFactor?.toFixed(2)}x | ${formatMoney(cheapest.equivalentSalary)}</div></div>
@@ -258,7 +383,13 @@ async function addCOLCity() {
     const area = document.getElementById('newCOLArea').value.trim();
     const type = document.getElementById('newCOLType').value;
     const rent = parseFloat(document.getElementById('newCOLRent').value);
-    const nonHousingMult = parseFloat(document.getElementById('newCOLNonHousingMult').value) || 1.0;
+    let nonHousingMult = parseFloat(document.getElementById('newCOLNonHousingMult').value) || 1.0;
+    const colIndex = parseFloat(document.getElementById('newCOLColIndex')?.value);
+    // If COL Index is provided, compute nonHousingMult from relative ratio
+    if (!isNaN(colIndex) && colIndex > 0) {
+        const homeCol = colConfig.homeColIndex || 100;
+        nonHousingMult = parseFloat((colIndex / homeCol).toFixed(2));
+    }
     if (!metro) { showAlert('Enter a metro name', 'error'); return; }
     if (isNaN(rent) || rent <= 0) { showAlert('Enter valid rent', 'error'); return; }
     try {
@@ -266,6 +397,7 @@ async function addCOLCity() {
             method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ metro, area, type, rent, nonHousingMult })
         });
+        const result = await resp.json();
         if (resp.ok) {
             showSaveToast(`${metro} added`);
             hideAddCOLForm();
@@ -274,7 +406,11 @@ async function addCOLCity() {
             document.getElementById('newCOLArea').value = '';
             document.getElementById('newCOLRent').value = '';
             document.getElementById('newCOLNonHousingMult').value = '1.0';
+            const colIdxEl = document.getElementById('newCOLColIndex');
+            if (colIdxEl) colIdxEl.value = '';
             fetchCostOfLiving();
+        } else {
+            showAlert(result.error || 'Failed to add city', 'error');
         }
     } catch(e) { showAlert('Failed to add city', 'error'); }
 }
@@ -415,7 +551,8 @@ function selectCOLApiCity(city) {
     const loc = colConfig.locationType || 'city';
     const rentKey = `rent${br}br${loc === 'city' ? 'City' : 'Suburb'}`;
     const rent = city[rentKey] || 0;
-    const nhm = city.colIndex ? (city.colIndex / 100).toFixed(2) : '1.00';
+    const homeCol = colConfig.homeColIndex || 100;
+    const nhm = city.colIndex ? (city.colIndex / homeCol).toFixed(2) : '1.00';
     // Add directly
     window._selectedApiCity = city;
     addCOLApiCity(city.name, city.state || '', loc === 'city' ? 'Downtown' : 'Suburban', rent, parseFloat(nhm), city);
