@@ -244,7 +244,7 @@ function renderDataSourceLine(matchedCity) {
         const avgCol = (stateCities.reduce((s, c) => s + (c.colIndex || 0), 0) / stateCities.length).toFixed(1);
         const avgCosts = Math.round(stateCities.reduce((s, c) => s + (c.monthlyCostsNoRent || 0), 0) / stateCities.length);
         const sel = colSource === 'stateAvg' ? 'selected' : '';
-        opts += `<option value="stateAvg" ${sel}>${homeState || 'State'} average (${stateCities.length} cities) — COL ${avgCol}, $${avgCosts.toLocaleString()}/mo</option>`;
+        opts += `<option value="stateAvg" ${sel}>Average (${stateCities.length} cities) — COL ${avgCol}, $${avgCosts.toLocaleString()}/mo</option>`;
     }
 
     // Manual option
