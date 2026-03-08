@@ -77,7 +77,7 @@ function renderCOLConfig() {
         </div>
         <div style="margin-top:8px; font-size:0.75rem; color:var(--text-dim);">
             ${colApiMeta.fetchedAt
-                ? `<span style="color:#4ade80;">&#9679;</span> ${colApiMeta.cityCount} API cities loaded (${new Date(colApiMeta.fetchedAt).toLocaleDateString()})`
+                ? `<span style="color:#4ade80;">&#9679;</span> ${colApiMeta.cityCount} US cities in database${colApiMeta.totalKnownCities ? ' / ' + colApiMeta.totalKnownCities + ' global' : ''} (updated ${new Date(colApiMeta.fetchedAt).toLocaleDateString()})`
                 : '<span style="color:#64748b;">&#9679;</span> No API data — click "Refresh API Data" to fetch'}
         </div>`;
 }
@@ -319,21 +319,48 @@ async function refreshCOLData() {
     const btn = document.getElementById('colRefreshBtn');
     if (!btn) return;
     btn.disabled = true;
-    btn.textContent = 'Fetching...';
+
     try {
-        const resp = await fetch('/api/cost-of-living/fetch-all', { method: 'POST' });
-        const data = await resp.json();
-        if (data.ok) {
-            const newMsg = data.newCitiesAdded > 0 ? ` (${data.newCitiesAdded} new!)` : '';
-            showSaveToast(`Fetched ${data.cityCount} cities${newMsg}`);
-            // Recompute existing API-sourced entries with fresh config
+        // Phase 1: check for new cities (1 API call)
+        btn.textContent = 'Checking cities...';
+        const checkResp = await fetch('/api/cost-of-living/check-cities', { method: 'POST' });
+        const checkData = await checkResp.json();
+        if (!checkData.ok) {
+            showAlert(checkData.error || 'Failed to check cities', 'error');
+            return;
+        }
+
+        const { totalAll, totalUS, newCount, newCities } = checkData;
+        if (newCount > 0) {
+            showSaveToast(`${newCount} new US cities detected: ${newCities.join(', ')}`);
+        } else {
+            showSaveToast(`City list checked (${totalUS} US / ${totalAll} global). Updating data...`);
+        }
+
+        // Phase 2: always fetch details (data may have changed) — wait 60s for rate limit
+        btn.textContent = 'Waiting (rate limit)...';
+        let seconds = 62;
+        await new Promise(resolve => {
+            const timer = setInterval(() => {
+                seconds--;
+                btn.textContent = `Fetching in ${seconds}s...`;
+                if (seconds <= 0) { clearInterval(timer); resolve(); }
+            }, 1000);
+        });
+
+        btn.textContent = 'Fetching details...';
+        const fetchResp = await fetch('/api/cost-of-living/fetch-details', { method: 'POST' });
+        const fetchData = await fetchResp.json();
+        if (fetchData.ok) {
+            const newMsg = fetchData.newCitiesAdded > 0 ? ` (${fetchData.newCitiesAdded} new!)` : '';
+            showSaveToast(`Updated ${fetchData.cityCount} cities${newMsg}`);
             await fetch('/api/cost-of-living/recompute', { method: 'POST' });
             fetchCostOfLiving();
         } else {
-            showAlert(data.error || 'Failed to fetch', 'error');
+            showAlert(fetchData.error || 'Failed to fetch details', 'error');
         }
     } catch(e) {
-        showAlert('API fetch failed: ' + e.message, 'error');
+        showAlert('Refresh failed: ' + e.message, 'error');
     } finally {
         btn.disabled = false;
         btn.textContent = 'Refresh API Data';

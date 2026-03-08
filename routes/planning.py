@@ -212,16 +212,36 @@ def api_col_recompute():
 
 # ── Cost of Living API Data ────────────────────────────────────────────
 
-@bp.route("/api/cost-of-living/fetch-all", methods=["POST"])
-def api_col_fetch_all():
-    """Fetch all US city COL data from RapidAPI and store."""
-    from services.col_api import fetch_all_us_cities, get_col_metadata
-    cities, error = fetch_all_us_cities()
+@bp.route("/api/cost-of-living/check-cities", methods=["POST"])
+def api_col_check_cities():
+    """Phase 1: Check for new cities (1 API call). Returns discovery results."""
+    from services.col_api import check_for_new_cities
+    result = check_for_new_cities()
+    if result.get("error"):
+        return jsonify({"ok": False, "error": result["error"]}), 400
+    return jsonify({
+        "ok": True,
+        "totalAll": result["totalAll"],
+        "totalUS": result["totalUS"],
+        "newCities": result["newCities"],
+        "newCount": len(result["newCities"]),
+    })
+
+
+@bp.route("/api/cost-of-living/fetch-details", methods=["POST"])
+def api_col_fetch_details():
+    """Phase 2: Bulk-fetch city details (1 API call). Uses stored city names."""
+    from services.col_api import fetch_city_details, get_col_metadata
+    cities, error = fetch_city_details()
     if error:
         return jsonify({"ok": False, "error": error}), 400
     meta = get_col_metadata()
-    return jsonify({"ok": True, "cityCount": meta["cityCount"], "fetchedAt": meta["fetchedAt"],
-                     "newCitiesAdded": meta.get("newCitiesAdded", 0)})
+    return jsonify({
+        "ok": True,
+        "cityCount": meta["cityCount"],
+        "fetchedAt": meta["fetchedAt"],
+        "newCitiesAdded": meta.get("newCitiesAdded", 0),
+    })
 
 
 @bp.route("/api/cost-of-living/upgrade", methods=["POST"])

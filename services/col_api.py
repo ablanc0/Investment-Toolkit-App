@@ -65,6 +65,8 @@ def get_col_metadata():
     """Return metadata about the stored COL data."""
     return {
         "cityCount": len(_col_data.get("cities", [])),
+        "totalKnownCities": _col_data.get("totalKnownCities", 0),
+        "usCityCount": len(_col_data.get("cityNames", [])),
         "fetchedAt": _col_data.get("fetchedAt"),
         "newCitiesAdded": _col_data.get("newCitiesAdded", 0),
     }
@@ -87,40 +89,80 @@ def lookup_city(city_name):
 
 # ── Fetch from RapidAPI ───────────────────────────────────────────────
 
-def fetch_all_us_cities():
-    """Fetch all US cities from RapidAPI in one bulk call.
+def check_for_new_cities():
+    """Phase 1: GET /get_cities_list to discover if new US cities exist.
 
-    Step 1: GET /get_cities_list to discover available US cities.
-    Step 2: POST /get_cities_details_by_name with the full US city list.
+    Compares against stored city names.  Uses 1 API call.
+    Returns dict: {newCities: [...], totalAll, totalUS, usNames, error}.
+    """
+    from services.api_health import record_api_call
 
+    key = _get_rapidapi_key()
+    if not key:
+        return {"error": "No RapidAPI key configured. Add it in Settings > API Keys."}
+
+    headers = {"x-rapidapi-host": RAPIDAPI_COL_HOST, "x-rapidapi-key": key}
+    start = time.time()
+    try:
+        r = http_requests.get(RAPIDAPI_COL_CITIES_URL, headers=headers, timeout=30)
+        latency = int((time.time() - start) * 1000)
+        if r.status_code != 200:
+            record_api_call("rapidapi", success=False, latency_ms=latency,
+                            error_msg=f"HTTP {r.status_code}")
+            return {"error": f"Cities list HTTP {r.status_code}"}
+
+        data = r.json()
+        record_api_call("rapidapi", success=True, latency_ms=latency)
+
+        if "message" in data and isinstance(data["message"], str):
+            return {"error": data["message"]}
+
+        all_cities = data.get("cities", data) if isinstance(data, dict) else data
+        us_names = sorted(c["name"] for c in all_cities
+                          if isinstance(c, dict) and c.get("country") == "United States")
+
+        # Compare against what we already have
+        cached_names = set(_col_data.get("cityNames", []))
+        new_names = [n for n in us_names if n not in cached_names]
+
+        # Store the full global list count + updated US names (even before fetch)
+        _col_data["totalKnownCities"] = len(all_cities)
+        _col_data["cityNames"] = us_names
+        _save_col_data()
+
+        return {
+            "totalAll": len(all_cities),
+            "totalUS": len(us_names),
+            "newCities": new_names,
+            "usNames": us_names,
+        }
+
+    except Exception as e:
+        latency = int((time.time() - start) * 1000)
+        record_api_call("rapidapi", success=False, latency_ms=latency, error_msg=str(e)[:80])
+        return {"error": str(e)}
+
+
+def fetch_city_details(us_city_names=None):
+    """Phase 2: POST bulk-fetch details for all US cities.
+
+    Uses stored cityNames if none provided.  Uses 1 API call.
     Returns (cities_list, error_string_or_None).
     """
     from services.api_health import record_api_call
 
     key = _get_rapidapi_key()
     if not key:
-        return None, "No RapidAPI key configured. Add it in Settings > API Keys."
+        return None, "No RapidAPI key configured."
+
+    if not us_city_names:
+        us_city_names = _col_data.get("cityNames", [])
+    if not us_city_names:
+        return None, "No city names available. Run 'Check for cities' first."
 
     headers = {
         "x-rapidapi-host": RAPIDAPI_COL_HOST,
         "x-rapidapi-key": key,
-    }
-
-    # Step 1: discover available US cities (use cached names if available)
-    cached_names = _col_data.get("cityNames", [])
-    if cached_names:
-        us_city_names = cached_names
-        print(f"[COL] Using cached city list ({len(us_city_names)} cities)")
-    else:
-        us_city_names, err = _fetch_us_city_names(headers)
-        if err:
-            return None, err
-        # Rate limit: free tier allows 1 req/min, wait before second call
-        time.sleep(62)
-
-    # Step 2: bulk-fetch details for all US cities
-    post_headers = {
-        **headers,
         "Content-Type": "application/x-www-form-urlencoded",
     }
     payload = {
@@ -130,7 +172,7 @@ def fetch_all_us_cities():
 
     start = time.time()
     try:
-        r = http_requests.post(RAPIDAPI_COL_URL, headers=post_headers, data=payload, timeout=90)
+        r = http_requests.post(RAPIDAPI_COL_URL, headers=headers, data=payload, timeout=90)
         latency = int((time.time() - start) * 1000)
 
         if r.status_code != 200:
@@ -155,16 +197,15 @@ def fetch_all_us_cities():
             if city["name"] not in existing:
                 new_count += 1
             merged.append(city)  # Fresh data replaces stale entries
-        # Keep any previously-stored cities no longer in the API (unlikely but safe)
+        # Keep any previously-stored cities no longer in the API
         for name, city in existing.items():
             if name not in {c["name"] for c in new_cities}:
                 merged.append(city)
         merged.sort(key=lambda c: c["name"])
 
-        _col_data.clear()
         _col_data.update({
             "cities": merged,
-            "cityNames": us_city_names,  # Cache for next refresh (skip discovery call)
+            "cityNames": us_city_names,
             "fetchedAt": datetime.now().isoformat(),
             "cityCount": len(merged),
             "newCitiesAdded": new_count,
@@ -177,20 +218,6 @@ def fetch_all_us_cities():
         latency = int((time.time() - start) * 1000)
         record_api_call("rapidapi", success=False, latency_ms=latency, error_msg=str(e)[:80])
         return None, str(e)
-
-
-def _fetch_us_city_names(headers):
-    """GET /get_cities_list, filter for US cities, return list of names."""
-    try:
-        r = http_requests.get(RAPIDAPI_COL_CITIES_URL, headers=headers, timeout=30)
-        if r.status_code != 200:
-            return None, f"Cities list HTTP {r.status_code}"
-        data = r.json()
-        all_cities = data.get("cities", data) if isinstance(data, dict) else data
-        us_names = sorted(c["name"] for c in all_cities if c.get("country") == "United States")
-        return us_names, None
-    except Exception as e:
-        return None, f"Failed to fetch cities list: {e}"
 
 
 # ── Normalization ─────────────────────────────────────────────────────
