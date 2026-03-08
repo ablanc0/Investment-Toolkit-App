@@ -40,7 +40,6 @@ function renderSalaryFull(data) {
     renderEmployerCost(breakdown.employer || {});
     renderProjectedSalary(breakdown.projected, profile.projectedSalary || 0, breakdown.summary || {});
     renderSalaryHistory(profile);
-    renderRetirementPlan(data.retirement || {}, data.retirementConfig || {});
 }
 
 function renderSalaryKpis(summ) {
@@ -268,12 +267,56 @@ function renderSalaryHistory(profile) {
     histDiv.innerHTML = html;
 }
 
-// ── Retirement Plan ──
-function renderRetirementPlan(ret, config) {
-    const inputsDiv = document.getElementById('retirementInputs');
-    const resultsDiv = document.getElementById('retirementResults');
-    if (!inputsDiv || !resultsDiv) return;
+// ── Retirement Tab ──
+let retirementData = null;
 
+async function fetchRetirementData() {
+    try {
+        const pid = currentProfileId ? `?profile=${currentProfileId}` : '';
+        const data = await fetch('/api/salary' + pid).then(r => r.json());
+        retirementData = data;
+        if (!currentProfileId) currentProfileId = data.profileId;
+        renderRetirementTab(data.retirement || {}, data.retirementConfig || {});
+    } catch(e) { console.error('Error loading retirement data:', e); }
+}
+
+function renderRetirementTab(ret, config) {
+    renderRetirementKpis(ret);
+    renderRetirementInputs(ret, config);
+    renderRetirementChart(ret, config);
+    renderRetirementResults(ret, config);
+    renderRetirementSensitivity(ret, config);
+}
+
+function renderRetirementKpis(ret) {
+    const el = document.getElementById('retirementKpis');
+    if (!el) return;
+    const goalColor = ret.goalFulfillment >= 1 ? '#4ade80' : '#f59e0b';
+    const goalPct = ((ret.goalFulfillment || 0) * 100).toFixed(0);
+    el.innerHTML = `
+        <div class="kpi-card"><div class="kpi-label">Current Savings</div>
+            <div class="kpi-value positive">${formatMoney(ret.currentSavings)}</div>
+            <div class="kpi-sub">Portfolio total</div></div>
+        <div class="kpi-card"><div class="kpi-label">Monthly Investable</div>
+            <div class="kpi-value">${formatMoney(ret.monthlyInvestable)}</div>
+            <div class="kpi-sub">${formatMoney(ret.monthlyInvestable * 12)}/yr</div></div>
+        <div class="kpi-card"><div class="kpi-label">Total at Retirement</div>
+            <div class="kpi-value positive">${formatMoney(ret.totalAtRetirement)}</div>
+            <div class="kpi-sub">${ret.yearsUntilRetirement}yr at ${ret.annualReturnRate}%</div></div>
+        <div class="kpi-card"><div class="kpi-label">Monthly Retirement Income</div>
+            <div class="kpi-value" style="color:#22d3ee;">${formatMoney(ret.totalMonthlyRetirement)}</div>
+            <div class="kpi-sub">${ret.returnRateRetirement}% withdrawal</div></div>
+        <div class="kpi-card"><div class="kpi-label">Goal Fulfillment</div>
+            <div class="kpi-value" style="color:${goalColor};">${ret.goalFulfillment}x</div>
+            <div class="kpi-sub">${goalPct}% of desired</div></div>
+        <div class="kpi-card"><div class="kpi-label">Money Required</div>
+            <div class="kpi-value">${formatMoney(ret.moneyRequired)}</div>
+            <div class="kpi-sub">To live as today</div></div>`;
+}
+
+function renderRetirementInputs(ret, config) {
+    const div = document.getElementById('retirementInputs');
+    if (!div) return;
     const pctSave = config.pctIncomeCanSave ?? 0.25;
     const years = config.yearsUntilRetirement ?? 20;
     const retRate = config.returnRateRetirement ?? 0.04;
@@ -281,9 +324,8 @@ function renderRetirementPlan(ret, config) {
     const otherIncome = config.otherRetirementIncome ?? 0;
     const annualReturn = config.annualReturnRate != null ? config.annualReturnRate * 100 : (ret.annualReturnRate || 7);
 
-    // Editable inputs
-    inputsDiv.innerHTML = `
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px; margin-bottom:16px;">
+    div.innerHTML = `
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
             <div><label class="form-label">% Income Can Save</label>
                 <input type="number" step="1" value="${(pctSave * 100).toFixed(0)}" class="form-input" style="width:100%;"
                     onchange="updateRetirementConfig('pctIncomeCanSave', this.value / 100)">
@@ -308,35 +350,111 @@ function renderRetirementPlan(ret, config) {
                     onchange="updateRetirementConfig('otherRetirementIncome', parseFloat(this.value) || 0)">
                 <span style="font-size:0.72rem; color:var(--text-dim);">monthly (SS, pension)</span></div>
         </div>`;
+}
 
+function _fvCalc(rate, nper, pmt, pv) {
+    if (rate === 0) return pv + pmt * nper;
+    return pv * Math.pow(1 + rate, nper) + pmt * (Math.pow(1 + rate, nper) - 1) / rate;
+}
+
+function renderRetirementChart(ret, config) {
+    const canvas = document.getElementById('retirementChart');
+    if (!canvas || !ret.annualSalary) return;
+
+    const years = ret.yearsUntilRetirement || 20;
+    const rate = (ret.annualReturnRate || 7) / 100;
+    const annualContrib = (ret.monthlyInvestable || 0) * 12;
+    const pv = ret.availableToInvest || 0;
+    const moneyRequired = ret.moneyRequired || 0;
+
+    const labels = [];
+    const portfolioValues = [];
+    const requiredLine = [];
+
+    for (let y = 0; y <= years; y++) {
+        labels.push('Year ' + y);
+        portfolioValues.push(Math.round(_fvCalc(rate, y, annualContrib, pv)));
+        requiredLine.push(Math.round(moneyRequired));
+    }
+
+    if (charts.retirement) charts.retirement.destroy();
+    charts.retirement = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'Portfolio Value',
+                    data: portfolioValues,
+                    borderColor: '#4ade80',
+                    backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    borderWidth: 2,
+                },
+                {
+                    label: 'Money Required (Live as Today)',
+                    data: requiredLine,
+                    borderColor: '#f59e0b',
+                    borderDash: [8, 4],
+                    pointRadius: 0,
+                    borderWidth: 2,
+                    fill: false,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { labels: { color: '#9ca3af', font: { size: 11 } } },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => ctx.dataset.label + ': $' + ctx.parsed.y.toLocaleString(),
+                    },
+                },
+            },
+            scales: {
+                x: { ticks: { color: '#6b7280', maxTicksLimit: 10 }, grid: { color: 'rgba(75,85,99,0.2)' } },
+                y: {
+                    ticks: {
+                        color: '#6b7280',
+                        callback: v => '$' + (v >= 1e6 ? (v/1e6).toFixed(1) + 'M' : (v/1e3).toFixed(0) + 'K'),
+                    },
+                    grid: { color: 'rgba(75,85,99,0.2)' },
+                },
+            },
+        },
+    });
+}
+
+function renderRetirementResults(ret, config) {
+    const div = document.getElementById('retirementResults');
+    if (!div) return;
     if (!ret.annualSalary) {
-        resultsDiv.innerHTML = '<p style="font-size:0.82rem; color:var(--text-dim);">No salary data available for projections.</p>';
+        div.innerHTML = '<p style="font-size:0.82rem; color:var(--text-dim);">No salary data available. Set up income streams in the Salary tab first.</p>';
         return;
     }
 
+    const desiredPct = config.desiredRetirementPct ?? 0.75;
     const th = 'style="text-align:right;"';
     const green = 'style="text-align:right; color:#4ade80; font-weight:600;"';
     const dim = 'style="text-align:right; color:var(--text-dim);"';
     const bold = 'style="font-weight:700;"';
     const sep = `<tr><td colspan="3" style="border-top:2px solid var(--border); padding:0;"></td></tr>`;
-
     const goalColor = ret.goalFulfillment >= 1 ? '#4ade80' : '#f59e0b';
     const goalPct = ((ret.goalFulfillment || 0) * 100).toFixed(0);
 
     let html = `<div class="table-wrapper"><table style="width:100%; font-size:0.82rem;">
         <thead><tr><th style="text-align:left;"></th><th ${th}>Annual</th><th ${th}>Monthly</th></tr></thead><tbody>`;
 
-    // Current situation
     html += `<tr><td ${bold}>Current Savings (Portfolio)</td><td ${green}>${formatMoney(ret.currentSavings)}</td><td ${dim}>—</td></tr>`;
     html += `<tr><td>Current Take-Home Salary</td><td ${th}>${formatMoney(ret.annualSalary)}</td><td ${th}>${formatMoney(ret.monthlySalary)}</td></tr>`;
     html += `<tr><td>Amount You Can Invest</td><td ${th}>${formatMoney(ret.monthlyInvestable * 12)}</td><td ${th}>${formatMoney(ret.monthlyInvestable)}</td></tr>`;
     html += sep;
-
-    // Desired retirement
     html += `<tr><td ${bold}>Desired Retirement Salary (${(desiredPct*100).toFixed(0)}%)</td><td ${th}>${formatMoney(ret.desiredRetirementSalary)}</td><td ${th}>${formatMoney(ret.desiredMonthlyRetirement)}</td></tr>`;
     html += sep;
-
-    // Projection
     html += `<tr><td colspan="3" ${bold} style="padding-top:8px;">Projection <span style="font-weight:400; color:var(--text-dim);">(${ret.yearsUntilRetirement} years, ${ret.annualReturnRate}% annual return)</span></td></tr>`;
     html += `<tr><td style="padding-left:16px;">Total Invested Money at Retirement</td><td ${green}>${formatMoney(ret.totalAtRetirement)}</td><td ${dim}>—</td></tr>`;
     html += `<tr><td style="padding-left:16px;">Passive Income (${ret.returnRateRetirement}% return)</td><td ${th}>${formatMoney(ret.passiveIncomeAnnual)}</td><td ${th}>${formatMoney(ret.passiveIncomeMonthly)}</td></tr>`;
@@ -346,21 +464,65 @@ function renderRetirementPlan(ret, config) {
     html += `<tr ${bold}><td style="padding-left:16px;">Total Monthly Retirement Income</td><td ${dim}>—</td><td ${green}>${formatMoney(ret.totalMonthlyRetirement)}</td></tr>`;
     html += `<tr ${bold}><td>Goal Fulfillment</td><td colspan="2" style="text-align:right; color:${goalColor}; font-size:1.1rem;">${ret.goalFulfillment}x (${goalPct}%)</td></tr>`;
     html += sep;
-
-    // Live as today
     html += `<tr><td colspan="3" ${bold} style="padding-top:8px;">Numbers Projected to Live as Today</td></tr>`;
     html += `<tr><td style="padding-left:16px;">Total Investment Money Required</td><td ${th}>${formatMoney(ret.moneyRequired)}</td><td ${dim}>—</td></tr>`;
     html += `<tr><td style="padding-left:16px;">Monthly Investment Required</td><td ${dim}>—</td><td ${th}>${formatMoney(ret.monthlyInvestmentRequired)}</td></tr>`;
     html += `<tr><td style="padding-left:16px;">Annual Income Required (after taxes)</td><td ${th}>${formatMoney(ret.annualIncomeRequired)}</td><td ${dim}>—</td></tr>`;
+    html += '</tbody></table></div>';
+    div.innerHTML = html;
+}
+
+function renderRetirementSensitivity(ret, config) {
+    const div = document.getElementById('retirementSensitivity');
+    if (!div || !ret.annualSalary) { if (div) div.innerHTML = ''; return; }
+
+    const years = ret.yearsUntilRetirement || 20;
+    const annualContrib = (ret.monthlyInvestable || 0) * 12;
+    const pv = ret.availableToInvest || 0;
+    const retRate = (config.returnRateRetirement ?? 0.04);
+    const desiredMonthly = ret.desiredMonthlyRetirement || 1;
+    const otherIncome = ret.otherRetirementIncome || 0;
+    const currentRate = (ret.annualReturnRate || 7);
+
+    const rates = [4, 5, 6, 7, 8, 9, 10, 12];
+    const th = 'style="text-align:right; padding:6px 8px;"';
+
+    let html = `<div class="table-wrapper"><table style="width:100%; font-size:0.82rem;">
+        <thead><tr><th style="padding:6px 8px;">Return Rate</th><th ${th}>Total at Retirement</th><th ${th}>Monthly Income</th><th ${th}>Goal Fulfillment</th></tr></thead><tbody>`;
+
+    rates.forEach(r => {
+        const total = _fvCalc(r / 100, years, annualContrib, pv);
+        const passive = total * retRate;
+        const monthlyIncome = passive / 12 + otherIncome;
+        const goal = monthlyIncome / desiredMonthly;
+        const goalColor = goal >= 1 ? '#4ade80' : goal >= 0.5 ? '#f59e0b' : '#f87171';
+        const isActive = Math.abs(r - currentRate) < 0.1;
+        const bg = isActive ? 'background:rgba(99,102,241,0.08);' : '';
+        html += `<tr style="${bg}">
+            <td style="padding:6px 8px; font-weight:${isActive ? '700' : '400'};">${r}%${isActive ? ' (current)' : ''}</td>
+            <td ${th}>${formatMoney(total)}</td>
+            <td ${th}>${formatMoney(monthlyIncome)}</td>
+            <td style="text-align:right; padding:6px 8px; color:${goalColor}; font-weight:600;">${goal.toFixed(2)}x (${(goal * 100).toFixed(0)}%)</td>
+        </tr>`;
+    });
 
     html += '</tbody></table></div>';
-    resultsDiv.innerHTML = html;
+    div.innerHTML = html;
 }
 
 async function updateRetirementConfig(key, value) {
-    const config = {...(currentSalaryData?.retirementConfig || {})};
+    const config = {...(retirementData?.retirementConfig || currentSalaryData?.retirementConfig || {})};
     config[key] = parseFloat(value);
-    await saveSalaryUpdate({ retirement: config });
+    // Save via salary update
+    if (!currentProfileId && retirementData) currentProfileId = retirementData.profileId;
+    try {
+        const resp = await fetch('/api/salary/update', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ profileId: currentProfileId, retirement: config })
+        });
+        const data = await resp.json();
+        if (data.ok) { loadedTabs['retirement'] = false; fetchRetirementData(); }
+    } catch(e) { console.error('Save failed:', e); }
 }
 
 // ── Salary actions ──
