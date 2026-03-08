@@ -1,7 +1,7 @@
 App Configuration
 =================
 
-Setup, environment, and runtime configuration for InvToolkit.
+Setup, environment, security, and runtime configuration for InvToolkit.
 
 .. toctree::
    :maxdepth: 2

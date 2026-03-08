@@ -13,9 +13,9 @@ async function fetchSuperInvestors() {
         investors.sort((a, b) => a.key.localeCompare(b.key));
         sel.innerHTML = '<option value="">Select Investor...</option>' +
             investors.map(inv => {
-                let label = `${inv.key} — ${inv.fund}`;
-                if (inv.cached && inv.quarter) label += ` (${inv.quarter})`;
-                return `<option value="${inv.key}">${label}</option>`;
+                let label = `${escapeHtml(inv.key)} — ${escapeHtml(inv.fund)}`;
+                if (inv.cached && inv.quarter) label += ` (${escapeHtml(inv.quarter)})`;
+                return `<option value="${escapeHtml(inv.key)}">${label}</option>`;
             }).join('');
         // Auto-load most popular if any cached data exists
         const cachedCount = investors.filter(i => i.cached).length;
@@ -38,7 +38,7 @@ async function fetch13F(investorKey) {
     try {
         const data = await fetch(`/api/super-investors/13f/${encodeURIComponent(investorKey)}`).then(r => r.json());
         if (data.error) {
-            if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#f87171; padding:30px;">${data.error}</td></tr>`;
+            if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#f87171; padding:30px;">${escapeHtml(data.error)}</td></tr>`;
             return;
         }
         _si13fCurrentData = data;
@@ -49,7 +49,7 @@ async function fetch13F(investorKey) {
         fetchInvestorActivity(investorKey);
     } catch(e) {
         console.error(e);
-        if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#f87171; padding:30px;">Error: ${e.message}</td></tr>`;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#f87171; padding:30px;">Error: ${escapeHtml(e.message)}</td></tr>`;
     }
 }
 
@@ -69,11 +69,11 @@ function render13FHoldings(data) {
         const top10 = data.top10pct || (data.holdings ? data.holdings.slice(0, 10).reduce((s, h) => s + (h.pctPortfolio || 0), 0).toFixed(1) : 0);
         meta.style.display = 'flex';
         meta.innerHTML = `
-            <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Filing: <strong>${data.quarter || '—'}</strong> (${data.filingDate || '—'})</div>
+            <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Filing: <strong>${escapeHtml(data.quarter || '—')}</strong> (${escapeHtml(data.filingDate || '—')})</div>
             <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Holdings: <strong>${data.holdingsCount || 0}</strong></div>
             <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Total Value: <strong>$${(tv/1e9).toFixed(1)}B</strong></div>
             <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Top 10: <strong>${top10}%</strong></div>
-            <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Fund: <strong>${data.fund || '—'}</strong></div>
+            <div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">Fund: <strong>${escapeHtml(data.fund || '—')}</strong></div>
         `;
     }
     // Allocation doughnut chart
@@ -179,17 +179,17 @@ function render13FHoldings(data) {
         const sharesStr = h.shares >= 1e6 ? (h.shares / 1e6).toFixed(1) + 'M' : h.shares >= 1e3 ? (h.shares / 1e3).toFixed(0) + 'K' : h.shares.toLocaleString();
         const pct = h.pctPortfolio || 0;
         const pctColor = pct >= 10 ? '#4ade80' : pct >= 5 ? '#22d3ee' : 'var(--text)';
-        const putCallTag = h.putCall ? ` <span style="font-size:0.7rem; color:#f59e0b;">${h.putCall}</span>` : '';
-        const histBtn = h.ticker ? ` <span class="si-history-btn" onclick="toggleHoldingHistory(this, '${investorKey}', '${h.ticker}')" title="View history" style="cursor:pointer; opacity:0.5; font-size:0.75rem;">📊</span>` : '';
-        return `<tr data-ticker="${ticker}">
+        const putCallTag = h.putCall ? ` <span style="font-size:0.7rem; color:#f59e0b;">${escapeHtml(h.putCall)}</span>` : '';
+        const histBtn = h.ticker ? ` <span class="si-history-btn" onclick="toggleHoldingHistory(this, '${escapeHtml(investorKey)}', '${escapeHtml(h.ticker)}')" title="View history" style="cursor:pointer; opacity:0.5; font-size:0.75rem;">📊</span>` : '';
+        return `<tr data-ticker="${escapeHtml(ticker)}">
             <td style="text-align:center; color:var(--text-dim);">${i+1}</td>
-            <td><strong>${ticker}</strong>${putCallTag}${histBtn}</td>
-            <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis;">${h.name || ''}</td>
+            <td><strong>${escapeHtml(ticker)}</strong>${putCallTag}${histBtn}</td>
+            <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(h.name || '')}</td>
             <td style="text-align:right; font-family:monospace;">$${Number(valM).toLocaleString()}</td>
             <td style="text-align:right; font-family:monospace;">${sharesStr}</td>
             <td style="text-align:right; color:${pctColor}; font-weight:600;">${pct.toFixed(1)}%</td>
-            <td class="si-activity-cell" data-ticker="${ticker}" style="text-align:center;"></td>
-            <td class="si-price-cell" data-ticker="${ticker}" style="text-align:right; font-family:monospace; color:var(--text-dim);">—</td>
+            <td class="si-activity-cell" data-ticker="${escapeHtml(ticker)}" style="text-align:center;"></td>
+            <td class="si-price-cell" data-ticker="${escapeHtml(ticker)}" style="text-align:right; font-family:monospace; color:var(--text-dim);">—</td>
         </tr>`;
     }).join('');
     // Kick off async price loading for top 30 tickers
@@ -243,8 +243,8 @@ async function fetchInvestorActivity(investorKey) {
         row.style.display = 'flex';
         const badge = (label, count, color) => `<div style="padding:8px 14px; background:var(--card-hover); border-radius:8px;">${label}: <strong style="color:${color};">${count}</strong></div>`;
         let html = badge('Buys', data.buysCount, '#4ade80') + badge('Sells', data.sellsCount, '#f87171');
-        if (data.buys.length > 0) html += `<div style="padding:8px 14px; background:var(--card-hover); border-radius:8px; font-size:0.78rem; color:var(--text-dim);">New: ${data.buys.slice(0,5).map(b => b.ticker).join(', ')}</div>`;
-        if (data.sells.length > 0) html += `<div style="padding:8px 14px; background:var(--card-hover); border-radius:8px; font-size:0.78rem; color:var(--text-dim);">Sold: ${data.sells.slice(0,5).map(s => s.ticker).join(', ')}</div>`;
+        if (data.buys.length > 0) html += `<div style="padding:8px 14px; background:var(--card-hover); border-radius:8px; font-size:0.78rem; color:var(--text-dim);">New: ${data.buys.slice(0,5).map(b => escapeHtml(b.ticker)).join(', ')}</div>`;
+        if (data.sells.length > 0) html += `<div style="padding:8px 14px; background:var(--card-hover); border-radius:8px; font-size:0.78rem; color:var(--text-dim);">Sold: ${data.sells.slice(0,5).map(s => escapeHtml(s.ticker)).join(', ')}</div>`;
         row.innerHTML = html;
         // Store per-ticker activity and apply badges to holdings table
         _siActivityByTicker = data.byTicker || {};
@@ -348,7 +348,7 @@ async function refreshAll13F() {
             // Poll progress
             const poll = setInterval(async () => {
                 const p = await fetch('/api/super-investors/13f-progress').then(r => r.json());
-                if (progress) progress.textContent = `Fetching ${p.current || '...'}  (${p.done}/${p.total})`;
+                if (progress) progress.textContent = `Fetching ${p.current || '...'} (${p.done}/${p.total})`;
                 if (!p.running) {
                     clearInterval(poll);
                     if (progress) { progress.textContent = `Done! Loaded ${p.done} investors.`; setTimeout(() => { progress.style.display = 'none'; }, 3000); }
@@ -397,10 +397,10 @@ async function fetchMostPopular() {
             const countColor = s.investorCount >= 4 ? '#4ade80' : s.investorCount >= 3 ? '#22d3ee' : 'var(--text)';
             return `<tr>
                 <td style="text-align:center; color:var(--text-dim);">${i+1}</td>
-                <td><strong>${s.ticker}</strong></td>
-                <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis;">${s.name || ''}</td>
+                <td><strong>${escapeHtml(s.ticker)}</strong></td>
+                <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(s.name || '')}</td>
                 <td style="text-align:right; font-weight:700; color:${countColor};">${s.investorCount}</td>
-                <td style="font-size:0.78rem; color:var(--text-dim);">${s.investors.join(', ')}</td>
+                <td style="font-size:0.78rem; color:var(--text-dim);">${s.investors.map(inv => escapeHtml(inv)).join(', ')}</td>
                 <td style="text-align:right; font-family:monospace;">${valStr}</td>
             </tr>`;
         }).join('');

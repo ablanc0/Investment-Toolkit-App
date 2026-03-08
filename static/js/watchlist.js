@@ -15,8 +15,8 @@ function populateWatchlist() {
 
         return `
             <tr>
-                <td><strong>${item.ticker}</strong></td>
-                <td>${item.company}</td>
+                <td><strong>${escapeHtml(item.ticker)}</strong></td>
+                <td>${escapeHtml(item.company)}</td>
                 <td>${formatMoney(item.price)}</td>
                 <td class="${(item.dayChangeShare||0) >= 0 ? 'positive' : 'negative'}">${formatMoney(item.dayChangeShare)}</td>
                 <td class="${(item.dayChangePct||0) >= 0 ? 'positive' : 'negative'}">${formatPercent(item.dayChangePct)}</td>
@@ -32,9 +32,9 @@ function populateWatchlist() {
                 <td>${item.divRate ? formatMoney(item.divRate) : '—'}</td>
                 <td>${item.annualIncome100 ? formatMoney(item.annualIncome100) : '—'}</td>
                 <td>${formatMoney(item.cost100Shares)}</td>
-                <td>${item.sector}</td>
-                <td>${item.priority || 'Low'}</td>
-                <td><button class="delete-row-btn" onclick="deleteFromWatchlist('${item.ticker}')" title="Remove">✕</button></td>
+                <td>${escapeHtml(item.sector)}</td>
+                <td>${escapeHtml(item.priority || 'Low')}</td>
+                <td><button class="delete-row-btn" onclick="deleteFromWatchlist('${escapeHtml(item.ticker)}')" title="Remove">✕</button></td>
             </tr>
         `;
     }).join('');

@@ -33,18 +33,18 @@ function renderIntrinsicValues(items) {
         const pe = iv.peRatio ? iv.peRatio.toFixed(1) : '—';
         const updated = iv.updated ? iv.updated.split(' ')[0] : '—';
         return `<tr>
-            <td><strong>${iv.ticker}</strong></td>
-            <td style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${iv.companyName || ''}</td>
+            <td><strong>${escapeHtml(iv.ticker)}</strong></td>
+            <td style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(iv.companyName || '')}</td>
             <td style="text-align:right;">${formatMoney(iv.currentPrice)}</td>
             <td style="text-align:right; font-weight:600;">${iv.intrinsicValue ? formatMoney(iv.intrinsicValue) : '—'}</td>
             <td style="text-align:right; color: ${distColor}; font-weight:600;">${distStr}</td>
             <td style="text-align:right;">${(() => { const s = typeof iv.invtScore === 'object' && iv.invtScore ? iv.invtScore.score : iv.invtScore; if (!s && s !== 0) return '—'; return '<span style="color:' + _invtScoreColor(s) + '; font-weight:600;">' + Number(s).toFixed(1) + '</span>'; })()}</td>
-            <td style="font-size:0.78rem;">${iv.sector || '—'}</td>
-            <td>${iv.category || '—'}</td>
+            <td style="font-size:0.78rem;">${escapeHtml(iv.sector || '—')}</td>
+            <td>${escapeHtml(iv.category || '—')}</td>
             <td style="text-align:right; color: ${yld !== '—' ? '#4ade80' : 'var(--text-dim)'};">${yld}</td>
             <td style="text-align:right;">${pe}</td>
-            <td><span style="padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:600; background:${sc.bg}; color:${sc.fg};">${iv.signal || '—'}</span></td>
-            <td style="font-size:0.78rem; color: var(--text-dim);">${updated}</td>
+            <td><span style="padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:600; background:${sc.bg}; color:${sc.fg};">${escapeHtml(iv.signal || '—')}</span></td>
+            <td style="font-size:0.78rem; color: var(--text-dim);">${escapeHtml(updated)}</td>
         </tr>`;
     }).join('');
 }

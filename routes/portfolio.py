@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, request
 
 from services.data_store import load_portfolio, save_portfolio, get_settings, crud_add, crud_delete
 from services.yfinance_svc import fetch_ticker_data, fetch_all_quotes, fetch_dividends
+from services.validation import validate_ticker
 
 bp = Blueprint('portfolio', __name__)
 
@@ -396,7 +397,10 @@ def api_dividends():
 @bp.route("/api/quote/<ticker>")
 def api_quote(ticker):
     """Single ticker quote."""
-    data = fetch_ticker_data(ticker.upper())
+    ticker = validate_ticker(ticker)
+    if not ticker:
+        return jsonify({"error": "Invalid ticker symbol"}), 400
+    data = fetch_ticker_data(ticker)
     if data and data.get("price", 0) > 0:
         return jsonify(data)
     return jsonify({"error": "Not found"}), 404
@@ -434,9 +438,9 @@ def api_position_update():
 def api_position_add():
     """Add a new position. Body: {ticker, shares, avgCost, category, sector, secType}"""
     body = request.get_json()
-    ticker = body.get("ticker", "").upper().strip()
+    ticker = validate_ticker(body.get("ticker", ""))
     if not ticker:
-        return jsonify({"error": "ticker required"}), 400
+        return jsonify({"error": "Invalid ticker symbol"}), 400
 
     portfolio = load_portfolio()
 
@@ -465,9 +469,9 @@ def api_position_add():
 def api_position_delete():
     """Delete a position. Body: {ticker}"""
     body = request.get_json()
-    ticker = body.get("ticker", "").upper().strip()
+    ticker = validate_ticker(body.get("ticker", ""))
     if not ticker:
-        return jsonify({"error": "ticker required"}), 400
+        return jsonify({"error": "Invalid ticker symbol"}), 400
 
     portfolio = load_portfolio()
     original_len = len(portfolio["positions"])
@@ -484,9 +488,9 @@ def api_position_delete():
 def api_watchlist_add():
     """Add to watchlist. Body: {ticker, priority}"""
     body = request.get_json()
-    ticker = body.get("ticker", "").upper().strip()
+    ticker = validate_ticker(body.get("ticker", ""))
     if not ticker:
-        return jsonify({"error": "ticker required"}), 400
+        return jsonify({"error": "Invalid ticker symbol"}), 400
 
     portfolio = load_portfolio()
     for w in portfolio.get("watchlist", []):
@@ -506,9 +510,9 @@ def api_watchlist_add():
 def api_watchlist_delete():
     """Remove from watchlist. Body: {ticker}"""
     body = request.get_json()
-    ticker = body.get("ticker", "").upper().strip()
+    ticker = validate_ticker(body.get("ticker", ""))
     if not ticker:
-        return jsonify({"error": "ticker required"}), 400
+        return jsonify({"error": "Invalid ticker symbol"}), 400
 
     portfolio = load_portfolio()
     original = portfolio.get("watchlist", [])
@@ -525,7 +529,9 @@ def api_watchlist_delete():
 def api_watchlist_update():
     """Update watchlist item priority. Body: {ticker, priority}"""
     body = request.get_json()
-    ticker = body.get("ticker", "").upper().strip()
+    ticker = validate_ticker(body.get("ticker", ""))
+    if not ticker:
+        return jsonify({"error": "Invalid ticker symbol"}), 400
     priority = body.get("priority", "Low")
 
     portfolio = load_portfolio()

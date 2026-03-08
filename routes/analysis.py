@@ -40,6 +40,7 @@ from models.invt_score import (
 )
 from config import ANALYZER_FILE
 from services.data_store import get_settings
+from services.validation import validate_ticker
 
 bp = Blueprint('analysis', __name__)
 
@@ -73,7 +74,9 @@ def api_stock_analyzer(ticker):
     Returns saved data from analyzer.json by default.
     Pass ?refresh=true to fetch fresh data from APIs and save.
     """
-    ticker = ticker.upper().strip()
+    ticker = validate_ticker(ticker)
+    if not ticker:
+        return jsonify({"error": "Invalid ticker symbol"}), 400
     refresh = request.args.get("refresh", "").lower() in ("true", "1", "yes")
 
     # Return saved data if not refreshing
@@ -331,7 +334,9 @@ def api_invt_score(ticker):
     """InvT Score: 0-10 company quality score across 5 categories.
     Uses 10yr/5yr historical data with 70/30 hybrid weighting.
     Pass ?refresh=true to re-fetch from APIs."""
-    ticker = ticker.upper().strip()
+    ticker = validate_ticker(ticker)
+    if not ticker:
+        return jsonify({"error": "Invalid ticker symbol"}), 400
     refresh = request.args.get("refresh", "").lower() in ("true", "1", "yes")
 
     # Check cache

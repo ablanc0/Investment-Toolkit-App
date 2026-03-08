@@ -10,11 +10,11 @@ function renderSoldPositions(items) {
     const tbody = document.getElementById('soldBody');
     if (!tbody) return;
     tbody.innerHTML = items.map((s, i) => `<tr>
-        <td><strong>${s.ticker}</strong></td><td>${s.shares}</td><td>${s.buyDate}</td><td>${s.sellDate}</td>
+        <td><strong>${escapeHtml(s.ticker)}</strong></td><td>${s.shares}</td><td>${escapeHtml(s.buyDate)}</td><td>${escapeHtml(s.sellDate)}</td>
         <td>${formatMoney(s.avgCost)}</td><td>${formatMoney(s.sellPrice)}</td>
         <td class="${s.gain >= 0 ? 'positive' : 'negative'}">${formatMoney(s.gain)}</td>
         <td class="${s.gainPct >= 0 ? 'positive' : 'negative'}">${formatPercent(s.gainPct)}</td>
-        <td>${s.category || ''}</td><td>${s.notes || ''}</td>
+        <td>${escapeHtml(s.category || '')}</td><td>${escapeHtml(s.notes || '')}</td>
         <td><button class="delete-row-btn" onclick="crudDeleteItem('sold-positions','soldPositions',${i})">✕</button></td>
     </tr>`).join('');
 }

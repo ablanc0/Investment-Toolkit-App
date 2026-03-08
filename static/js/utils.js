@@ -1,6 +1,12 @@
 // ── Shared Utility Functions ─────────────────────────────────────
 // Extracted from dashboard.html — keep in global scope (no modules)
 
+// ── XSS prevention ──────────────────────────────────────────────
+function escapeHtml(str) {
+    if (typeof str !== 'string') return str;
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
 // ── Display settings (populated from /api/settings) ──────────────
 let _displaySettings = { currencySymbol: '$', decimalPlaces: 2, percentDecimals: 2, defaultTab: 'overview' };
 
@@ -29,7 +35,7 @@ function getSignalBadge(signal) {
         'overcost': 'signal-overcost'
     };
     const className = signalMap[key] || 'signal-hold';
-    return `<span class="badge ${className}">${signal.toUpperCase()}</span>`;
+    return `<span class="badge ${className}">${escapeHtml(signal.toUpperCase())}</span>`;
 }
 
 // ── Settings (loaded from /api/settings) ─────────────────────────
@@ -57,7 +63,7 @@ function getCategoryBadge(category) {
         c => c.name.toLowerCase() === category.toLowerCase()
     );
     const color = cat ? cat.color : '#6366f1';
-    return `<span class="badge" style="background:${color}20; color:${color};">${category}</span>`;
+    return `<span class="badge" style="background:${color}20; color:${color};">${escapeHtml(category)}</span>`;
 }
 
 function getCategoryOptions() {
@@ -67,7 +73,7 @@ function getCategoryOptions() {
 function populateCategorySelect(selectId) {
     const el = document.getElementById(selectId);
     if (!el) return;
-    el.innerHTML = getCategoryOptions().map(c => `<option>${c}</option>`).join('');
+    el.innerHTML = getCategoryOptions().map(c => `<option>${escapeHtml(c)}</option>`).join('');
 }
 
 function showAlert(message, type = 'info') {
@@ -109,9 +115,9 @@ function statRow(label, val, fmt, fieldKey) {
     let warn = '';
     if ((val == null || val === 0) && fieldKey && window._analyzerWarnings) {
         const w = window._analyzerWarnings.find(w => w.field === fieldKey);
-        if (w) warn = `<span title="${w.reason}" style="cursor:help; margin-left:4px; color:#f59e0b; font-size:0.75rem;">&#9888;</span>`;
+        if (w) warn = `<span title="${escapeHtml(w.reason)}" style="cursor:help; margin-left:4px; color:#f59e0b; font-size:0.75rem;">&#9888;</span>`;
     }
-    return `<div class="analyzer-stat"><span class="analyzer-stat-label">${label}</span><span class="analyzer-stat-value" style="color:${display === '—' ? 'var(--text-dim)' : color}">${display}${warn}</span></div>`;
+    return `<div class="analyzer-stat"><span class="analyzer-stat-label">${escapeHtml(label)}</span><span class="analyzer-stat-value" style="color:${display === '—' ? 'var(--text-dim)' : color}">${display}${warn}</span></div>`;
 }
 function recColor(rec) {
     const r = (rec || '').toLowerCase();

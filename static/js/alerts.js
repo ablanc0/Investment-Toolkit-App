@@ -39,13 +39,13 @@ function populateScreening() {
     document.getElementById('portfolioSignalsBody').innerHTML = filtered.length > 0 ?
         filtered.map(p => `
             <tr>
-                <td><strong>${p.ticker}</strong></td>
+                <td><strong>${escapeHtml(p.ticker)}</strong></td>
                 <td>${formatMoney(p.price)}</td>
                 <td>${formatMoney(p.avgCost)}</td>
                 <td class="${(p.returnPercent || 0) >= 0 ? 'positive' : 'negative'}">${formatPercent(p.returnPercent)}</td>
                 <td>${p.isStock ? getSignalBadge(p.signal) : '<span style="color: var(--text-dim);">—</span>'}</td>
                 <td>${p.invtScore ? '<span style="color:' + _invtScoreColor(p.invtScore) + ';font-weight:600">' + Number(p.invtScore).toFixed(1) + '</span>' : '—'}</td>
-                <td>${p.category || '—'}</td>
+                <td>${escapeHtml(p.category || '—')}</td>
             </tr>
         `).join('') :
         '<tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:24px;">No signals matching filter</td></tr>';
@@ -83,13 +83,13 @@ function populateScreening() {
     document.getElementById('watchlistSignalsBody').innerHTML = wlSignaled.length > 0 ?
         wlSignaled.map(item => `
             <tr>
-                <td><strong>${item.ticker}</strong></td>
+                <td><strong>${escapeHtml(item.ticker)}</strong></td>
                 <td>${formatMoney(item.price)}</td>
                 <td>${item.hasIV ? getSignalBadge(item.signal) : '<span style="color: var(--text-dim);">—</span>'}</td>
                 <td>${item.invtScore ? '<span style="color:' + _invtScoreColor(item.invtScore) + ';font-weight:600">' + Number(item.invtScore).toFixed(1) + '</span>' : '—'}</td>
                 <td>${item.divYield ? item.divYield.toFixed(2) + '%' : '—'}</td>
-                <td>${item.sector || '—'}</td>
-                <td>${item.priority || 'Low'}</td>
+                <td>${escapeHtml(item.sector || '—')}</td>
+                <td>${escapeHtml(item.priority || 'Low')}</td>
             </tr>
         `).join('') :
         '<tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:24px;">No watchlist items</td></tr>';
@@ -129,7 +129,7 @@ function renderStrategyNotes() {
 
     container.innerHTML = strategy.map((note, i) => `
         <div class="strategy-note" style="display: flex; align-items: flex-start; gap: 12px; padding: 12px; margin-bottom: 8px; background: var(--card-hover); border-radius: 8px; border-left: 3px solid var(--accent);">
-            <p class="note-text" style="flex: 1; margin: 0; line-height: 1.6; cursor: pointer;" title="Click to edit" onclick="editStrategyNote(this, ${i})">${note}</p>
+            <p class="note-text" style="flex: 1; margin: 0; line-height: 1.6; cursor: pointer;" title="Click to edit" onclick="editStrategyNote(this, ${i})">${escapeHtml(note)}</p>
             <button class="delete-row-btn" onclick="deleteStrategyNote(${i})" title="Delete note" style="flex-shrink: 0;">✕</button>
         </div>
     `).join('');
@@ -428,8 +428,8 @@ function populateDivLog() {
             <th style="padding: 12px; text-align: left; background: var(--card-hover); border-bottom: 2px solid var(--border);">Amount</th>
         </tr></thead><tbody>
         ${dividendData.log.map(item => `<tr>
-            <td style="padding: 12px; border-bottom: 1px solid var(--border);">${item.date}</td>
-            <td style="padding: 12px; border-bottom: 1px solid var(--border);">${item.ticker}</td>
+            <td style="padding: 12px; border-bottom: 1px solid var(--border);">${escapeHtml(item.date)}</td>
+            <td style="padding: 12px; border-bottom: 1px solid var(--border);">${escapeHtml(item.ticker)}</td>
             <td style="padding: 12px; border-bottom: 1px solid var(--border);">${formatMoney(item.amount)}</td>
         </tr>`).join('')}
         </tbody></table></div>`;
@@ -464,7 +464,7 @@ function populateIVList() {
         ${watchlistData.watchlist.map(item => {
             const discount = ((item.intrinsicValue - item.price) / item.intrinsicValue * 100);
             return `<tr>
-                <td style="padding: 12px; border-bottom: 1px solid var(--border);"><strong>${item.ticker}</strong></td>
+                <td style="padding: 12px; border-bottom: 1px solid var(--border);"><strong>${escapeHtml(item.ticker)}</strong></td>
                 <td style="padding: 12px; border-bottom: 1px solid var(--border);">${formatMoney(item.price)}</td>
                 <td style="padding: 12px; border-bottom: 1px solid var(--border);">${formatMoney(item.intrinsicValue)}</td>
                 <td style="padding: 12px; border-bottom: 1px solid var(--border);" class="${discount > 0 ? 'positive' : 'negative'}">${formatPercent(discount)}</td>
