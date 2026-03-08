@@ -11,36 +11,120 @@ bp = Blueprint('planning', __name__)
 
 # ── Cost of Living ─────────────────────────────────────────────────────
 
+def _default_col_config():
+    return {
+        "homeCityIndex": 0,
+        "referenceSalary": 140000,
+        "referenceSalarySource": "manual",
+        "currentRent": 1458,
+        "housingWeight": 0.30,
+        "comparisonSalary": 200000,
+    }
+
+
+def _compute_col_entry(entry, config):
+    """Recompute overallFactor, equivalentSalary, elEquivalent from multipliers + config."""
+    hw = config.get("housingWeight", 0.30)
+    ref_salary = config.get("referenceSalary", 140000)
+    comp_salary = config.get("comparisonSalary", 200000)
+    hm = float(entry.get("housingMult", 1.0))
+    nhm = float(entry.get("nonHousingMult", 1.0))
+    factor = round(hm * hw + nhm * (1 - hw), 2)
+    entry["overallFactor"] = factor
+    entry["equivalentSalary"] = round(ref_salary * factor)
+    entry["elEquivalent"] = round(comp_salary / factor) if factor > 0 else 0
+
+
 @bp.route("/api/cost-of-living")
 def api_cost_of_living():
-    return crud_list("costOfLiving")
+    portfolio = load_portfolio()
+    config = portfolio.get("colConfig", _default_col_config())
+    # Auto-link salary if source is "salary"
+    if config.get("referenceSalarySource") == "salary":
+        from models.salary_calc import _get_salary_data, compute_salary_breakdown
+        salary = _get_salary_data(portfolio)
+        pid = salary.get("activeProfile", "alejandro")
+        profile = salary.get("profiles", {}).get(pid, {})
+        bd = compute_salary_breakdown(profile)
+        config["referenceSalary"] = round(bd["summary"].get("takeHomePay", 0), 2)
+    return jsonify({
+        "costOfLiving": portfolio.get("costOfLiving", []),
+        "colConfig": config,
+        "lastUpdated": datetime.now().isoformat(),
+    })
+
 
 @bp.route("/api/cost-of-living/add", methods=["POST"])
 def api_cost_of_living_add():
     b = request.get_json()
     item = {
-        "city": b.get("city", ""),
-        "state": b.get("state", ""),
+        "metro": b.get("metro", ""),
+        "area": b.get("area", ""),
+        "type": b.get("type", "Downtown"),
         "rent": float(b.get("rent", 0)),
-        "food": float(b.get("food", 0)),
-        "transport": float(b.get("transport", 0)),
-        "utilities": float(b.get("utilities", 0)),
-        "insurance": float(b.get("insurance", 0)),
-        "other": float(b.get("other", 0)),
-        "notes": b.get("notes", ""),
+        "housingMult": float(b.get("housingMult", 1.0)),
+        "nonHousingMult": float(b.get("nonHousingMult", 1.0)),
+        "overallFactor": 0,
+        "equivalentSalary": 0,
+        "elEquivalent": 0,
     }
-    item["total"] = round(sum(item[k] for k in ["rent", "food", "transport", "utilities", "insurance", "other"]), 2)
+    portfolio = load_portfolio()
+    config = portfolio.get("colConfig", _default_col_config())
+    _compute_col_entry(item, config)
     return crud_add("costOfLiving", item)
+
 
 @bp.route("/api/cost-of-living/update", methods=["POST"])
 def api_cost_of_living_update():
     b = request.get_json()
     return crud_update("costOfLiving", int(b.get("index", -1)), b.get("updates", {}))
 
+
 @bp.route("/api/cost-of-living/delete", methods=["POST"])
 def api_cost_of_living_delete():
     b = request.get_json()
     return crud_delete("costOfLiving", int(b.get("index", -1)))
+
+
+@bp.route("/api/cost-of-living/config/update", methods=["POST"])
+def api_col_config_update():
+    b = request.get_json()
+    portfolio = load_portfolio()
+    config = portfolio.get("colConfig", _default_col_config())
+    for key in ("referenceSalary", "currentRent", "housingWeight", "comparisonSalary"):
+        if key in b:
+            config[key] = float(b[key])
+    if "homeCityIndex" in b:
+        config["homeCityIndex"] = int(b["homeCityIndex"])
+    if "referenceSalarySource" in b:
+        config["referenceSalarySource"] = b["referenceSalarySource"]
+        if b["referenceSalarySource"] == "salary":
+            from models.salary_calc import _get_salary_data, compute_salary_breakdown
+            salary = _get_salary_data(portfolio)
+            pid = salary.get("activeProfile", "alejandro")
+            profile = salary.get("profiles", {}).get(pid, {})
+            bd = compute_salary_breakdown(profile)
+            config["referenceSalary"] = round(bd["summary"].get("takeHomePay", 0), 2)
+    portfolio["colConfig"] = config
+    # Recompute all cities
+    cities = portfolio.get("costOfLiving", [])
+    for city in cities:
+        _compute_col_entry(city, config)
+    portfolio["costOfLiving"] = cities
+    save_portfolio(portfolio)
+    return jsonify({"ok": True, "colConfig": config, "costOfLiving": cities})
+
+
+@bp.route("/api/cost-of-living/recompute", methods=["POST"])
+def api_col_recompute():
+    portfolio = load_portfolio()
+    config = portfolio.get("colConfig", _default_col_config())
+    cities = portfolio.get("costOfLiving", [])
+    for city in cities:
+        _compute_col_entry(city, config)
+    portfolio["costOfLiving"] = cities
+    save_portfolio(portfolio)
+    return jsonify({"ok": True, "costOfLiving": cities, "colConfig": config})
 
 
 # ── Passive Income ─────────────────────────────────────────────────────

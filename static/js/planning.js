@@ -1,34 +1,267 @@
 // ── Planning (Cost of Living, Passive Income, Rule 4%) ──
 let allCOLData = [];
-function renderCostOfLiving(items) {
-    allCOLData = items;
-    filterCOL('all');
+let colConfig = {};
+
+async function fetchCostOfLiving() {
+    try {
+        const data = await fetch('/api/cost-of-living').then(r => r.json());
+        allCOLData = data.costOfLiving || [];
+        colConfig = data.colConfig || {};
+        renderCOLConfig();
+        renderCOLKpis();
+        renderCOLChart();
+        filterCOL('all');
+    } catch(e) { console.error(e); }
 }
+
+function renderCOLConfig() {
+    const div = document.getElementById('colConfigInputs');
+    if (!div) return;
+    const homeCityOpts = allCOLData.map((c, i) =>
+        `<option value="${i}" ${i === (colConfig.homeCityIndex || 0) ? 'selected' : ''}>${c.metro} — ${c.area}</option>`
+    ).join('');
+    const isAuto = colConfig.referenceSalarySource === 'salary';
+    div.innerHTML = `
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
+            <div><label class="form-label">Home City</label>
+                <select class="form-input" style="width:100%; font-size:0.82rem;"
+                    onchange="updateCOLConfig('homeCityIndex', parseInt(this.value))">
+                    ${homeCityOpts}
+                </select></div>
+            <div><label class="form-label">Reference Salary <span style="color:#4ade80;">(green)</span></label>
+                <input type="number" value="${colConfig.referenceSalary || 0}" class="form-input"
+                    style="width:100%; font-size:0.82rem; text-align:right;" ${isAuto ? 'disabled' : ''}
+                    onchange="updateCOLConfig('referenceSalary', parseFloat(this.value))">
+                <label style="font-size:0.72rem; color:var(--text-dim); cursor:pointer;">
+                    <input type="checkbox" ${isAuto ? 'checked' : ''}
+                        onchange="updateCOLConfig('referenceSalarySource', this.checked ? 'salary' : 'manual')"> Auto from salary
+                </label></div>
+            <div><label class="form-label">Comparison Salary <span style="color:#60a5fa;">(blue)</span></label>
+                <input type="number" value="${colConfig.comparisonSalary || 0}" class="form-input"
+                    style="width:100%; font-size:0.82rem; text-align:right;"
+                    onchange="updateCOLConfig('comparisonSalary', parseFloat(this.value))"></div>
+            <div><label class="form-label">Current Rent/mo</label>
+                <input type="number" value="${colConfig.currentRent || 0}" class="form-input"
+                    style="width:100%; font-size:0.82rem; text-align:right;"
+                    onchange="updateCOLConfig('currentRent', parseFloat(this.value))"></div>
+            <div><label class="form-label">Housing Weight</label>
+                <input type="range" min="0" max="100" value="${((colConfig.housingWeight || 0.3) * 100).toFixed(0)}"
+                    style="width:100%;" oninput="this.nextElementSibling.textContent = this.value + '%'"
+                    onchange="updateCOLConfig('housingWeight', this.value / 100)">
+                <span style="font-size:0.82rem; color:var(--text-dim);">${((colConfig.housingWeight || 0.3) * 100).toFixed(0)}%</span></div>
+        </div>`;
+}
+
+async function updateCOLConfig(key, value) {
+    try {
+        const resp = await fetch('/api/cost-of-living/config/update', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ [key]: value })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            colConfig = data.colConfig;
+            allCOLData = data.costOfLiving;
+            renderCOLConfig();
+            renderCOLKpis();
+            renderCOLChart();
+            const activeType = document.querySelector('#colFilters .filter-btn.active');
+            filterCOL(activeType?.dataset?.type || 'all');
+            showSaveToast('Config updated');
+        }
+    } catch(e) { console.error(e); }
+}
+
+function renderCOLKpis() {
+    const div = document.getElementById('colKpis');
+    if (!div || !allCOLData.length) return;
+    const homeIdx = colConfig.homeCityIndex || 0;
+    const home = allCOLData[homeIdx] || {};
+    const sorted = [...allCOLData].sort((a, b) => a.overallFactor - b.overallFactor);
+    const cheapest = sorted[0];
+    const mostExp = sorted[sorted.length - 1];
+    const avgFactor = allCOLData.reduce((s, c) => s + (c.overallFactor || 0), 0) / allCOLData.length;
+    div.innerHTML = `
+        <div class="kpi-card"><div class="kpi-label">Home City</div>
+            <div class="kpi-value" style="font-size:1.2rem;">${home.metro || '—'}</div>
+            <div class="kpi-sub">${home.area || ''} | ${(home.overallFactor || 0).toFixed(2)}x</div></div>
+        <div class="kpi-card"><div class="kpi-label">Cheapest City</div>
+            <div class="kpi-value positive" style="font-size:1.2rem;">${cheapest.metro}</div>
+            <div class="kpi-sub">${cheapest.overallFactor?.toFixed(2)}x | ${formatMoney(cheapest.equivalentSalary)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Most Expensive</div>
+            <div class="kpi-value negative" style="font-size:1.2rem;">${mostExp.metro}</div>
+            <div class="kpi-sub">${mostExp.overallFactor?.toFixed(2)}x | ${formatMoney(mostExp.equivalentSalary)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Avg. Factor</div>
+            <div class="kpi-value">${avgFactor.toFixed(2)}x</div>
+            <div class="kpi-sub">${allCOLData.length} cities tracked</div></div>`;
+}
+
+function renderCOLChart() {
+    const canvas = document.getElementById('colChart');
+    if (!canvas || !allCOLData.length) return;
+    if (canvas._chart) canvas._chart.destroy();
+    const homeIdx = colConfig.homeCityIndex || 0;
+    const homeEquiv = allCOLData[homeIdx]?.equivalentSalary || 1;
+    const sorted = [...allCOLData].sort((a, b) => a.equivalentSalary - b.equivalentSalary);
+    canvas._chart = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: sorted.map(c => `${c.metro} (${c.type[0]})`),
+            datasets: [{
+                label: 'Equivalent Salary',
+                data: sorted.map(c => c.equivalentSalary),
+                backgroundColor: sorted.map(c =>
+                    c.equivalentSalary <= homeEquiv ? '#4ade8080' : '#f8717180'),
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { ticks: { color: '#64748b', callback: v => '$' + (v/1000).toFixed(0) + 'K' }, grid: { color: '#1e293b' } },
+                y: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { display: false } }
+            }
+        }
+    });
+}
+
 function filterCOL(type, btn) {
     const tbody = document.getElementById('colBody');
     if (!tbody) return;
     const filtered = type === 'all' ? allCOLData : allCOLData.filter(c => c.type === type);
-    // Update active button
     if (btn) {
-        btn.parentElement.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('#colFilters .filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
-    tbody.innerHTML = filtered.sort((a,b) => a.rent - b.rent).map(c => `<tr>
-        <td><strong>${c.metro}</strong></td><td>${c.area}</td>
-        <td><span style="padding:2px 6px; border-radius:4px; font-size:0.75rem; background:${c.type==='Downtown'?'#f59e0b20':'#22c55e20'}; color:${c.type==='Downtown'?'#f59e0b':'#22c55e'};">${c.type}</span></td>
-        <td style="text-align:right;">${formatMoney(c.rent)}</td>
-        <td style="text-align:right;">${c.housingMult?.toFixed(2)}x</td>
-        <td style="text-align:right;">${c.overallFactor?.toFixed(2)}x</td>
-        <td style="text-align:right; font-weight:600;">${formatMoney(c.equivalentSalary)}</td>
-        <td style="text-align:right; color: var(--accent);">${formatMoney(c.elEquivalent)}</td>
-    </tr>`).join('');
+    const homeIdx = colConfig.homeCityIndex || 0;
+    tbody.innerHTML = filtered.sort((a, b) => a.rent - b.rent).map(c => {
+        const realIdx = allCOLData.indexOf(c);
+        const isHome = realIdx === homeIdx;
+        const rowBg = isHome ? 'background:rgba(74,222,128,0.08);' : '';
+        const homeLabel = isHome ? ' <span style="font-size:0.65rem; color:#4ade80; font-weight:700;">HOME</span>' : '';
+        return `<tr style="${rowBg}">
+            <td><strong>${c.metro}</strong>${homeLabel}</td>
+            <td>${c.area}</td>
+            <td><span style="padding:2px 6px; border-radius:4px; font-size:0.75rem; background:${c.type==='Downtown'?'#f59e0b20':'#22c55e20'}; color:${c.type==='Downtown'?'#f59e0b':'#22c55e'};">${c.type}</span></td>
+            <td class="editable" style="text-align:right; cursor:pointer;"
+                onclick="editCOLCell(this, ${realIdx}, 'rent', ${c.rent})">${formatMoney(c.rent)}</td>
+            <td class="editable" style="text-align:right; cursor:pointer;"
+                onclick="editCOLCell(this, ${realIdx}, 'housingMult', ${c.housingMult})">${(c.housingMult || 0).toFixed(2)}x</td>
+            <td class="editable" style="text-align:right; cursor:pointer;"
+                onclick="editCOLCell(this, ${realIdx}, 'nonHousingMult', ${c.nonHousingMult})">${(c.nonHousingMult || 0).toFixed(2)}x</td>
+            <td style="text-align:right;">${(c.overallFactor || 0).toFixed(2)}x</td>
+            <td style="text-align:right; font-weight:600; color:#4ade80;">${formatMoney(c.equivalentSalary)}</td>
+            <td style="text-align:right; color:#60a5fa;">${formatMoney(c.elEquivalent)}</td>
+            <td><button class="delete-row-btn" onclick="deleteCOLCity(${realIdx})" title="Remove">&#10005;</button></td>
+        </tr>`;
+    }).join('');
 }
 
-async function fetchCostOfLiving() {
+function editCOLCell(td, index, field, currentValue) {
+    if (td.querySelector('input')) return;
+    const originalHTML = td.innerHTML;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.value = currentValue;
+    input.step = field === 'rent' ? '1' : '0.01';
+    input.style.cssText = 'width:80px; text-align:right; font-size:0.82rem; padding:2px 4px;';
+    td.innerHTML = '';
+    td.appendChild(input);
+    td.classList.remove('editable');
+    input.focus();
+    input.select();
+    const save = async () => {
+        const newValue = parseFloat(input.value);
+        if (isNaN(newValue) || newValue === currentValue) {
+            td.innerHTML = originalHTML;
+            td.classList.add('editable');
+            return;
+        }
+        try {
+            await fetch('/api/cost-of-living/update', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ index, updates: { [field]: newValue } })
+            });
+            await fetch('/api/cost-of-living/recompute', { method: 'POST' });
+            showSaveToast(`${allCOLData[index].metro} updated`);
+            fetchCostOfLiving();
+        } catch(e) {
+            td.innerHTML = originalHTML;
+            td.classList.add('editable');
+        }
+    };
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') input.blur();
+        if (e.key === 'Escape') {
+            input.removeEventListener('blur', save);
+            td.innerHTML = originalHTML;
+            td.classList.add('editable');
+        }
+    });
+}
+
+function showAddCOLForm() {
+    document.getElementById('addCOLBtn').style.display = 'none';
+    document.getElementById('addCOLForm').style.display = 'block';
+    document.getElementById('newCOLMetro').focus();
+}
+
+function hideAddCOLForm() {
+    document.getElementById('addCOLBtn').style.display = 'inline-flex';
+    document.getElementById('addCOLForm').style.display = 'none';
+}
+
+async function addCOLCity() {
+    const metro = document.getElementById('newCOLMetro').value.trim();
+    const area = document.getElementById('newCOLArea').value.trim();
+    const type = document.getElementById('newCOLType').value;
+    const rent = parseFloat(document.getElementById('newCOLRent').value);
+    const housingMult = parseFloat(document.getElementById('newCOLHousingMult').value) || 1.0;
+    const nonHousingMult = parseFloat(document.getElementById('newCOLNonHousingMult').value) || 1.0;
+    if (!metro) { showAlert('Enter a metro name', 'error'); return; }
+    if (isNaN(rent) || rent <= 0) { showAlert('Enter valid rent', 'error'); return; }
     try {
-        const data = await fetch('/api/salary').then(r => r.json());
-        renderCostOfLiving(data.costOfLiving || []);
-    } catch(e) { console.error(e); }
+        const resp = await fetch('/api/cost-of-living/add', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ metro, area, type, rent, housingMult, nonHousingMult })
+        });
+        if (resp.ok) {
+            showSaveToast(`${metro} added`);
+            hideAddCOLForm();
+            // Clear form
+            document.getElementById('newCOLMetro').value = '';
+            document.getElementById('newCOLArea').value = '';
+            document.getElementById('newCOLRent').value = '';
+            document.getElementById('newCOLHousingMult').value = '1.0';
+            document.getElementById('newCOLNonHousingMult').value = '1.0';
+            fetchCostOfLiving();
+        }
+    } catch(e) { showAlert('Failed to add city', 'error'); }
+}
+
+async function deleteCOLCity(index) {
+    const city = allCOLData[index];
+    if (!confirm(`Remove ${city.metro} — ${city.area}?`)) return;
+    try {
+        const resp = await fetch('/api/cost-of-living/delete', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ index })
+        });
+        if (resp.ok) {
+            showSaveToast(`${city.metro} removed`);
+            // Adjust homeCityIndex if needed
+            if ((colConfig.homeCityIndex || 0) === index) {
+                await updateCOLConfig('homeCityIndex', 0);
+            } else if ((colConfig.homeCityIndex || 0) > index) {
+                await updateCOLConfig('homeCityIndex', colConfig.homeCityIndex - 1);
+            } else {
+                fetchCostOfLiving();
+            }
+        }
+    } catch(e) { showAlert('Failed to delete', 'error'); }
 }
 
 // ── Passive Income ──────────────────────────────────
