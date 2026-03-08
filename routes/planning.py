@@ -31,6 +31,22 @@ def _default_col_config():
     }
 
 
+def _state_match(city_state, home_state):
+    """Flexible state match: handles 'MI' vs 'Michigan' mismatches."""
+    cs = (city_state or "").lower()
+    hs = (home_state or "").lower()
+    if not cs or not hs:
+        return False
+    return cs == hs or hs.startswith(cs) or cs.startswith(hs)
+
+
+def _filter_state_cities(api_cities, home_state):
+    """Return API cities matching the home state (handles abbreviation mismatches)."""
+    if not home_state:
+        return []
+    return [c for c in api_cities if _state_match(c.get("state"), home_state)]
+
+
 def _resolve_home_col(config, api_cities):
     """Resolve homeColIndex and homeMonthlyCosts from the configured source."""
     source = config.get("homeColSource", "manual")
@@ -48,10 +64,7 @@ def _resolve_home_col(config, api_cities):
         return None, None
 
     if source == "stateAvg":
-        state = (config.get("homeState") or "").lower()
-        if not state:
-            return None, None
-        state_cities = [c for c in api_cities if (c.get("state") or "").lower() == state.lower()]
+        state_cities = _filter_state_cities(api_cities, config.get("homeState"))
         if not state_cities:
             return None, None
         avg_col = sum(c.get("colIndex", 0) for c in state_cities) / len(state_cities)
@@ -299,8 +312,24 @@ def api_col_config_update():
         config["homeColIndex"] = matched.get("colIndex")
         config["homeMonthlyCosts"] = matched.get("monthlyCostsNoRent")
     elif config.get("homeColSource") == "apiCity":
-        # City was apiCity but no longer matches — reset to manual
-        config["homeColSource"] = "manual"
+        # City was apiCity but no longer matches — auto-pick proxy from same state
+        state_cities = _filter_state_cities(api_cities, config.get("homeState"))
+        if state_cities:
+            config["homeColSource"] = "proxy"
+            # Prefer existing proxy if it's in the same state
+            existing_proxy = (config.get("homeProxyCity") or "").lower()
+            if not any(c["name"].lower() == existing_proxy for c in state_cities):
+                config["homeProxyCity"] = state_cities[0]["name"]
+        else:
+            config["homeColSource"] = "manual"
+    # Auto-proxy for new non-DB cities without a source set
+    if not matched and config.get("homeColSource") == "manual" and home_name:
+        state_cities = _filter_state_cities(api_cities, config.get("homeState"))
+        if state_cities and not config.get("homeMonthlyCosts"):
+            config["homeColSource"] = "proxy"
+            existing_proxy = (config.get("homeProxyCity") or "").lower()
+            if not any(c["name"].lower() == existing_proxy for c in state_cities):
+                config["homeProxyCity"] = state_cities[0]["name"]
     # Resolve from proxy/stateAvg
     if config.get("homeColSource") in ("proxy", "stateAvg"):
         resolved_col, resolved_costs = _resolve_home_col(config, api_cities)
