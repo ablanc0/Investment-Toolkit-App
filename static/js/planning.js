@@ -1,12 +1,14 @@
 // ── Planning (Cost of Living, Passive Income, Rule 4%) ──
 let allCOLData = [];
 let colConfig = {};
+let colSalaryProfiles = [];
 
 async function fetchCostOfLiving() {
     try {
         const data = await fetch('/api/cost-of-living').then(r => r.json());
         allCOLData = data.costOfLiving || [];
         colConfig = data.colConfig || {};
+        colSalaryProfiles = data.salaryProfiles || [];
         renderCOLConfig();
         renderCOLKpis();
         renderCOLChart();
@@ -17,7 +19,15 @@ async function fetchCostOfLiving() {
 function renderCOLConfig() {
     const div = document.getElementById('colConfigInputs');
     if (!div) return;
-    const isAuto = colConfig.referenceSalarySource === 'salary';
+    const source = colConfig.referenceSalarySource || 'manual';
+    const isManual = source === 'manual';
+    const sourceOpts = [
+        `<option value="manual" ${source === 'manual' ? 'selected' : ''}>Manual</option>`,
+        ...colSalaryProfiles.map(p =>
+            `<option value="${p.id}" ${source === p.id ? 'selected' : ''}>${p.name}</option>`
+        ),
+        `<option value="household" ${source === 'household' ? 'selected' : ''}>Household (all)</option>`,
+    ].join('');
     div.innerHTML = `
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
             <div><label class="form-label">Home City</label>
@@ -26,12 +36,12 @@ function renderCOLConfig() {
                     onchange="updateCOLConfig('homeCityName', this.value)"></div>
             <div><label class="form-label">Reference Salary <span style="color:#4ade80;">(green)</span></label>
                 <input type="number" value="${colConfig.referenceSalary || 0}" class="form-input"
-                    style="width:100%; font-size:0.82rem; text-align:right;" ${isAuto ? 'disabled' : ''}
+                    style="width:100%; font-size:0.82rem; text-align:right;" ${!isManual ? 'disabled' : ''}
                     onchange="updateCOLConfig('referenceSalary', parseFloat(this.value))">
-                <label style="font-size:0.72rem; color:var(--text-dim); cursor:pointer;">
-                    <input type="checkbox" ${isAuto ? 'checked' : ''}
-                        onchange="updateCOLConfig('referenceSalarySource', this.checked ? 'salary' : 'manual')"> Auto from salary
-                </label></div>
+                <select style="font-size:0.72rem; margin-top:4px; background:var(--card); color:var(--text-dim); border:1px solid var(--border); border-radius:4px; padding:2px 4px;"
+                    onchange="updateCOLConfig('referenceSalarySource', this.value)">
+                    ${sourceOpts}
+                </select></div>
             <div><label class="form-label">Comparison Salary <span style="color:#60a5fa;">(blue)</span></label>
                 <input type="number" value="${colConfig.comparisonSalary || 0}" class="form-input"
                     style="width:100%; font-size:0.82rem; text-align:right;"

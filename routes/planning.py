@@ -47,17 +47,36 @@ def api_cost_of_living():
     if "homeCityName" not in config:
         config["homeCityName"] = _default_col_config()["homeCityName"]
         config.pop("homeCityIndex", None)
-    # Auto-link salary if source is "salary"
+    # Migrate: "salary" → active profile ID
     if config.get("referenceSalarySource") == "salary":
+        from models.salary_calc import _get_salary_data
+        sal = _get_salary_data(portfolio)
+        config["referenceSalarySource"] = sal.get("activeProfile", "alejandro")
+    # Resolve salary source
+    salary_profiles = []
+    source = config.get("referenceSalarySource", "manual")
+    if source != "manual":
         from models.salary_calc import _get_salary_data, compute_salary_breakdown
         salary = _get_salary_data(portfolio)
-        pid = salary.get("activeProfile", "alejandro")
-        profile = salary.get("profiles", {}).get(pid, {})
-        bd = compute_salary_breakdown(profile)
-        config["referenceSalary"] = round(bd["summary"].get("takeHomePay", 0), 2)
+        profiles = salary.get("profiles", {})
+        salary_profiles = [{"id": pid, "name": p.get("name", pid)} for pid, p in profiles.items()]
+        if source == "household":
+            total = 0
+            for pid, p in profiles.items():
+                bd = compute_salary_breakdown(p)
+                total += bd["summary"].get("takeHomePay", 0)
+            config["referenceSalary"] = round(total, 2)
+        elif source in profiles:
+            bd = compute_salary_breakdown(profiles[source])
+            config["referenceSalary"] = round(bd["summary"].get("takeHomePay", 0), 2)
+    else:
+        from models.salary_calc import _get_salary_data
+        salary = _get_salary_data(portfolio)
+        salary_profiles = [{"id": pid, "name": p.get("name", pid)} for pid, p in salary.get("profiles", {}).items()]
     return jsonify({
         "costOfLiving": portfolio.get("costOfLiving", []),
         "colConfig": config,
+        "salaryProfiles": salary_profiles,
         "lastUpdated": datetime.now().isoformat(),
     })
 
@@ -105,14 +124,21 @@ def api_col_config_update():
     if "homeCityName" in b:
         config["homeCityName"] = b["homeCityName"]
     if "referenceSalarySource" in b:
-        config["referenceSalarySource"] = b["referenceSalarySource"]
-        if b["referenceSalarySource"] == "salary":
+        source = b["referenceSalarySource"]
+        config["referenceSalarySource"] = source
+        if source != "manual":
             from models.salary_calc import _get_salary_data, compute_salary_breakdown
             salary = _get_salary_data(portfolio)
-            pid = salary.get("activeProfile", "alejandro")
-            profile = salary.get("profiles", {}).get(pid, {})
-            bd = compute_salary_breakdown(profile)
-            config["referenceSalary"] = round(bd["summary"].get("takeHomePay", 0), 2)
+            profiles = salary.get("profiles", {})
+            if source == "household":
+                total = 0
+                for pid, p in profiles.items():
+                    bd = compute_salary_breakdown(p)
+                    total += bd["summary"].get("takeHomePay", 0)
+                config["referenceSalary"] = round(total, 2)
+            elif source in profiles:
+                bd = compute_salary_breakdown(profiles[source])
+                config["referenceSalary"] = round(bd["summary"].get("takeHomePay", 0), 2)
     portfolio["colConfig"] = config
     # Recompute all cities
     cities = portfolio.get("costOfLiving", [])
