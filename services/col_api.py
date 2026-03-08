@@ -109,6 +109,11 @@ def lookup_city(city_name):
     return None
 
 
+def get_global_city_list():
+    """Return the stored global city list (all countries) or empty list."""
+    return _col_data.get("globalCityList", [])
+
+
 # ── Fetch from RapidAPI ───────────────────────────────────────────────
 
 def check_for_new_cities():

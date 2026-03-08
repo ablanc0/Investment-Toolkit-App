@@ -843,10 +843,8 @@
                             </select></div>
                         <div><label class="form-label">Rent/mo</label>
                             <input type="number" id="newCOLRent" class="form-input" placeholder="2500" style="font-size:0.82rem;"></div>
-                        <div><label class="form-label">Non-Hsg Mult</label>
-                            <input type="number" id="newCOLNonHousingMult" class="form-input" value="1.0" step="0.01" style="font-size:0.82rem;"></div>
-                        <div><label class="form-label">COL Index <span style="font-size:0.65rem; color:var(--text-dim);">(opt)</span></label>
-                            <input type="number" id="newCOLColIndex" class="form-input" placeholder="e.g. 68" step="0.1" style="font-size:0.82rem;"></div>
+                        <div><label class="form-label">Monthly Costs <span style="font-size:0.65rem; color:var(--text-dim);">(no rent)</span></label>
+                            <input type="number" id="newCOLMonthlyCosts" class="form-input" placeholder="e.g. 1200" style="font-size:0.82rem;"></div>
                         <div style="display: flex; gap: 6px;">
                             <button class="btn-primary" onclick="addCOLCity()" style="font-size:0.82rem;">Add</button>
                             <button class="btn-secondary" onclick="hideAddCOLForm()" style="font-size:0.82rem;">Cancel</button>
@@ -866,13 +864,13 @@
                     <thead><tr>
                         <th>Metro</th><th>Area</th><th>Type</th>
                         <th style="text-align:right;">Rent/mo</th>
-                        <th style="text-align:right;">Housing Mult</th>
-                        <th style="text-align:right;">Non-Hsg Mult</th>
-                        <th style="text-align:right;">Overall Factor</th>
-                        <th style="text-align:right;">Total Cost/mo</th>
-                        <th style="text-align:right;">Purch. Power</th>
+                        <th style="text-align:right;">Costs/mo</th>
+                        <th style="text-align:right;">Total/mo</th>
+                        <th style="text-align:right;">Factor</th>
+                        <th style="text-align:center;">Formula</th>
                         <th style="text-align:right; color:#4ade80;">Equiv. Salary</th>
                         <th style="text-align:right; color:#60a5fa;">EL Equivalent</th>
+                        <th style="text-align:right;">Purch. Power</th>
                         <th style="width: 40px;"></th>
                     </tr></thead><tbody id="colBody"></tbody>
                 </table></div>

@@ -4,18 +4,20 @@ let colConfig = {};
 let colSalaryProfiles = [];
 let colApiCities = [];   // Stored API cities for autocomplete
 let colApiMeta = {};     // {cityCount, fetchedAt}
+let colGlobalCities = []; // Global cities (all countries)
 
 async function fetchCostOfLiving() {
     try {
         const [colResp, apiResp] = await Promise.all([
             fetch('/api/cost-of-living').then(r => r.json()),
-            fetch('/api/cost-of-living/api-cities').then(r => r.json()).catch(() => ({ cities: [], meta: {} })),
+            fetch('/api/cost-of-living/api-cities?include_global=1').then(r => r.json()).catch(() => ({ cities: [], meta: {} })),
         ]);
         allCOLData = colResp.costOfLiving || [];
         colConfig = colResp.colConfig || {};
         colSalaryProfiles = colResp.salaryProfiles || [];
         colApiCities = apiResp.cities || [];
         colApiMeta = apiResp.meta || {};
+        colGlobalCities = apiResp.globalCities || [];
         renderCOLConfig();
         renderCOLKpis();
         renderCOLChart();
@@ -26,6 +28,25 @@ async function fetchCostOfLiving() {
 function renderCOLConfig() {
     const div = document.getElementById('colConfigInputs');
     if (!div) return;
+
+    // ── Section 1: Your City ──
+    const allCities = [...colApiCities, ...colGlobalCities.filter(g => typeof g === 'object')];
+    const countries = [...new Set(allCities.map(c => c.country).filter(Boolean))].sort();
+    const homeCountry = colConfig.homeCountry || 'United States';
+    const homeState = colConfig.homeState || '';
+
+    // States for selected country
+    const countryCities = allCities.filter(c => c.country === homeCountry);
+    const states = [...new Set(countryCities.map(c => c.state || c.us_state).filter(Boolean))].sort();
+
+    const countryOpts = countries.map(c =>
+        `<option value="${c}" ${c === homeCountry ? 'selected' : ''}>${c}</option>`
+    ).join('');
+    const stateOpts = states.length > 0
+        ? states.map(s => `<option value="${s}" ${s === homeState ? 'selected' : ''}>${s}</option>`).join('')
+        : '';
+
+    // ── Section 2: Salary ──
     const source = colConfig.referenceSalarySource || 'manual';
     const isManual = source === 'manual';
     const sourceOpts = [
@@ -35,61 +56,80 @@ function renderCOLConfig() {
         ),
         `<option value="household" ${source === 'household' ? 'selected' : ''}>Household (all)</option>`,
     ].join('');
+
     div.innerHTML = `
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
-            <div><label class="form-label">Home City</label>
-                <input type="text" value="${colConfig.homeCityName || ''}" class="form-input"
-                    style="width:100%; font-size:0.82rem;"
-                    onchange="updateCOLConfig('homeCityName', this.value)"></div>
-            <div><label class="form-label">Reference Salary <span style="color:#4ade80;">(green)</span></label>
-                <input type="number" value="${colConfig.referenceSalary || 0}" class="form-input"
-                    style="width:100%; font-size:0.82rem; text-align:right;" ${!isManual ? 'disabled' : ''}
-                    onchange="updateCOLConfig('referenceSalary', parseFloat(this.value))">
-                <select style="font-size:0.72rem; margin-top:4px; background:var(--card); color:var(--text-dim); border:1px solid var(--border); border-radius:4px; padding:2px 4px;"
-                    onchange="updateCOLConfig('referenceSalarySource', this.value)">
-                    ${sourceOpts}
-                </select></div>
-            <div><label class="form-label">Comparison Salary <span style="color:#60a5fa;">(blue)</span></label>
-                <input type="number" value="${colConfig.comparisonSalary || 0}" class="form-input"
-                    style="width:100%; font-size:0.82rem; text-align:right;"
-                    onchange="updateCOLConfig('comparisonSalary', parseFloat(this.value))"></div>
-            <div><label class="form-label">Current Rent/mo</label>
-                <input type="number" value="${colConfig.currentRent || 0}" class="form-input"
-                    style="width:100%; font-size:0.82rem; text-align:right;"
-                    onchange="updateCOLConfig('currentRent', parseFloat(this.value))"></div>
-            <div><label class="form-label">Housing Weight</label>
-                <input type="range" min="0" max="100" value="${((colConfig.housingWeight || 0.3) * 100).toFixed(0)}"
-                    style="width:100%;" oninput="this.nextElementSibling.textContent = this.value + '%'"
-                    onchange="updateCOLConfig('housingWeight', this.value / 100)">
-                <span style="font-size:0.82rem; color:var(--text-dim);">${((colConfig.housingWeight || 0.3) * 100).toFixed(0)}%</span></div>
-            <div><label class="form-label">Bedrooms</label>
-                <select class="form-input" style="width:100%; font-size:0.82rem;"
-                    onchange="updateCOLConfig('bedroomCount', parseInt(this.value))">
-                    <option value="1" ${(colConfig.bedroomCount||1)===1?'selected':''}>1 Bedroom</option>
-                    <option value="3" ${colConfig.bedroomCount===3?'selected':''}>3 Bedrooms</option>
-                </select></div>
-            <div><label class="form-label">Location</label>
-                <select class="form-input" style="width:100%; font-size:0.82rem;"
-                    onchange="updateCOLConfig('locationType', this.value)">
-                    <option value="city" ${(colConfig.locationType||'city')==='city'?'selected':''}>City Centre</option>
-                    <option value="suburb" ${colConfig.locationType==='suburb'?'selected':''}>Outside Centre</option>
-                </select></div>
-        </div>
-        <div style="margin-top:10px; padding:10px; background:var(--bg); border-radius:6px; border:1px solid var(--border);">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <span style="font-size:0.78rem; font-weight:600; color:var(--text);">Home City COL Parameters</span>
-                <select class="form-input" style="width:auto; font-size:0.75rem; padding:2px 8px;"
-                    onchange="updateHomeColSource(this.value)">
-                    <option value="manual" ${(colConfig.homeColSource||'manual')==='manual'?'selected':''}>Manual</option>
-                    <option value="proxy" ${colConfig.homeColSource==='proxy'?'selected':''}>Proxy City</option>
-                    <option value="stateAvg" ${colConfig.homeColSource==='stateAvg'?'selected':''}>State Average</option>
-                </select>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <!-- Your City Section -->
+            <div style="padding:12px; background:var(--bg); border-radius:8px; border:1px solid var(--border);">
+                <div style="font-size:0.82rem; font-weight:600; color:var(--text); margin-bottom:10px;">📍 Your City</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+                    <div><label class="form-label" style="font-size:0.72rem;">Country</label>
+                        <select class="form-input" style="width:100%; font-size:0.82rem;"
+                            onchange="onHomeCountryChange(this.value)">
+                            ${countryOpts}
+                        </select></div>
+                    <div><label class="form-label" style="font-size:0.72rem;">${states.length > 0 ? 'State' : 'Region'}</label>
+                        ${states.length > 0
+                            ? `<select class="form-input" style="width:100%; font-size:0.82rem;"
+                                onchange="onHomeStateChange(this.value)">
+                                <option value="">Select...</option>
+                                ${stateOpts}
+                            </select>`
+                            : `<input type="text" value="${homeState}" class="form-input"
+                                style="width:100%; font-size:0.82rem;" placeholder="Region/state"
+                                onchange="onHomeStateChange(this.value)">`
+                        }</div>
+                </div>
+                <div style="margin-bottom:10px;">
+                    <label class="form-label" style="font-size:0.72rem;">City Name</label>
+                    <input type="text" value="${colConfig.homeCityName || ''}" class="form-input"
+                        style="width:100%; font-size:0.82rem;" placeholder="Your city name"
+                        onchange="updateCOLConfig('homeCityName', this.value)">
+                </div>
+                ${renderHomeCityResolution()}
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:10px;">
+                    <div><label class="form-label" style="font-size:0.72rem;">Your Rent/mo</label>
+                        <input type="number" value="${colConfig.currentRent || 0}" class="form-input"
+                            style="width:100%; font-size:0.82rem; text-align:right;"
+                            onchange="updateCOLConfig('currentRent', parseFloat(this.value))"></div>
+                    <div><label class="form-label" style="font-size:0.72rem;">Bedrooms</label>
+                        <select class="form-input" style="width:100%; font-size:0.82rem;"
+                            onchange="updateCOLConfig('bedroomCount', parseInt(this.value))">
+                            <option value="1" ${(colConfig.bedroomCount||1)===1?'selected':''}>1 BR</option>
+                            <option value="3" ${colConfig.bedroomCount===3?'selected':''}>3 BR</option>
+                        </select></div>
+                    <div><label class="form-label" style="font-size:0.72rem;">Location</label>
+                        <select class="form-input" style="width:100%; font-size:0.82rem;"
+                            onchange="updateCOLConfig('locationType', this.value)">
+                            <option value="city" ${(colConfig.locationType||'city')==='city'?'selected':''}>City Centre</option>
+                            <option value="suburb" ${colConfig.locationType==='suburb'?'selected':''}>Outside Centre</option>
+                        </select></div>
+                </div>
             </div>
-            ${renderHomeColDetails()}
+            <!-- Salary Section -->
+            <div style="padding:12px; background:var(--bg); border-radius:8px; border:1px solid var(--border);">
+                <div style="font-size:0.82rem; font-weight:600; color:var(--text); margin-bottom:10px;">💰 Salary</div>
+                <div style="margin-bottom:10px;">
+                    <label class="form-label" style="font-size:0.72rem;">Reference Salary <span style="color:#4ade80;">(green)</span></label>
+                    <input type="number" value="${colConfig.referenceSalary || 0}" class="form-input"
+                        style="width:100%; font-size:0.82rem; text-align:right;" ${!isManual ? 'disabled' : ''}
+                        onchange="updateCOLConfig('referenceSalary', parseFloat(this.value))">
+                    <select style="font-size:0.72rem; margin-top:4px; width:100%; background:var(--card); color:var(--text-dim); border:1px solid var(--border); border-radius:4px; padding:2px 4px;"
+                        onchange="updateCOLConfig('referenceSalarySource', this.value)">
+                        ${sourceOpts}
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label" style="font-size:0.72rem;">Comparison Salary <span style="color:#60a5fa;">(blue)</span></label>
+                    <input type="number" value="${colConfig.comparisonSalary || 0}" class="form-input"
+                        style="width:100%; font-size:0.82rem; text-align:right;"
+                        onchange="updateCOLConfig('comparisonSalary', parseFloat(this.value))">
+                </div>
+            </div>
         </div>
         <div style="margin-top:8px; font-size:0.75rem; color:var(--text-dim);">
             ${colApiMeta.fetchedAt
-                ? `<span style="color:#4ade80;">&#9679;</span> ${colApiMeta.cityCount} US cities in database${colApiMeta.totalKnownCities ? ' / ' + colApiMeta.totalKnownCities + ' global' : ''} (updated ${new Date(colApiMeta.fetchedAt).toLocaleDateString()})`
+                ? `<span style="color:#4ade80;">&#9679;</span> ${colApiMeta.cityCount} cities in database${colApiMeta.totalKnownCities ? ' / ' + colApiMeta.totalKnownCities + ' global' : ''} (updated ${new Date(colApiMeta.fetchedAt).toLocaleDateString()})`
                 : '<span style="color:#64748b;">&#9679;</span> No API data — click "Refresh API Data" to fetch'}
         </div>`;
 }
@@ -114,55 +154,143 @@ async function updateCOLConfig(key, value) {
     } catch(e) { console.error(e); }
 }
 
-function renderHomeColDetails() {
+function renderHomeCityResolution() {
     const source = colConfig.homeColSource || 'manual';
     const resolvedCol = colConfig.homeColIndex;
     const resolvedCosts = colConfig.homeMonthlyCosts;
-    const resolvedLine = `<div style="margin-top:6px; font-size:0.72rem; color:var(--text-dim);">
-        Resolved: COL Index = <strong style="color:${resolvedCol ? '#4ade80' : '#f59e0b'};">${resolvedCol != null ? resolvedCol : 'not set (using NYC=100)'}</strong>
-        &nbsp;|&nbsp; Monthly Costs = <strong style="color:${resolvedCosts ? '#4ade80' : 'var(--text-dim)'};">${resolvedCosts != null ? formatMoney(resolvedCosts) : 'not set'}</strong></div>`;
+    const homeCountry = colConfig.homeCountry || 'United States';
+    const homeState = colConfig.homeState || '';
 
-    if (source === 'manual') {
-        return `<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-            <div><label class="form-label" style="font-size:0.72rem;">Home COL Index</label>
-                <input type="number" value="${resolvedCol || ''}" class="form-input" step="0.1"
-                    placeholder="e.g. 70" style="width:100%; font-size:0.82rem;"
-                    onchange="updateCOLConfig('homeColIndex', this.value ? parseFloat(this.value) : null)"></div>
-            <div><label class="form-label" style="font-size:0.72rem;">Home Monthly Costs (no rent)</label>
-                <input type="number" value="${resolvedCosts || ''}" class="form-input"
-                    placeholder="e.g. 1100" style="width:100%; font-size:0.82rem;"
-                    onchange="updateCOLConfig('homeMonthlyCosts', this.value ? parseFloat(this.value) : null)"></div>
-        </div>${resolvedLine}`;
+    // Check if home city is in the database
+    const homeName = (colConfig.homeCityName || '').toLowerCase().trim();
+    const matchedCity = colApiCities.find(c => c.name.toLowerCase() === homeName);
+
+    if (matchedCity) {
+        // City found in DB — show green checkmark with data
+        return `<div style="padding:8px; background:#22c55e10; border:1px solid #22c55e30; border-radius:6px;">
+            <div style="font-size:0.78rem; color:#4ade80; font-weight:600;">✓ Found in database</div>
+            <div style="font-size:0.72rem; color:var(--text-dim); margin-top:4px;">
+                COL Index: <strong>${matchedCity.colIndex}</strong> &nbsp;|&nbsp;
+                Monthly Costs: <strong>$${matchedCity.monthlyCostsNoRent?.toLocaleString() || '—'}</strong> &nbsp;|&nbsp;
+                ${matchedCity.state || ''}
+            </div>
+        </div>`;
     }
 
+    // City NOT found — show fallback options
+    const stateCities = colApiCities.filter(c => {
+        if (homeState) return (c.state || '').toLowerCase() === homeState.toLowerCase();
+        return c.country === homeCountry;
+    });
+    const stateAvgCol = stateCities.length > 0
+        ? (stateCities.reduce((s, c) => s + (c.colIndex || 0), 0) / stateCities.length).toFixed(1)
+        : null;
+    const stateAvgCosts = stateCities.length > 0
+        ? Math.round(stateCities.reduce((s, c) => s + (c.monthlyCostsNoRent || 0), 0) / stateCities.length)
+        : null;
+    const proxyCity = colConfig.homeProxyCity || '';
+    const proxyMatch = proxyCity ? colApiCities.find(c => c.name.toLowerCase() === proxyCity.toLowerCase()) : null;
+
+    let html = `<div style="padding:8px; background:#f59e0b10; border:1px solid #f59e0b30; border-radius:6px;">
+        <div style="font-size:0.78rem; color:#f59e0b; margin-bottom:6px;">
+            ⚠ "${colConfig.homeCityName || 'Your city'}" not in database. Choose data source:
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px;">`;
+
+    // Option 1: Proxy city — show all cities in the selected state/region
+    html += `<label style="display:flex; align-items:flex-start; gap:6px; cursor:pointer; font-size:0.78rem;">
+        <input type="radio" name="homeColSource" value="proxy" ${source === 'proxy' ? 'checked' : ''}
+            onchange="updateHomeColSource('proxy')" style="margin-top:2px;">
+        <span>Use a city from ${homeState || homeCountry} as proxy${proxyMatch ? ` — <strong>${proxyMatch.name}</strong> (COL ${proxyMatch.colIndex}, costs $${proxyMatch.monthlyCostsNoRent?.toLocaleString()}/mo)` : ''}</span>
+    </label>`;
     if (source === 'proxy') {
-        const proxyName = colConfig.homeProxyCity || '';
-        return `<div><label class="form-label" style="font-size:0.72rem;">Proxy City (nearest API city)</label>
-            <input type="text" value="${proxyName}" class="form-input" id="homeProxyInput"
-                placeholder="Type to search..." style="width:100%; font-size:0.82rem;"
-                oninput="onHomeProxyCitySearch(this.value)">
-            <div id="homeProxyResults" style="max-height:150px; overflow-y:auto;"></div>
-        </div>${resolvedLine}`;
+        const proxyCityOpts = stateCities
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map(c => `<option value="${c.name}" ${c.name.toLowerCase() === proxyCity.toLowerCase() ? 'selected' : ''}>${c.name} — COL ${c.colIndex}, $${c.monthlyCostsNoRent?.toLocaleString()}/mo</option>`)
+            .join('');
+        html += `<div style="margin-left:22px;">
+            <select class="form-input" style="width:100%; font-size:0.78rem; padding:4px 8px;"
+                onchange="selectHomeProxyCity(this.value)">
+                <option value="">Select a city...</option>
+                ${proxyCityOpts}
+            </select>
+        </div>`;
     }
 
-    if (source === 'stateAvg') {
-        const states = [...new Set(colApiCities.map(c => c.state).filter(Boolean))].sort();
-        const stateOpts = states.map(s =>
-            `<option value="${s}" ${colConfig.homeState === s ? 'selected' : ''}>${s} (${colApiCities.filter(c => c.state === s).length} cities)</option>`
-        ).join('');
-        return `<div><label class="form-label" style="font-size:0.72rem;">State</label>
-            <select class="form-input" style="width:100%; font-size:0.82rem;"
-                onchange="updateCOLConfig('homeState', this.value)">
-                <option value="">Select state...</option>
-                ${stateOpts}
-            </select></div>${resolvedLine}`;
+    // Option 2: State/region average
+    if (stateCities.length > 0) {
+        html += `<label style="display:flex; align-items:flex-start; gap:6px; cursor:pointer; font-size:0.78rem;">
+            <input type="radio" name="homeColSource" value="stateAvg" ${source === 'stateAvg' ? 'checked' : ''}
+                onchange="updateHomeColSource('stateAvg')" style="margin-top:2px;">
+            <span>Use ${homeState || homeCountry} average (${stateCities.length} cities: COL ${stateAvgCol}, costs $${stateAvgCosts?.toLocaleString()}/mo)</span>
+        </label>`;
     }
 
-    return resolvedLine;
+    // Option 3: Manual entry
+    html += `<label style="display:flex; align-items:flex-start; gap:6px; cursor:pointer; font-size:0.78rem;">
+        <input type="radio" name="homeColSource" value="manual" ${source === 'manual' ? 'checked' : ''}
+            onchange="updateHomeColSource('manual')" style="margin-top:2px;">
+        <span>Enter manually</span>
+    </label>`;
+    if (source === 'manual') {
+        html += `<div style="margin-left:22px; display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+            <div><label class="form-label" style="font-size:0.68rem;">Monthly Costs (no rent)</label>
+                <input type="number" value="${resolvedCosts || ''}" class="form-input"
+                    placeholder="e.g. 1100" style="width:100%; font-size:0.78rem; padding:4px 8px;"
+                    onchange="updateCOLConfig('homeMonthlyCosts', this.value ? parseFloat(this.value) : null)"></div>
+            <div><label class="form-label" style="font-size:0.68rem;">COL Index <span style="color:var(--text-dim);">(opt)</span></label>
+                <input type="number" value="${resolvedCol || ''}" class="form-input"
+                    placeholder="e.g. 70" step="0.1" style="width:100%; font-size:0.78rem; padding:4px 8px;"
+                    onchange="updateCOLConfig('homeColIndex', this.value ? parseFloat(this.value) : null)"></div>
+        </div>`;
+    }
+
+    html += `</div>`;
+    // Show resolved values
+    html += `<div style="margin-top:6px; font-size:0.72rem; color:var(--text-dim); border-top:1px solid var(--border); padding-top:4px;">
+        Resolved: Monthly Costs = <strong style="color:${resolvedCosts ? '#4ade80' : '#f59e0b'};">${resolvedCosts != null ? '$' + resolvedCosts.toLocaleString() : 'not set'}</strong>
+        ${resolvedCol != null ? `&nbsp;|&nbsp; COL Index = <strong style="color:#4ade80;">${resolvedCol}</strong>` : ''}
+    </div>`;
+    html += `</div>`;
+    return html;
 }
 
 function updateHomeColSource(value) {
     updateCOLConfig('homeColSource', value);
+}
+
+function onHomeCountryChange(country) {
+    // Reset state and city when country changes
+    fetch('/api/cost-of-living/config/update', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ homeCountry: country, homeState: '', homeColSource: 'manual', homeColIndex: null, homeMonthlyCosts: null })
+    }).then(r => r.json()).then(data => {
+        if (data.ok) {
+            colConfig = data.colConfig;
+            allCOLData = data.costOfLiving;
+            renderCOLConfig();
+            renderCOLKpis();
+            const activeType = document.querySelector('#colFilters .filter-btn.active');
+            filterCOL(activeType?.dataset?.type || 'all');
+        }
+    }).catch(e => console.error(e));
+}
+
+function onHomeStateChange(state) {
+    // Reset city resolution when state changes
+    fetch('/api/cost-of-living/config/update', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ homeState: state, homeColSource: colConfig.homeColSource || 'manual' })
+    }).then(r => r.json()).then(data => {
+        if (data.ok) {
+            colConfig = data.colConfig;
+            allCOLData = data.costOfLiving;
+            renderCOLConfig();
+            renderCOLKpis();
+            const activeType = document.querySelector('#colFilters .filter-btn.active');
+            filterCOL(activeType?.dataset?.type || 'all');
+        }
+    }).catch(e => console.error(e));
 }
 
 function onHomeProxyCitySearch(query) {
@@ -234,8 +362,8 @@ function renderCOLKpis() {
     const cheapest = sorted[0];
     const mostExp = sorted[sorted.length - 1];
     const avgFactor = allCOLData.reduce((s, c) => s + (c.overallFactor || 0), 0) / allCOLData.length;
-    const homeCol = colConfig.homeColIndex;
-    const homeColLabel = homeCol ? `COL ${homeCol}` : 'COL not set';
+    const homeCosts = colConfig.homeMonthlyCosts;
+    const homeColLabel = homeCosts ? `$${homeCosts.toLocaleString()}/mo costs` : 'costs not set';
     div.innerHTML = `
         <div class="kpi-card"><div class="kpi-label">Home City (Baseline)</div>
             <div class="kpi-value" style="font-size:1.2rem;">${homeName}</div>
@@ -297,24 +425,26 @@ function filterCOL(type, btn) {
         const realIdx = allCOLData.indexOf(c);
         const isApi = c.source === 'api';
         const apiBadge = isApi ? ' <span style="font-size:0.65rem; padding:1px 4px; border-radius:3px; background:#6366f120; color:#6366f1; vertical-align:middle;">API</span>' : '';
-        const rentOverride = isApi && c.rentOverride ? ' <span title="Manually overridden" style="color:#f59e0b; font-size:0.7rem;">*</span>' : '';
-        const nhmOverride = isApi && c.nhmOverride ? ' <span title="Manually overridden" style="color:#f59e0b; font-size:0.7rem;">*</span>' : '';
+        const costs = c.monthlyCostsNoRent ? formatMoney(c.monthlyCostsNoRent) : '—';
         const totalCost = c.totalMonthlyCost ? formatMoney(c.totalMonthlyCost) : '—';
+        const formulaUsed = c.formulaUsed || 'weighted';
+        const formulaBadge = formulaUsed === 'direct'
+            ? '<span style="font-size:0.65rem; padding:1px 6px; border-radius:3px; background:#22c55e20; color:#22c55e;">DIRECT</span>'
+            : '<span style="font-size:0.65rem; padding:1px 6px; border-radius:3px; background:#f59e0b20; color:#f59e0b;">WEIGHTED</span>';
         const pp = c.purchasingPower ? c.purchasingPower.toFixed(0) : '—';
         return `<tr>
             <td><strong>${c.metro}</strong>${apiBadge}</td>
             <td>${c.area}</td>
             <td><span style="padding:2px 6px; border-radius:4px; font-size:0.75rem; background:${c.type==='Downtown'?'#f59e0b20':'#22c55e20'}; color:${c.type==='Downtown'?'#f59e0b':'#22c55e'};">${c.type}</span></td>
-            <td class="editable" style="text-align:right; cursor:pointer;"
-                onclick="editCOLCell(this, ${realIdx}, 'rent', ${c.rent})">${formatMoney(c.rent)}${rentOverride}</td>
-            <td style="text-align:right;">${(c.housingMult || 0).toFixed(2)}x</td>
-            <td class="editable" style="text-align:right; cursor:pointer;"
-                onclick="editCOLCell(this, ${realIdx}, 'nonHousingMult', ${c.nonHousingMult})">${(c.nonHousingMult || 0).toFixed(2)}x${nhmOverride}</td>
-            <td style="text-align:right;">${(c.overallFactor || 0).toFixed(2)}x</td>
-            <td style="text-align:right; color:var(--text-dim);">${totalCost}</td>
-            <td style="text-align:right; color:${parseFloat(pp) >= 100 ? '#4ade80' : parseFloat(pp) > 0 ? '#f59e0b' : 'var(--text-dim)'};">${pp}</td>
+            <td style="text-align:right; cursor:pointer;" class="editable"
+                onclick="editCOLCell(this, ${realIdx}, 'rent', ${c.rent})">${formatMoney(c.rent)}</td>
+            <td style="text-align:right; color:var(--text-dim);">${costs}</td>
+            <td style="text-align:right; font-weight:500;">${totalCost}</td>
+            <td style="text-align:right; font-weight:600;">${(c.overallFactor || 0).toFixed(2)}x</td>
+            <td style="text-align:center;">${formulaBadge}</td>
             <td style="text-align:right; font-weight:600; color:#4ade80;">${formatMoney(c.equivalentSalary)}</td>
             <td style="text-align:right; color:#60a5fa;">${formatMoney(c.elEquivalent)}</td>
+            <td style="text-align:right; color:${parseFloat(pp) >= 100 ? '#4ade80' : parseFloat(pp) > 0 ? '#f59e0b' : 'var(--text-dim)'};">${pp}</td>
             <td><button class="delete-row-btn" onclick="deleteCOLCity(${realIdx})" title="Remove">&#10005;</button></td>
         </tr>`;
     }).join('');
@@ -383,31 +513,23 @@ async function addCOLCity() {
     const area = document.getElementById('newCOLArea').value.trim();
     const type = document.getElementById('newCOLType').value;
     const rent = parseFloat(document.getElementById('newCOLRent').value);
-    let nonHousingMult = parseFloat(document.getElementById('newCOLNonHousingMult').value) || 1.0;
-    const colIndex = parseFloat(document.getElementById('newCOLColIndex')?.value);
-    // If COL Index is provided, compute nonHousingMult from relative ratio
-    if (!isNaN(colIndex) && colIndex > 0) {
-        const homeCol = colConfig.homeColIndex || 100;
-        nonHousingMult = parseFloat((colIndex / homeCol).toFixed(2));
-    }
+    const monthlyCosts = parseFloat(document.getElementById('newCOLMonthlyCosts')?.value) || 0;
     if (!metro) { showAlert('Enter a metro name', 'error'); return; }
     if (isNaN(rent) || rent <= 0) { showAlert('Enter valid rent', 'error'); return; }
     try {
         const resp = await fetch('/api/cost-of-living/add', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ metro, area, type, rent, nonHousingMult })
+            body: JSON.stringify({ metro, area, type, rent, monthlyCostsNoRent: monthlyCosts, nonHousingMult: 1.0 })
         });
         const result = await resp.json();
         if (resp.ok) {
             showSaveToast(`${metro} added`);
             hideAddCOLForm();
-            // Clear form
             document.getElementById('newCOLMetro').value = '';
             document.getElementById('newCOLArea').value = '';
             document.getElementById('newCOLRent').value = '';
-            document.getElementById('newCOLNonHousingMult').value = '1.0';
-            const colIdxEl = document.getElementById('newCOLColIndex');
-            if (colIdxEl) colIdxEl.value = '';
+            const costsEl = document.getElementById('newCOLMonthlyCosts');
+            if (costsEl) costsEl.value = '';
             fetchCostOfLiving();
         } else {
             showAlert(result.error || 'Failed to add city', 'error');

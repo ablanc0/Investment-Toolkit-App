@@ -27,6 +27,7 @@ def _default_col_config():
         "homeColSource": "manual",  # "manual" | "proxy" | "stateAvg"
         "homeProxyCity": None,      # API city name if source is "proxy"
         "homeState": None,          # state name if source is "stateAvg"
+        "homeCountry": "United States",
     }
 
 
@@ -66,8 +67,9 @@ def _compute_col_entry(entry, config):
     ref_salary = config.get("referenceSalary", 140000)
     comp_salary = config.get("comparisonSalary", 200000)
     current_rent = config.get("currentRent", 1458)
+    home_costs = float(config.get("homeMonthlyCosts") or 0)
 
-    # For API-sourced entries: derive rent and nonHousingMult from stored API data
+    # For API-sourced entries: derive rent from stored API data
     if entry.get("source") == "api":
         api_data = entry.get("apiData", {})
         # Select rent based on bedroomCount + locationType (unless user overrode)
@@ -77,12 +79,6 @@ def _compute_col_entry(entry, config):
             rent_key = f"rent{br}br{'City' if loc == 'city' else 'Suburb'}"
             entry["rent"] = api_data.get(rent_key, entry.get("rent", 0))
             entry["type"] = "Downtown" if loc == "city" else "Suburban"
-        # Derive nonHousingMult from colIndex relative to home (unless user overrode)
-        if not entry.get("nhmOverride") and api_data:
-            col_index = float(api_data.get("colIndex", 100))
-            home_col = float(config.get("homeColIndex") or 0)
-            divisor = home_col if home_col > 0 else 100
-            entry["nonHousingMult"] = round(col_index / divisor, 2) if col_index > 0 else 1.0
         # Populate extra API metrics for display
         if api_data:
             entry["groceriesIndex"] = float(api_data.get("groceriesIndex", 0))
@@ -92,18 +88,40 @@ def _compute_col_entry(entry, config):
             entry["monthlyCostsNoRent"] = float(api_data.get("monthlyCostsNoRent", 0))
             entry["utilities"] = float(api_data.get("utilities", 0))
 
-    # housingMult = city rent / user's rent (baseline)
     city_rent = float(entry.get("rent", 0))
-    hm = round(city_rent / current_rent, 2) if current_rent > 0 else 1.0
-    entry["housingMult"] = hm
+    city_costs = float(entry.get("monthlyCostsNoRent", 0))
+
+    # Housing multiplier for display
+    entry["housingMult"] = round(city_rent / current_rent, 2) if current_rent > 0 else 1.0
+
+    # Non-housing multiplier for display
+    if city_costs > 0 and home_costs > 0:
+        entry["nonHousingMult"] = round(city_costs / home_costs, 2)
+    elif not entry.get("nhmOverride") and entry.get("source") == "api":
+        api_data = entry.get("apiData", {})
+        col_index = float(api_data.get("colIndex", 100)) if api_data else 100
+        home_col = float(config.get("homeColIndex") or 0)
+        divisor = home_col if home_col > 0 else 100
+        entry["nonHousingMult"] = round(col_index / divisor, 2) if col_index > 0 else 1.0
+
     nhm = float(entry.get("nonHousingMult", 1.0))
-    factor = round(hm * hw + nhm * (1 - hw), 2)
+
+    # Choose formula
+    if city_costs > 0 and home_costs > 0 and current_rent > 0 and city_rent > 0:
+        # Direct cost ratio — uses actual dollar amounts
+        factor = round((city_rent + city_costs) / (current_rent + home_costs), 2)
+        entry["formulaUsed"] = "direct"
+    else:
+        # Fallback: weighted index formula
+        hm = entry["housingMult"]
+        factor = round(hm * hw + nhm * (1 - hw), 2)
+        entry["formulaUsed"] = "weighted"
+
     entry["overallFactor"] = factor
     entry["equivalentSalary"] = round(ref_salary * factor)
     entry["elEquivalent"] = round(comp_salary / factor) if factor > 0 else 0
-    # Monthly cost estimate (rent + estimated non-housing costs for API cities)
-    costs_no_rent = float(entry.get("monthlyCostsNoRent", 0))
-    entry["totalMonthlyCost"] = round(city_rent + costs_no_rent) if costs_no_rent > 0 else 0
+    # Total monthly cost (rent + non-housing costs)
+    entry["totalMonthlyCost"] = round(city_rent + city_costs) if city_costs > 0 else 0
 
 
 @bp.route("/api/cost-of-living")
@@ -114,6 +132,9 @@ def api_cost_of_living():
     if "homeCityName" not in config:
         config["homeCityName"] = _default_col_config()["homeCityName"]
         config.pop("homeCityIndex", None)
+    # Migrate: add homeCountry if missing
+    if "homeCountry" not in config:
+        config["homeCountry"] = "United States"
     # Migrate: "salary" → active profile ID
     if config.get("referenceSalarySource") == "salary":
         from models.salary_calc import _get_salary_data
@@ -158,6 +179,7 @@ def api_cost_of_living_add():
         "type": b.get("type", "Downtown"),
         "rent": float(b.get("rent", 0)),
         "nonHousingMult": float(b.get("nonHousingMult", 1.0)),
+        "monthlyCostsNoRent": float(b.get("monthlyCostsNoRent", 0)),
         "housingMult": 0,
         "overallFactor": 0,
         "equivalentSalary": 0,
@@ -228,6 +250,8 @@ def api_col_config_update():
     if "homeMonthlyCosts" in b:
         val = b["homeMonthlyCosts"]
         config["homeMonthlyCosts"] = float(val) if val is not None else None
+    if "homeCountry" in b:
+        config["homeCountry"] = b["homeCountry"]
     # Auto-resolve from proxy/stateAvg
     if config.get("homeColSource") in ("proxy", "stateAvg"):
         from services.col_api import get_col_cities
@@ -378,13 +402,16 @@ def api_col_dedup():
 @bp.route("/api/cost-of-living/api-cities")
 def api_col_api_cities():
     """Return stored API city data for the city picker."""
-    from services.col_api import get_col_cities, get_col_metadata
+    from services.col_api import get_col_cities, get_col_metadata, get_global_city_list
     q = request.args.get("q", "").lower()
     cities = get_col_cities()
     if q:
         cities = [c for c in cities if q in c["name"].lower() or q in c.get("state", "").lower()]
     meta = get_col_metadata()
-    return jsonify({"cities": cities, "meta": meta})
+    result = {"cities": cities, "meta": meta}
+    if request.args.get("include_global"):
+        result["globalCities"] = get_global_city_list()
+    return jsonify(result)
 
 
 # ── Passive Income ─────────────────────────────────────────────────────
