@@ -3,7 +3,7 @@
 from datetime import datetime
 from flask import Blueprint, jsonify, request
 
-from models.salary_calc import _get_salary_data, compute_salary_breakdown, _default_taxes
+from models.salary_calc import _get_salary_data, compute_salary_breakdown, compute_retirement_plan, _default_taxes
 from services.data_store import load_portfolio, save_portfolio
 
 bp = Blueprint('salary', __name__)
@@ -25,12 +25,25 @@ def api_salary():
         household["profileCount"] += 1
     household["annualGross"] = round(household["annualGross"], 2)
     household["takeHomePay"] = round(household["takeHomePay"], 2)
+    # Retirement plan — compute portfolio totals from raw positions
+    retirement_config = salary.get("retirement", {})
+    positions = portfolio.get("positions", [])
+    cash = float(portfolio.get("cash", 0))
+    total_mv = sum(float(p.get("shares", 0)) * float(p.get("currentPrice", p.get("avgCost", 0))) for p in positions)
+    total_cb = sum(float(p.get("shares", 0)) * float(p.get("avgCost", 0)) for p in positions)
+    total_portfolio = round(total_mv + cash, 2)
+    total_return_pct = round(((total_mv - total_cb) / total_cb) * 100, 2) if total_cb > 0 else 0
+    portfolio_summary = {"totalPortfolio": total_portfolio, "totalReturnPct": total_return_pct}
+    retirement = compute_retirement_plan(breakdown["summary"], retirement_config, portfolio_summary)
+
     return jsonify({
         "salary": salary,
         "profile": profile,
         "profileId": profile_id,
         "breakdown": breakdown,
         "household": household,
+        "retirement": retirement,
+        "retirementConfig": retirement_config,
         "costOfLiving": portfolio.get("costOfLiving", []),
         "lastUpdated": datetime.now().isoformat(),
     })
@@ -58,6 +71,9 @@ def api_salary_update():
     for key in ("savedMoney", "pctSavingsToInvest", "pctIncomeCanSave"):
         if key in b:
             salary[key] = float(b[key])
+    # Update retirement config
+    if "retirement" in b:
+        salary["retirement"] = b["retirement"]
 
     salary["profiles"][profile_id] = profile
     portfolio["salary"] = salary

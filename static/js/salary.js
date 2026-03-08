@@ -40,6 +40,7 @@ function renderSalaryFull(data) {
     renderEmployerCost(breakdown.employer || {});
     renderProjectedSalary(breakdown.projected, profile.projectedSalary || 0, breakdown.summary || {});
     renderSalaryHistory(profile);
+    renderRetirementPlan(data.retirement || {}, data.retirementConfig || {});
 }
 
 function renderSalaryKpis(summ) {
@@ -265,6 +266,101 @@ function renderSalaryHistory(profile) {
     }
     html += '</tbody></table></div>';
     histDiv.innerHTML = html;
+}
+
+// ── Retirement Plan ──
+function renderRetirementPlan(ret, config) {
+    const inputsDiv = document.getElementById('retirementInputs');
+    const resultsDiv = document.getElementById('retirementResults');
+    if (!inputsDiv || !resultsDiv) return;
+
+    const pctSave = config.pctIncomeCanSave ?? 0.25;
+    const years = config.yearsUntilRetirement ?? 20;
+    const retRate = config.returnRateRetirement ?? 0.04;
+    const desiredPct = config.desiredRetirementPct ?? 0.75;
+    const otherIncome = config.otherRetirementIncome ?? 0;
+    const annualReturn = config.annualReturnRate != null ? config.annualReturnRate * 100 : (ret.annualReturnRate || 7);
+
+    // Editable inputs
+    inputsDiv.innerHTML = `
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px; margin-bottom:16px;">
+            <div><label class="form-label">% Income Can Save</label>
+                <input type="number" step="1" value="${(pctSave * 100).toFixed(0)}" class="form-input" style="width:100%;"
+                    onchange="updateRetirementConfig('pctIncomeCanSave', this.value / 100)">
+                <span style="font-size:0.72rem; color:var(--text-dim);">% of take-home</span></div>
+            <div><label class="form-label">Years to Retirement</label>
+                <input type="number" step="1" value="${years}" class="form-input" style="width:100%;"
+                    onchange="updateRetirementConfig('yearsUntilRetirement', this.value)"></div>
+            <div><label class="form-label">Annual Return Rate</label>
+                <input type="number" step="0.5" value="${annualReturn.toFixed(1)}" class="form-input" style="width:100%;"
+                    onchange="updateRetirementConfig('annualReturnRate', this.value / 100)">
+                <span style="font-size:0.72rem; color:var(--text-dim);">% expected growth</span></div>
+            <div><label class="form-label">Retirement Return Rate</label>
+                <input type="number" step="0.5" value="${(retRate * 100).toFixed(1)}" class="form-input" style="width:100%;"
+                    onchange="updateRetirementConfig('returnRateRetirement', this.value / 100)">
+                <span style="font-size:0.72rem; color:var(--text-dim);">% safe withdrawal</span></div>
+            <div><label class="form-label">Desired Retirement %</label>
+                <input type="number" step="5" value="${(desiredPct * 100).toFixed(0)}" class="form-input" style="width:100%;"
+                    onchange="updateRetirementConfig('desiredRetirementPct', this.value / 100)">
+                <span style="font-size:0.72rem; color:var(--text-dim);">% of current salary</span></div>
+            <div><label class="form-label">Other Retirement Income</label>
+                <input type="number" step="100" value="${otherIncome}" class="form-input" style="width:100%;"
+                    onchange="updateRetirementConfig('otherRetirementIncome', parseFloat(this.value) || 0)">
+                <span style="font-size:0.72rem; color:var(--text-dim);">monthly (SS, pension)</span></div>
+        </div>`;
+
+    if (!ret.annualSalary) {
+        resultsDiv.innerHTML = '<p style="font-size:0.82rem; color:var(--text-dim);">No salary data available for projections.</p>';
+        return;
+    }
+
+    const th = 'style="text-align:right;"';
+    const green = 'style="text-align:right; color:#4ade80; font-weight:600;"';
+    const dim = 'style="text-align:right; color:var(--text-dim);"';
+    const bold = 'style="font-weight:700;"';
+    const sep = `<tr><td colspan="3" style="border-top:2px solid var(--border); padding:0;"></td></tr>`;
+
+    const goalColor = ret.goalFulfillment >= 1 ? '#4ade80' : '#f59e0b';
+    const goalPct = ((ret.goalFulfillment || 0) * 100).toFixed(0);
+
+    let html = `<div class="table-wrapper"><table style="width:100%; font-size:0.82rem;">
+        <thead><tr><th style="text-align:left;"></th><th ${th}>Annual</th><th ${th}>Monthly</th></tr></thead><tbody>`;
+
+    // Current situation
+    html += `<tr><td ${bold}>Current Savings (Portfolio)</td><td ${green}>${formatMoney(ret.currentSavings)}</td><td ${dim}>—</td></tr>`;
+    html += `<tr><td>Current Take-Home Salary</td><td ${th}>${formatMoney(ret.annualSalary)}</td><td ${th}>${formatMoney(ret.monthlySalary)}</td></tr>`;
+    html += `<tr><td>Amount You Can Invest</td><td ${th}>${formatMoney(ret.monthlyInvestable * 12)}</td><td ${th}>${formatMoney(ret.monthlyInvestable)}</td></tr>`;
+    html += sep;
+
+    // Desired retirement
+    html += `<tr><td ${bold}>Desired Retirement Salary (${(desiredPct*100).toFixed(0)}%)</td><td ${th}>${formatMoney(ret.desiredRetirementSalary)}</td><td ${th}>${formatMoney(ret.desiredMonthlyRetirement)}</td></tr>`;
+    html += sep;
+
+    // Projection
+    html += `<tr><td colspan="3" ${bold} style="padding-top:8px;">Projection <span style="font-weight:400; color:var(--text-dim);">(${ret.yearsUntilRetirement} years, ${ret.annualReturnRate}% annual return)</span></td></tr>`;
+    html += `<tr><td style="padding-left:16px;">Total Invested Money at Retirement</td><td ${green}>${formatMoney(ret.totalAtRetirement)}</td><td ${dim}>—</td></tr>`;
+    html += `<tr><td style="padding-left:16px;">Passive Income (${ret.returnRateRetirement}% return)</td><td ${th}>${formatMoney(ret.passiveIncomeAnnual)}</td><td ${th}>${formatMoney(ret.passiveIncomeMonthly)}</td></tr>`;
+    if (ret.otherRetirementIncome > 0) {
+        html += `<tr><td style="padding-left:16px;">Other Income (SS, pension)</td><td ${dim}>—</td><td ${th}>${formatMoney(ret.otherRetirementIncome)}</td></tr>`;
+    }
+    html += `<tr ${bold}><td style="padding-left:16px;">Total Monthly Retirement Income</td><td ${dim}>—</td><td ${green}>${formatMoney(ret.totalMonthlyRetirement)}</td></tr>`;
+    html += `<tr ${bold}><td>Goal Fulfillment</td><td colspan="2" style="text-align:right; color:${goalColor}; font-size:1.1rem;">${ret.goalFulfillment}x (${goalPct}%)</td></tr>`;
+    html += sep;
+
+    // Live as today
+    html += `<tr><td colspan="3" ${bold} style="padding-top:8px;">Numbers Projected to Live as Today</td></tr>`;
+    html += `<tr><td style="padding-left:16px;">Total Investment Money Required</td><td ${th}>${formatMoney(ret.moneyRequired)}</td><td ${dim}>—</td></tr>`;
+    html += `<tr><td style="padding-left:16px;">Monthly Investment Required</td><td ${dim}>—</td><td ${th}>${formatMoney(ret.monthlyInvestmentRequired)}</td></tr>`;
+    html += `<tr><td style="padding-left:16px;">Annual Income Required (after taxes)</td><td ${th}>${formatMoney(ret.annualIncomeRequired)}</td><td ${dim}>—</td></tr>`;
+
+    html += '</tbody></table></div>';
+    resultsDiv.innerHTML = html;
+}
+
+async function updateRetirementConfig(key, value) {
+    const config = {...(currentSalaryData?.retirementConfig || {})};
+    config[key] = parseFloat(value);
+    await saveSalaryUpdate({ retirement: config });
 }
 
 // ── Salary actions ──

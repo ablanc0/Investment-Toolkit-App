@@ -340,6 +340,88 @@ def compute_salary_breakdown(profile):
     }
 
 
+def _future_value(rate, nper, pmt, pv):
+    """Compute future value of current savings (pv) plus annual contributions (pmt)
+    growing at annual rate for nper years. All inputs positive."""
+    if rate == 0:
+        return pv + pmt * nper
+    return pv * (1 + rate) ** nper + pmt * ((1 + rate) ** nper - 1) / rate
+
+
+def compute_retirement_plan(salary_summary, retirement_config, portfolio_summary):
+    """Compute retirement projections from salary, retirement config, and portfolio data."""
+    take_home = salary_summary.get("takeHomePay", 0)
+    monthly_salary = salary_summary.get("monthlySalary", 0)
+
+    # Config with defaults
+    pct_savings_invest = retirement_config.get("pctSavingsToInvest", 1.0)
+    pct_can_save = retirement_config.get("pctIncomeCanSave", 0.25)
+    years = retirement_config.get("yearsUntilRetirement", 20)
+    ret_return_rate = retirement_config.get("returnRateRetirement", 0.04)
+    other_income = retirement_config.get("otherRetirementIncome", 0)
+    desired_pct = retirement_config.get("desiredRetirementPct", 0.75)
+
+    # Portfolio data
+    current_savings = portfolio_summary.get("totalPortfolio", 0)
+    # Annual return: use config override if set, else portfolio return, else 7% default
+    annual_return_cfg = retirement_config.get("annualReturnRate")
+    if annual_return_cfg is not None:
+        annual_return = annual_return_cfg
+    else:
+        pct = portfolio_summary.get("totalReturnPct", 0)
+        annual_return = pct / 100 if pct > 0 else 0.07  # default 7%
+
+    # Derived values
+    available_to_invest = round(current_savings * pct_savings_invest, 2)
+    desired_retirement_salary = round(take_home * desired_pct, 2)
+    desired_monthly = round(desired_retirement_salary / 12, 2)
+    monthly_investable = round(pct_can_save * take_home / 12, 2)
+    annual_contribution = round(monthly_investable * 12, 2)
+
+    # Core FV projection
+    total_at_retirement = round(_future_value(annual_return, years, annual_contribution, available_to_invest), 2)
+    if total_at_retirement < 0:
+        total_at_retirement = 0
+
+    # Retirement income
+    passive_annual = round(total_at_retirement * ret_return_rate, 2)
+    passive_monthly = round(passive_annual / 12, 2)
+    total_monthly_retirement = round(passive_monthly + other_income, 2)
+
+    # Goal fulfillment
+    goal_fulfillment = round(total_monthly_retirement / desired_monthly, 2) if desired_monthly > 0 else 0
+
+    # "Live as Today" metrics
+    money_required = round(desired_retirement_salary / ret_return_rate, 2) if ret_return_rate > 0 else 0
+    monthly_invest_required = round(monthly_investable / goal_fulfillment, 2) if goal_fulfillment > 0 else 0
+    annual_income_required = round(take_home / goal_fulfillment, 2) if goal_fulfillment > 0 else 0
+
+    return {
+        "currentSavings": current_savings,
+        "availableToInvest": available_to_invest,
+        "annualSalary": take_home,
+        "monthlySalary": monthly_salary,
+        "desiredRetirementSalary": desired_retirement_salary,
+        "desiredMonthlyRetirement": desired_monthly,
+        "monthlyInvestable": monthly_investable,
+        "annualReturnRate": round(annual_return * 100, 2),
+        "yearsUntilRetirement": years,
+        "totalAtRetirement": total_at_retirement,
+        "returnRateRetirement": round(ret_return_rate * 100, 2),
+        "passiveIncomeAnnual": passive_annual,
+        "passiveIncomeMonthly": passive_monthly,
+        "otherRetirementIncome": other_income,
+        "totalMonthlyRetirement": total_monthly_retirement,
+        "goalFulfillment": goal_fulfillment,
+        "moneyRequired": money_required,
+        "monthlyInvestmentRequired": monthly_invest_required,
+        "annualIncomeRequired": annual_income_required,
+        "desiredRetirementPct": desired_pct,
+        "pctIncomeCanSave": pct_can_save,
+        "pctSavingsToInvest": pct_savings_invest,
+    }
+
+
 def _get_salary_data(portfolio):
     """Get salary data, migrating if needed."""
     salary = portfolio.get("salary", {})
