@@ -474,13 +474,15 @@ async function saveDisplayPreferences() {
 // ── API Keys ────────────────────────────────────────────────────
 
 function renderApiKeys() {
-    const current = document.getElementById('apiKeyFmpCurrent');
-    if (!current) return;
-    const masked = (_settingsCache?.apiKeys?.fmp) || '';
-    if (masked) {
-        current.textContent = 'Current key: ' + masked;
-    } else {
-        current.textContent = 'No API key configured (using default)';
+    const fmpCurrent = document.getElementById('apiKeyFmpCurrent');
+    if (fmpCurrent) {
+        const fmpMasked = (_settingsCache?.apiKeys?.fmp) || '';
+        fmpCurrent.textContent = fmpMasked ? 'Current key: ' + fmpMasked : 'No API key configured (using default)';
+    }
+    const rapidCurrent = document.getElementById('apiKeyRapidapiCurrent');
+    if (rapidCurrent) {
+        const rapidMasked = (_settingsCache?.apiKeys?.rapidapi) || '';
+        rapidCurrent.textContent = rapidMasked ? 'Current key: ' + rapidMasked : 'No RapidAPI key configured';
     }
 }
 
@@ -515,20 +517,26 @@ async function testApiKey(provider) {
 
 async function saveApiKeys() {
     const fmpKey = document.getElementById('apiKeyFmp')?.value?.trim();
-    if (!fmpKey) return;
+    const rapidKey = document.getElementById('apiKeyRapidapi')?.value?.trim();
+    if (!fmpKey && !rapidKey) return;
+
+    const keys = {};
+    if (fmpKey) keys.fmp = fmpKey;
+    if (rapidKey) keys.rapidapi = rapidKey;
 
     try {
         const resp = await fetch('/api/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ apiKeys: { fmp: fmpKey } })
+            body: JSON.stringify({ apiKeys: keys })
         });
         _settingsCache = await resp.json();
         renderApiKeys();
-        document.getElementById('apiKeyFmp').value = '';
-        showSaveToast('API key saved');
+        if (fmpKey) document.getElementById('apiKeyFmp').value = '';
+        if (rapidKey) document.getElementById('apiKeyRapidapi').value = '';
+        showSaveToast('API keys saved');
     } catch (e) {
-        showAlert('Failed to save API key', 'error');
+        showAlert('Failed to save API keys', 'error');
     }
 }
 
@@ -553,6 +561,7 @@ function renderApiHealthTable(data) {
         { key: 'yfinance', name: 'Yahoo Finance', icon: '📊' },
         { key: 'fred', name: 'FRED (AAA Bond Yield)', icon: '🏛' },
         { key: 'edgar', name: 'SEC EDGAR', icon: '📋' },
+        { key: 'rapidapi', name: 'RapidAPI (Cost of Living)', icon: '🏙' },
     ];
 
     const dotColor = (status) => {

@@ -2,13 +2,20 @@
 let allCOLData = [];
 let colConfig = {};
 let colSalaryProfiles = [];
+let colApiCities = [];   // Stored API cities for autocomplete
+let colApiMeta = {};     // {cityCount, fetchedAt}
 
 async function fetchCostOfLiving() {
     try {
-        const data = await fetch('/api/cost-of-living').then(r => r.json());
-        allCOLData = data.costOfLiving || [];
-        colConfig = data.colConfig || {};
-        colSalaryProfiles = data.salaryProfiles || [];
+        const [colResp, apiResp] = await Promise.all([
+            fetch('/api/cost-of-living').then(r => r.json()),
+            fetch('/api/cost-of-living/api-cities').then(r => r.json()).catch(() => ({ cities: [], meta: {} })),
+        ]);
+        allCOLData = colResp.costOfLiving || [];
+        colConfig = colResp.colConfig || {};
+        colSalaryProfiles = colResp.salaryProfiles || [];
+        colApiCities = apiResp.cities || [];
+        colApiMeta = apiResp.meta || {};
         renderCOLConfig();
         renderCOLKpis();
         renderCOLChart();
@@ -55,6 +62,23 @@ function renderCOLConfig() {
                     style="width:100%;" oninput="this.nextElementSibling.textContent = this.value + '%'"
                     onchange="updateCOLConfig('housingWeight', this.value / 100)">
                 <span style="font-size:0.82rem; color:var(--text-dim);">${((colConfig.housingWeight || 0.3) * 100).toFixed(0)}%</span></div>
+            <div><label class="form-label">Bedrooms</label>
+                <select class="form-input" style="width:100%; font-size:0.82rem;"
+                    onchange="updateCOLConfig('bedroomCount', parseInt(this.value))">
+                    <option value="1" ${(colConfig.bedroomCount||1)===1?'selected':''}>1 Bedroom</option>
+                    <option value="3" ${colConfig.bedroomCount===3?'selected':''}>3 Bedrooms</option>
+                </select></div>
+            <div><label class="form-label">Location</label>
+                <select class="form-input" style="width:100%; font-size:0.82rem;"
+                    onchange="updateCOLConfig('locationType', this.value)">
+                    <option value="city" ${(colConfig.locationType||'city')==='city'?'selected':''}>City Centre</option>
+                    <option value="suburb" ${colConfig.locationType==='suburb'?'selected':''}>Outside Centre</option>
+                </select></div>
+        </div>
+        <div style="margin-top:8px; font-size:0.75rem; color:var(--text-dim);">
+            ${colApiMeta.fetchedAt
+                ? `<span style="color:#4ade80;">&#9679;</span> ${colApiMeta.cityCount} API cities loaded (${new Date(colApiMeta.fetchedAt).toLocaleDateString()})`
+                : '<span style="color:#64748b;">&#9679;</span> No API data — click "Refresh API Data" to fetch'}
         </div>`;
 }
 
@@ -146,15 +170,19 @@ function filterCOL(type, btn) {
     }
     tbody.innerHTML = filtered.sort((a, b) => a.rent - b.rent).map(c => {
         const realIdx = allCOLData.indexOf(c);
+        const isApi = c.source === 'api';
+        const apiBadge = isApi ? ' <span style="font-size:0.65rem; padding:1px 4px; border-radius:3px; background:#6366f120; color:#6366f1; vertical-align:middle;">API</span>' : '';
+        const rentOverride = isApi && c.rentOverride ? ' <span title="Manually overridden" style="color:#f59e0b; font-size:0.7rem;">*</span>' : '';
+        const nhmOverride = isApi && c.nhmOverride ? ' <span title="Manually overridden" style="color:#f59e0b; font-size:0.7rem;">*</span>' : '';
         return `<tr>
-            <td><strong>${c.metro}</strong></td>
+            <td><strong>${c.metro}</strong>${apiBadge}</td>
             <td>${c.area}</td>
             <td><span style="padding:2px 6px; border-radius:4px; font-size:0.75rem; background:${c.type==='Downtown'?'#f59e0b20':'#22c55e20'}; color:${c.type==='Downtown'?'#f59e0b':'#22c55e'};">${c.type}</span></td>
             <td class="editable" style="text-align:right; cursor:pointer;"
-                onclick="editCOLCell(this, ${realIdx}, 'rent', ${c.rent})">${formatMoney(c.rent)}</td>
+                onclick="editCOLCell(this, ${realIdx}, 'rent', ${c.rent})">${formatMoney(c.rent)}${rentOverride}</td>
             <td style="text-align:right;">${(c.housingMult || 0).toFixed(2)}x</td>
             <td class="editable" style="text-align:right; cursor:pointer;"
-                onclick="editCOLCell(this, ${realIdx}, 'nonHousingMult', ${c.nonHousingMult})">${(c.nonHousingMult || 0).toFixed(2)}x</td>
+                onclick="editCOLCell(this, ${realIdx}, 'nonHousingMult', ${c.nonHousingMult})">${(c.nonHousingMult || 0).toFixed(2)}x${nhmOverride}</td>
             <td style="text-align:right;">${(c.overallFactor || 0).toFixed(2)}x</td>
             <td style="text-align:right; font-weight:600; color:#4ade80;">${formatMoney(c.equivalentSalary)}</td>
             <td style="text-align:right; color:#60a5fa;">${formatMoney(c.elEquivalent)}</td>
@@ -209,12 +237,15 @@ function editCOLCell(td, index, field, currentValue) {
 
 function showAddCOLForm() {
     document.getElementById('addCOLBtn').style.display = 'none';
+    document.getElementById('addCOLApiBtn').style.display = 'none';
     document.getElementById('addCOLForm').style.display = 'block';
+    document.getElementById('addCOLApiForm').style.display = 'none';
     document.getElementById('newCOLMetro').focus();
 }
 
 function hideAddCOLForm() {
     document.getElementById('addCOLBtn').style.display = 'inline-flex';
+    document.getElementById('addCOLApiBtn').style.display = 'inline-flex';
     document.getElementById('addCOLForm').style.display = 'none';
 }
 
@@ -257,6 +288,100 @@ async function deleteCOLCity(index) {
             fetchCostOfLiving();
         }
     } catch(e) { showAlert('Failed to delete', 'error'); }
+}
+
+// ── Cost of Living API Integration ──────────────────
+async function refreshCOLData() {
+    const btn = document.getElementById('colRefreshBtn');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.textContent = 'Fetching...';
+    try {
+        const resp = await fetch('/api/cost-of-living/fetch-all', { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            const newMsg = data.newCitiesAdded > 0 ? ` (${data.newCitiesAdded} new!)` : '';
+            showSaveToast(`Fetched ${data.cityCount} cities${newMsg}`);
+            // Recompute existing API-sourced entries with fresh config
+            await fetch('/api/cost-of-living/recompute', { method: 'POST' });
+            fetchCostOfLiving();
+        } else {
+            showAlert(data.error || 'Failed to fetch', 'error');
+        }
+    } catch(e) {
+        showAlert('API fetch failed: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Refresh API Data';
+    }
+}
+
+function showAddCOLApiForm() {
+    document.getElementById('addCOLBtn').style.display = 'none';
+    document.getElementById('addCOLApiBtn').style.display = 'none';
+    document.getElementById('addCOLForm').style.display = 'none';
+    document.getElementById('addCOLApiForm').style.display = 'block';
+    document.getElementById('colApiSearch').value = '';
+    document.getElementById('colApiResults').innerHTML = '';
+    document.getElementById('colApiSearch').focus();
+}
+
+function hideAddCOLApiForm() {
+    document.getElementById('addCOLBtn').style.display = 'inline-flex';
+    document.getElementById('addCOLApiBtn').style.display = 'inline-flex';
+    document.getElementById('addCOLApiForm').style.display = 'none';
+    window._selectedApiCity = null;
+}
+
+function onCOLCitySearch(query) {
+    const results = document.getElementById('colApiResults');
+    if (!results || query.length < 2) { if (results) results.innerHTML = ''; return; }
+    const q = query.toLowerCase();
+    const existing = new Set(allCOLData.map(c => c.metro.toLowerCase()));
+    const matches = colApiCities
+        .filter(c => (c.name.toLowerCase().includes(q) || (c.state || '').toLowerCase().includes(q)) && !existing.has(c.name.toLowerCase()))
+        .slice(0, 12);
+    if (!matches.length) {
+        results.innerHTML = '<div style="padding:8px; color:var(--text-dim); font-size:0.82rem;">No matches found</div>';
+        return;
+    }
+    results.innerHTML = matches.map((c, i) => {
+        const br = colConfig.bedroomCount || 1;
+        const loc = colConfig.locationType || 'city';
+        const rentKey = `rent${br}br${loc === 'city' ? 'City' : 'Suburb'}`;
+        const rent = c[rentKey] || 0;
+        return `<div style="padding:6px 10px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border);"
+            onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''"
+            onclick='selectCOLApiCity(${JSON.stringify(c).replace(/'/g, "&#39;")})'>
+            <span><strong>${c.name}</strong>${c.state ? ', ' + c.state : ''}</span>
+            <span style="font-size:0.78rem; color:var(--text-dim);">$${rent.toLocaleString()}/mo | COL ${c.colIndex}</span>
+        </div>`;
+    }).join('');
+}
+
+function selectCOLApiCity(city) {
+    const br = colConfig.bedroomCount || 1;
+    const loc = colConfig.locationType || 'city';
+    const rentKey = `rent${br}br${loc === 'city' ? 'City' : 'Suburb'}`;
+    const rent = city[rentKey] || 0;
+    const nhm = city.colIndex ? (city.colIndex / 100).toFixed(2) : '1.00';
+    // Add directly
+    window._selectedApiCity = city;
+    addCOLApiCity(city.name, city.state || '', loc === 'city' ? 'Downtown' : 'Suburban', rent, parseFloat(nhm), city);
+}
+
+async function addCOLApiCity(metro, area, type, rent, nonHousingMult, apiData) {
+    try {
+        const resp = await fetch('/api/cost-of-living/add', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ metro, area, type, rent, nonHousingMult, source: 'api', apiData })
+        });
+        if (resp.ok) {
+            showSaveToast(`${metro} added from API`);
+            hideAddCOLApiForm();
+            fetchCostOfLiving();
+        }
+    } catch(e) { showAlert('Failed to add city', 'error'); }
 }
 
 // ── Passive Income ──────────────────────────────────

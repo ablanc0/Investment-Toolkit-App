@@ -13,6 +13,7 @@ _api_health = {
     "yfinance": dict(_DEFAULT_API),
     "fred": dict(_DEFAULT_API),
     "edgar": dict(_DEFAULT_API),
+    "rapidapi": dict(_DEFAULT_API),
 }
 
 _fmp_quota = {"date": None, "count": 0, "limit": 250}

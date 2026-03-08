@@ -19,6 +19,8 @@ def _default_col_config():
         "currentRent": 1458,
         "housingWeight": 0.30,
         "comparisonSalary": 200000,
+        "bedroomCount": 1,       # 1 or 3
+        "locationType": "city",  # "city" or "suburb"
     }
 
 
@@ -28,6 +30,22 @@ def _compute_col_entry(entry, config):
     ref_salary = config.get("referenceSalary", 140000)
     comp_salary = config.get("comparisonSalary", 200000)
     current_rent = config.get("currentRent", 1458)
+
+    # For API-sourced entries: derive rent and nonHousingMult from stored API data
+    if entry.get("source") == "api":
+        api_data = entry.get("apiData", {})
+        # Select rent based on bedroomCount + locationType (unless user overrode)
+        if not entry.get("rentOverride") and api_data:
+            br = config.get("bedroomCount", 1)
+            loc = config.get("locationType", "city")
+            rent_key = f"rent{br}br{'City' if loc == 'city' else 'Suburb'}"
+            entry["rent"] = api_data.get(rent_key, entry.get("rent", 0))
+            entry["type"] = "Downtown" if loc == "city" else "Suburban"
+        # Derive nonHousingMult from colIndex (unless user overrode)
+        if not entry.get("nhmOverride") and api_data:
+            col_index = api_data.get("colIndex", 100)
+            entry["nonHousingMult"] = round(col_index / 100, 2) if col_index > 0 else 1.0
+
     # housingMult = city rent / user's rent (baseline)
     city_rent = float(entry.get("rent", 0))
     hm = round(city_rent / current_rent, 2) if current_rent > 0 else 1.0
@@ -84,6 +102,7 @@ def api_cost_of_living():
 @bp.route("/api/cost-of-living/add", methods=["POST"])
 def api_cost_of_living_add():
     b = request.get_json()
+    source = b.get("source", "manual")
     item = {
         "metro": b.get("metro", ""),
         "area": b.get("area", ""),
@@ -95,6 +114,11 @@ def api_cost_of_living_add():
         "equivalentSalary": 0,
         "elEquivalent": 0,
     }
+    if source == "api":
+        item["source"] = "api"
+        item["rentOverride"] = False
+        item["nhmOverride"] = False
+        item["apiData"] = b.get("apiData", {})
     portfolio = load_portfolio()
     config = portfolio.get("colConfig", _default_col_config())
     _compute_col_entry(item, config)
@@ -104,7 +128,17 @@ def api_cost_of_living_add():
 @bp.route("/api/cost-of-living/update", methods=["POST"])
 def api_cost_of_living_update():
     b = request.get_json()
-    return crud_update("costOfLiving", int(b.get("index", -1)), b.get("updates", {}))
+    index = int(b.get("index", -1))
+    updates = b.get("updates", {})
+    # Track manual overrides on API-sourced entries
+    portfolio = load_portfolio()
+    items = portfolio.get("costOfLiving", [])
+    if 0 <= index < len(items) and items[index].get("source") == "api":
+        if "rent" in updates:
+            updates["rentOverride"] = True
+        if "nonHousingMult" in updates:
+            updates["nhmOverride"] = True
+    return crud_update("costOfLiving", index, updates)
 
 
 @bp.route("/api/cost-of-living/delete", methods=["POST"])
@@ -121,6 +155,10 @@ def api_col_config_update():
     for key in ("referenceSalary", "currentRent", "housingWeight", "comparisonSalary"):
         if key in b:
             config[key] = float(b[key])
+    if "bedroomCount" in b:
+        config["bedroomCount"] = int(b["bedroomCount"])
+    if "locationType" in b:
+        config["locationType"] = b["locationType"]
     if "homeCityName" in b:
         config["homeCityName"] = b["homeCityName"]
     if "referenceSalarySource" in b:
@@ -159,6 +197,32 @@ def api_col_recompute():
     portfolio["costOfLiving"] = cities
     save_portfolio(portfolio)
     return jsonify({"ok": True, "costOfLiving": cities, "colConfig": config})
+
+
+# ── Cost of Living API Data ────────────────────────────────────────────
+
+@bp.route("/api/cost-of-living/fetch-all", methods=["POST"])
+def api_col_fetch_all():
+    """Fetch all US city COL data from RapidAPI and store."""
+    from services.col_api import fetch_all_us_cities, get_col_metadata
+    cities, error = fetch_all_us_cities()
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    meta = get_col_metadata()
+    return jsonify({"ok": True, "cityCount": meta["cityCount"], "fetchedAt": meta["fetchedAt"],
+                     "newCitiesAdded": meta.get("newCitiesAdded", 0)})
+
+
+@bp.route("/api/cost-of-living/api-cities")
+def api_col_api_cities():
+    """Return stored API city data for the city picker."""
+    from services.col_api import get_col_cities, get_col_metadata
+    q = request.args.get("q", "").lower()
+    cities = get_col_cities()
+    if q:
+        cities = [c for c in cities if q in c["name"].lower() or q in c.get("state", "").lower()]
+    meta = get_col_metadata()
+    return jsonify({"cities": cities, "meta": meta})
 
 
 # ── Passive Income ─────────────────────────────────────────────────────

@@ -796,7 +796,10 @@
 
             <!-- Config Inputs -->
             <div class="card" style="margin-bottom: 16px;">
-                <div class="card-title">Reference Inputs</div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div class="card-title" style="margin-bottom: 0;">Reference Inputs</div>
+                    <button id="colRefreshBtn" class="add-row-btn" onclick="refreshCOLData()" style="font-size: 0.78rem;">🔄 Refresh API Data</button>
+                </div>
                 <div id="colConfigInputs"></div>
             </div>
 
@@ -818,7 +821,8 @@
                             <button class="filter-btn" data-type="Downtown" onclick="filterCOL('Downtown', this)">Downtown</button>
                             <button class="filter-btn" data-type="Suburban" onclick="filterCOL('Suburban', this)">Suburban</button>
                         </div>
-                        <button class="btn-primary" id="addCOLBtn" onclick="showAddCOLForm()" style="font-size: 0.82rem; padding: 6px 12px;">+ Add City</button>
+                        <button class="btn-primary" id="addCOLBtn" onclick="showAddCOLForm()" style="font-size: 0.82rem; padding: 6px 12px;">+ Manual</button>
+                        <button class="btn-primary" id="addCOLApiBtn" onclick="showAddCOLApiForm()" style="font-size: 0.82rem; padding: 6px 12px; background: var(--accent);">+ API City</button>
                     </div>
                 </div>
                 <!-- Add City Form (hidden) -->
@@ -842,6 +846,15 @@
                             <button class="btn-secondary" onclick="hideAddCOLForm()" style="font-size:0.82rem;">Cancel</button>
                         </div>
                     </div>
+                </div>
+                <!-- API City Search (hidden) -->
+                <div id="addCOLApiForm" style="display:none; padding: 12px; background: var(--card-hover); border-radius: 8px; margin-bottom: 12px;">
+                    <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+                        <input type="text" id="colApiSearch" class="form-input" placeholder="Search API cities (e.g. Chicago, TX...)"
+                            style="flex:1; font-size:0.82rem;" oninput="onCOLCitySearch(this.value)">
+                        <button class="btn-secondary" onclick="hideAddCOLApiForm()" style="font-size:0.82rem;">Cancel</button>
+                    </div>
+                    <div id="colApiResults" style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px;"></div>
                 </div>
                 <div class="table-wrapper"><table style="font-size: 0.82rem;">
                     <thead><tr>
@@ -1110,6 +1123,13 @@
                     <span id="apiKeyFmpStatus" style="font-size: 13px;"></span>
                 </div>
                 <div id="apiKeyFmpCurrent" style="margin-top: 8px; font-size: 12px; color: var(--text-dim);"></div>
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);">
+                    <span style="font-size: 13px; color: var(--text-dim); min-width: 200px;">RapidAPI (Cost of Living):</span>
+                    <input type="password" id="apiKeyRapidapi" placeholder="Enter RapidAPI key..."
+                           style="flex: 1; max-width: 350px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px;">
+                    <span id="apiKeyRapidapiStatus" style="font-size: 13px;"></span>
+                </div>
+                <div id="apiKeyRapidapiCurrent" style="margin-top: 8px; font-size: 12px; color: var(--text-dim);"></div>
                 <div style="margin-top: 12px;">
                     <button class="add-row-btn" onclick="saveApiKeys()" style="border-color: var(--green); color: var(--green);">💾 Save Keys</button>
                 </div>

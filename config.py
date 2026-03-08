@@ -66,6 +66,7 @@ CACHE_TTL     = 300  # 5 minutes
 
 ANALYZER_FILE      = DATA_DIR / "analyzer.json"
 _13F_HISTORY_FILE  = DATA_DIR / "13f_history.json"
+COL_DATA_FILE      = DATA_DIR / "col_data.json"
 
 # ── Valuation Constants ─────────────────────────────────────────────────
 
@@ -136,6 +137,7 @@ DEFAULT_SETTINGS = {
     },
     "apiKeys": {
         "fmp": "",
+        "rapidapi": "",
     },
 }
 
@@ -178,6 +180,12 @@ SUPER_INVESTORS = {
 
 FMP_API_KEY = os.environ.get("FMP_API_KEY", "")
 FMP_BASE    = "https://financialmodelingprep.com/stable"
+
+# ── RapidAPI (Cost of Living) ─────────────────────────────────────────
+
+RAPIDAPI_COL_HOST       = "cities-cost-of-living1.p.rapidapi.com"
+RAPIDAPI_COL_URL        = f"https://{RAPIDAPI_COL_HOST}/dev/get_cities_details_by_name"
+RAPIDAPI_COL_CITIES_URL = f"https://{RAPIDAPI_COL_HOST}/dev/get_cities_list"
 
 # ── Tax Constants ───────────────────────────────────────────────────────
 
