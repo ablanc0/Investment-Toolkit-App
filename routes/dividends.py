@@ -272,6 +272,7 @@ def api_annual_data():
 
     # Compute annual summaries
     result = []
+    prev_year_end_value = 0
     for year_str in sorted(annual_by_year.keys()):
         months = annual_by_year[year_str]
 
@@ -301,8 +302,12 @@ def api_annual_data():
         total_return = portfolio_value - last_accumulated
 
         # totalReturnPct = totalReturn / accumulatedInvestment (as decimal, e.g. 0.06)
+        # Fallback for current/partial year: use previous year's end value as baseline
         if last_accumulated > 0:
             total_return_pct = total_return / last_accumulated
+        elif prev_year_end_value > 0:
+            total_return = portfolio_value - prev_year_end_value - annual_contributions
+            total_return_pct = total_return / prev_year_end_value
         else:
             total_return_pct = 0
 
@@ -322,5 +327,6 @@ def api_annual_data():
         }
 
         result.append(annual_entry)
+        prev_year_end_value = portfolio_value
 
     return jsonify({"annualData": result, "lastUpdated": datetime.now().isoformat()})
