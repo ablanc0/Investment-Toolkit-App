@@ -17,17 +17,13 @@ async function fetchCostOfLiving() {
 function renderCOLConfig() {
     const div = document.getElementById('colConfigInputs');
     if (!div) return;
-    const homeCityOpts = allCOLData.map((c, i) =>
-        `<option value="${i}" ${i === (colConfig.homeCityIndex || 0) ? 'selected' : ''}>${c.metro} — ${c.area}</option>`
-    ).join('');
     const isAuto = colConfig.referenceSalarySource === 'salary';
     div.innerHTML = `
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
             <div><label class="form-label">Home City</label>
-                <select class="form-input" style="width:100%; font-size:0.82rem;"
-                    onchange="updateCOLConfig('homeCityIndex', parseInt(this.value))">
-                    ${homeCityOpts}
-                </select></div>
+                <input type="text" value="${colConfig.homeCityName || ''}" class="form-input"
+                    style="width:100%; font-size:0.82rem;"
+                    onchange="updateCOLConfig('homeCityName', this.value)"></div>
             <div><label class="form-label">Reference Salary <span style="color:#4ade80;">(green)</span></label>
                 <input type="number" value="${colConfig.referenceSalary || 0}" class="form-input"
                     style="width:100%; font-size:0.82rem; text-align:right;" ${isAuto ? 'disabled' : ''}
@@ -75,16 +71,16 @@ async function updateCOLConfig(key, value) {
 function renderCOLKpis() {
     const div = document.getElementById('colKpis');
     if (!div || !allCOLData.length) return;
-    const homeIdx = colConfig.homeCityIndex || 0;
-    const home = allCOLData[homeIdx] || {};
+    const homeName = colConfig.homeCityName || 'My City';
+    const homeRent = colConfig.currentRent || 0;
     const sorted = [...allCOLData].sort((a, b) => a.overallFactor - b.overallFactor);
     const cheapest = sorted[0];
     const mostExp = sorted[sorted.length - 1];
     const avgFactor = allCOLData.reduce((s, c) => s + (c.overallFactor || 0), 0) / allCOLData.length;
     div.innerHTML = `
-        <div class="kpi-card"><div class="kpi-label">Home City</div>
-            <div class="kpi-value" style="font-size:1.2rem;">${home.metro || '—'}</div>
-            <div class="kpi-sub">${home.area || ''} | ${(home.overallFactor || 0).toFixed(2)}x</div></div>
+        <div class="kpi-card"><div class="kpi-label">Home City (Baseline)</div>
+            <div class="kpi-value" style="font-size:1.2rem;">${homeName}</div>
+            <div class="kpi-sub">1.00x | ${formatMoney(homeRent)}/mo</div></div>
         <div class="kpi-card"><div class="kpi-label">Cheapest City</div>
             <div class="kpi-value positive" style="font-size:1.2rem;">${cheapest.metro}</div>
             <div class="kpi-sub">${cheapest.overallFactor?.toFixed(2)}x | ${formatMoney(cheapest.equivalentSalary)}</div></div>
@@ -100,8 +96,8 @@ function renderCOLChart() {
     const canvas = document.getElementById('colChart');
     if (!canvas || !allCOLData.length) return;
     if (canvas._chart) canvas._chart.destroy();
-    const homeIdx = colConfig.homeCityIndex || 0;
-    const homeEquiv = allCOLData[homeIdx]?.equivalentSalary || 1;
+    // Home city = 1.0x factor, so home equivalent = referenceSalary
+    const homeEquiv = colConfig.referenceSalary || 1;
     const sorted = [...allCOLData].sort((a, b) => a.equivalentSalary - b.equivalentSalary);
     canvas._chart = new Chart(canvas, {
         type: 'bar',
@@ -135,20 +131,15 @@ function filterCOL(type, btn) {
         document.querySelectorAll('#colFilters .filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
-    const homeIdx = colConfig.homeCityIndex || 0;
     tbody.innerHTML = filtered.sort((a, b) => a.rent - b.rent).map(c => {
         const realIdx = allCOLData.indexOf(c);
-        const isHome = realIdx === homeIdx;
-        const rowBg = isHome ? 'background:rgba(74,222,128,0.08);' : '';
-        const homeLabel = isHome ? ' <span style="font-size:0.65rem; color:#4ade80; font-weight:700;">HOME</span>' : '';
-        return `<tr style="${rowBg}">
-            <td><strong>${c.metro}</strong>${homeLabel}</td>
+        return `<tr>
+            <td><strong>${c.metro}</strong></td>
             <td>${c.area}</td>
             <td><span style="padding:2px 6px; border-radius:4px; font-size:0.75rem; background:${c.type==='Downtown'?'#f59e0b20':'#22c55e20'}; color:${c.type==='Downtown'?'#f59e0b':'#22c55e'};">${c.type}</span></td>
             <td class="editable" style="text-align:right; cursor:pointer;"
                 onclick="editCOLCell(this, ${realIdx}, 'rent', ${c.rent})">${formatMoney(c.rent)}</td>
-            <td class="editable" style="text-align:right; cursor:pointer;"
-                onclick="editCOLCell(this, ${realIdx}, 'housingMult', ${c.housingMult})">${(c.housingMult || 0).toFixed(2)}x</td>
+            <td style="text-align:right;">${(c.housingMult || 0).toFixed(2)}x</td>
             <td class="editable" style="text-align:right; cursor:pointer;"
                 onclick="editCOLCell(this, ${realIdx}, 'nonHousingMult', ${c.nonHousingMult})">${(c.nonHousingMult || 0).toFixed(2)}x</td>
             <td style="text-align:right;">${(c.overallFactor || 0).toFixed(2)}x</td>
@@ -219,14 +210,13 @@ async function addCOLCity() {
     const area = document.getElementById('newCOLArea').value.trim();
     const type = document.getElementById('newCOLType').value;
     const rent = parseFloat(document.getElementById('newCOLRent').value);
-    const housingMult = parseFloat(document.getElementById('newCOLHousingMult').value) || 1.0;
     const nonHousingMult = parseFloat(document.getElementById('newCOLNonHousingMult').value) || 1.0;
     if (!metro) { showAlert('Enter a metro name', 'error'); return; }
     if (isNaN(rent) || rent <= 0) { showAlert('Enter valid rent', 'error'); return; }
     try {
         const resp = await fetch('/api/cost-of-living/add', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ metro, area, type, rent, housingMult, nonHousingMult })
+            body: JSON.stringify({ metro, area, type, rent, nonHousingMult })
         });
         if (resp.ok) {
             showSaveToast(`${metro} added`);
@@ -235,7 +225,6 @@ async function addCOLCity() {
             document.getElementById('newCOLMetro').value = '';
             document.getElementById('newCOLArea').value = '';
             document.getElementById('newCOLRent').value = '';
-            document.getElementById('newCOLHousingMult').value = '1.0';
             document.getElementById('newCOLNonHousingMult').value = '1.0';
             fetchCostOfLiving();
         }
@@ -252,14 +241,7 @@ async function deleteCOLCity(index) {
         });
         if (resp.ok) {
             showSaveToast(`${city.metro} removed`);
-            // Adjust homeCityIndex if needed
-            if ((colConfig.homeCityIndex || 0) === index) {
-                await updateCOLConfig('homeCityIndex', 0);
-            } else if ((colConfig.homeCityIndex || 0) > index) {
-                await updateCOLConfig('homeCityIndex', colConfig.homeCityIndex - 1);
-            } else {
-                fetchCostOfLiving();
-            }
+            fetchCostOfLiving();
         }
     } catch(e) { showAlert('Failed to delete', 'error'); }
 }

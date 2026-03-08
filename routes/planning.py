@@ -13,7 +13,7 @@ bp = Blueprint('planning', __name__)
 
 def _default_col_config():
     return {
-        "homeCityIndex": 0,
+        "homeCityName": "East Lansing, MI",
         "referenceSalary": 140000,
         "referenceSalarySource": "manual",
         "currentRent": 1458,
@@ -23,11 +23,15 @@ def _default_col_config():
 
 
 def _compute_col_entry(entry, config):
-    """Recompute overallFactor, equivalentSalary, elEquivalent from multipliers + config."""
+    """Recompute housingMult, overallFactor, equivalentSalary, elEquivalent from rent + config."""
     hw = config.get("housingWeight", 0.30)
     ref_salary = config.get("referenceSalary", 140000)
     comp_salary = config.get("comparisonSalary", 200000)
-    hm = float(entry.get("housingMult", 1.0))
+    current_rent = config.get("currentRent", 1458)
+    # housingMult = city rent / user's rent (baseline)
+    city_rent = float(entry.get("rent", 0))
+    hm = round(city_rent / current_rent, 2) if current_rent > 0 else 1.0
+    entry["housingMult"] = hm
     nhm = float(entry.get("nonHousingMult", 1.0))
     factor = round(hm * hw + nhm * (1 - hw), 2)
     entry["overallFactor"] = factor
@@ -39,6 +43,10 @@ def _compute_col_entry(entry, config):
 def api_cost_of_living():
     portfolio = load_portfolio()
     config = portfolio.get("colConfig", _default_col_config())
+    # Migrate: homeCityIndex → homeCityName
+    if "homeCityName" not in config:
+        config["homeCityName"] = _default_col_config()["homeCityName"]
+        config.pop("homeCityIndex", None)
     # Auto-link salary if source is "salary"
     if config.get("referenceSalarySource") == "salary":
         from models.salary_calc import _get_salary_data, compute_salary_breakdown
@@ -62,8 +70,8 @@ def api_cost_of_living_add():
         "area": b.get("area", ""),
         "type": b.get("type", "Downtown"),
         "rent": float(b.get("rent", 0)),
-        "housingMult": float(b.get("housingMult", 1.0)),
         "nonHousingMult": float(b.get("nonHousingMult", 1.0)),
+        "housingMult": 0,
         "overallFactor": 0,
         "equivalentSalary": 0,
         "elEquivalent": 0,
@@ -94,8 +102,8 @@ def api_col_config_update():
     for key in ("referenceSalary", "currentRent", "housingWeight", "comparisonSalary"):
         if key in b:
             config[key] = float(b[key])
-    if "homeCityIndex" in b:
-        config["homeCityIndex"] = int(b["homeCityIndex"])
+    if "homeCityName" in b:
+        config["homeCityName"] = b["homeCityName"]
     if "referenceSalarySource" in b:
         config["referenceSalarySource"] = b["referenceSalarySource"]
         if b["referenceSalarySource"] == "salary":
