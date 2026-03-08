@@ -85,6 +85,7 @@
             <button class="tab-btn" data-tab="passive">Passive Income</button>
             <button class="tab-btn" data-tab="rule4pct">Rule 4%</button>
             <button class="tab-btn" data-tab="costOfLiving">Cost of Living</button>
+            <button class="tab-btn" data-tab="taxAccounts">Tax Accounts</button>
         </div>
         <div class="tab-row" data-group="analytics" style="display:none">
             <button class="tab-btn" data-tab="analyzer">Stock Analyzer</button>
@@ -735,19 +736,6 @@
                 <div id="employerCostTable" style="margin-top: 12px;"></div>
             </details>
 
-            <!-- HSA Calculator (collapsible) -->
-            <details class="card" style="margin-top: 16px;">
-                <summary style="cursor:pointer; font-weight:700; font-size:0.95rem; padding: 4px 0;">HSA Calculator &mdash; Bronze vs Silver</summary>
-                <div style="margin-top: 12px;">
-                    <p style="font-size:0.78rem; color:var(--text-dim); margin-bottom:12px;">Choosing the Bronze health plan gives you extra W-2 income. Contributing it to your HSA provides triple tax benefits (pre-tax, tax-free growth, tax-free medical withdrawals).</p>
-                    <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px;">
-                        <label style="font-size:0.82rem; color:var(--text-dim);">Extra W-2 Income (Bronze vs Silver):</label>
-                        <input type="number" id="hsaExtraIncomeInput" class="form-input" style="width:140px; font-size:0.85rem;" onchange="updateHsaExtraIncome(this.value)">
-                    </div>
-                    <div id="hsaCalculatorTable"></div>
-                </div>
-            </details>
-
             <!-- Projected Salary (collapsible) -->
             <details class="card" style="margin-top: 16px;">
                 <summary style="cursor:pointer; font-weight:700; font-size:0.95rem; padding: 4px 0;">Projected Salary — What If?</summary>
@@ -785,6 +773,57 @@
                         <th style="text-align:right;">Equiv. Salary</th><th style="text-align:right;">EL Equivalent</th>
                     </tr></thead><tbody id="colBody"></tbody>
                 </table></div>
+            </div>
+        </div>
+
+        <!-- Tax Accounts Tab -->
+        <div class="tab-content" id="taxAccounts">
+            <!-- Account type selector -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <label style="font-size: 0.85rem; color: var(--text-dim);">Account Type:</label>
+                    <select id="taxAccountType" class="form-input" style="width: 160px; font-size: 0.85rem;" onchange="switchTaxAccountType()">
+                        <option value="hsa" selected>HSA</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- KPI row -->
+            <div id="taxAccountKpis" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px;"></div>
+
+            <!-- HSA Calculator -->
+            <div class="card" style="margin-bottom: 16px;">
+                <div class="card-title">HSA Calculator &mdash; Bronze vs Silver</div>
+                <p style="font-size:0.78rem; color:var(--text-dim); margin-bottom:12px;">Choosing the Bronze health plan gives you extra W-2 income. Contributing it to your HSA provides triple tax benefits (pre-tax, tax-free growth, tax-free medical withdrawals).</p>
+                <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px;">
+                    <label style="font-size:0.82rem; color:var(--text-dim);">Extra W-2 Income (Bronze vs Silver):</label>
+                    <input type="number" id="taxHsaExtraIncomeInput" class="form-input" style="width:140px; font-size:0.85rem;" onchange="updateTaxHsaSettings(this.value)">
+                </div>
+                <div id="taxHsaCalculatorTable"></div>
+            </div>
+
+            <!-- Medical Expenses -->
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div class="card-title" style="margin-bottom: 0;">Medical Expenses</div>
+                    <button class="add-row-btn" onclick="toggleHsaExpenseForm()" style="font-size: 0.78rem; padding: 4px 10px;">+ Add Expense</button>
+                </div>
+                <!-- Add form (hidden by default) -->
+                <div id="hsaExpenseForm" style="display:none; margin-bottom: 16px; padding: 12px; border: 1px dashed var(--border); border-radius: 8px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 10px;">
+                        <div><label class="form-label">Date</label><input type="date" id="hsaExpDate" class="form-input" style="width:100%;"></div>
+                        <div><label class="form-label">Provider</label><input type="text" id="hsaExpProvider" class="form-input" style="width:100%;" placeholder="Dr. Smith"></div>
+                        <div><label class="form-label">Category</label><select id="hsaExpCategory" class="form-input" style="width:100%;"><option>Medical</option><option>Dental</option><option>Vision</option><option>Prescription</option><option>Mental Health</option><option>Other</option></select></div>
+                        <div><label class="form-label">Amount</label><input type="number" id="hsaExpAmount" class="form-input" style="width:100%;" step="0.01" placeholder="0.00"></div>
+                        <div><label class="form-label">Paid From</label><select id="hsaExpPaidFrom" class="form-input" style="width:100%;"><option>Out-of-Pocket</option><option>HSA Direct</option><option>Insurance+OOP</option></select></div>
+                        <div><label class="form-label">Receipt</label><input type="file" id="hsaExpReceipt" accept=".pdf,.jpg,.jpeg,.png" style="font-size:0.8rem; color:var(--text-dim);"></div>
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <div style="flex:1;"><label class="form-label">Description / Notes</label><input type="text" id="hsaExpNotes" class="form-input" style="width:100%;" placeholder="Annual physical, prescription, etc."></div>
+                        <button class="add-row-btn" onclick="addHsaExpense()" style="font-size: 0.78rem; padding: 6px 14px; margin-top: 18px;">Save</button>
+                    </div>
+                </div>
+                <div id="hsaExpensesTable"></div>
             </div>
         </div>
 
@@ -1205,6 +1244,7 @@
     <script src="/static/js/ivlist.js"></script>
     <script src="/static/js/super-investors.js"></script>
     <script src="/static/js/salary.js"></script>
+    <script src="/static/js/tax-accounts.js"></script>
     <script src="/static/js/planning.js"></script>
     <script src="/static/js/settings.js"></script>
     <script src="/static/js/tax.js"></script>

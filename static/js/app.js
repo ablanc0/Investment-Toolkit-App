@@ -227,6 +227,7 @@ function loadTabData(tabId) {
         divDeep: fetchDividendDeepDive,
         screening: populateScreening,
         notesGoals: populateNotesGoals,
+        taxAccounts: fetchTaxAccounts,
     };
     if (loaders[tabId]) loaders[tabId]();
 }

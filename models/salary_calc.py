@@ -81,6 +81,49 @@ def migrate_salary_data(salary):
     return new_salary
 
 
+def get_marginal_rates(profile):
+    """Compute marginal tax rates for a salary profile.
+    Returns dict: {federalRate, stateRate, cityRate, combinedRate} as decimals.
+    """
+    streams = profile.get("incomeStreams", [])
+    taxes = profile.get("taxes", _default_taxes())
+
+    w2 = sum(s["amount"] for s in streams if s.get("type") == "W2")
+    t1099 = sum(s["amount"] for s in streams if s.get("type") in ("1099", "Other"))
+
+    ira_pct = taxes.get("iraContributionPct", 0.03)
+    std_deduction = taxes.get("standardDeduction", 16100)
+    se_factor = 0.9235
+    ss_pct = 0.062
+    medicare_pct = 0.0145
+
+    w2_ira = round(w2 * ira_pct, 2)
+    w2_fed_taxable = max(0, w2 - w2_ira - std_deduction)
+    t1099_se_tax = t1099 * se_factor * (ss_pct + medicare_pct) * 2
+    t1099_fed_taxable = max(0, t1099 - round(t1099_se_tax / 2, 2))
+    total_fed_taxable = w2_fed_taxable + t1099_fed_taxable
+
+    marginal_fed_rate = 0
+    for limit, rate in FEDERAL_BRACKETS:
+        if total_fed_taxable <= limit:
+            marginal_fed_rate = rate
+            break
+
+    marginal_state = taxes.get("stateTax", {}).get("rate", 0) if taxes.get("stateTax", {}).get("enabled") else 0
+    marginal_city = sum(
+        taxes.get(k, {}).get("rate", 0)
+        for k in ("cityResidentTax",)
+        if taxes.get(k, {}).get("enabled")
+    )
+
+    return {
+        "federalRate": marginal_fed_rate,
+        "stateRate": marginal_state,
+        "cityRate": marginal_city,
+        "combinedRate": marginal_fed_rate + marginal_state + marginal_city,
+    }
+
+
 def compute_salary_breakdown(profile):
     """Compute full tax breakdown for a salary profile."""
     streams = profile.get("incomeStreams", [])
@@ -240,19 +283,8 @@ def compute_salary_breakdown(profile):
         effective_gain = round(hsa_extra - fica_cost, 2)
 
         # Compute marginal combined tax rate dynamically
-        total_fed_taxable = w2_fed_taxable + t1099_fed_taxable
-        marginal_fed_rate = 0
-        for limit, rate in FEDERAL_BRACKETS:
-            if total_fed_taxable <= limit:
-                marginal_fed_rate = rate
-                break
-        marginal_state = taxes.get("stateTax", {}).get("rate", 0) if taxes.get("stateTax", {}).get("enabled") else 0
-        marginal_city = sum(
-            taxes.get(k, {}).get("rate", 0)
-            for k in ("cityResidentTax",)
-            if taxes.get(k, {}).get("enabled")
-        )
-        combined_marginal = marginal_fed_rate + marginal_state + marginal_city
+        rates = get_marginal_rates(profile)
+        combined_marginal = rates["combinedRate"]
 
         aggressive = hsa_extra
         cash_neutral = effective_gain
