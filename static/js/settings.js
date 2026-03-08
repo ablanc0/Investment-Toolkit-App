@@ -565,7 +565,7 @@ function renderApiHealthTable(data) {
     ];
 
     const dotColor = (status) => {
-        const colors = { ok: '#22c55e', degraded: '#f59e0b', error: '#ef4444', exhausted: '#a855f7', unknown: '#6b7280' };
+        const colors = { ok: '#22c55e', exhausted: '#f59e0b', degraded: '#a855f7', error: '#ef4444', unknown: '#6b7280' };
         return colors[status] || colors.unknown;
     };
 
@@ -588,7 +588,7 @@ function renderApiHealthTable(data) {
         html += `<td style="padding:8px; text-align:right; border-bottom:1px solid var(--border); color:var(--text-dim);">${latency}</td>`;
         html += `<td style="padding:8px; text-align:right; border-bottom:1px solid var(--border); color:var(--text-dim);">${lastSuccess}</td>`;
         html += '</tr>';
-        if (h.lastErrorMsg) {
+        if (h.lastErrorMsg && h.status === 'error') {
             html += `<tr><td colspan="4" style="padding:2px 8px 8px 32px; font-size:11px; color:#ef4444; border-bottom:1px solid var(--border);">Last error: ${h.lastErrorMsg}</td></tr>`;
         }
     }

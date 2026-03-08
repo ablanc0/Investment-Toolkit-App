@@ -32,8 +32,8 @@ def record_api_call(api_name, success, latency_ms=None, error_msg=None):
             h["lastSuccess"] = now
         else:
             msg = error_msg or ""
-            # Detect monthly quota exhaustion for RapidAPI
-            if api_name == "rapidapi" and "MONTHLY" in msg.upper():
+            # Detect quota exhaustion for RapidAPI (monthly message or 429 rate limit)
+            if api_name == "rapidapi" and ("MONTHLY" in msg.upper() or "429" in msg):
                 h["status"] = "exhausted"
             else:
                 h["status"] = "error"
