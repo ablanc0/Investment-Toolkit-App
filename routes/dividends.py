@@ -228,7 +228,7 @@ def api_monthly_data_update():
     entry["totalReturn"] = round(portfolio_value - accumulated, 2)
 
     if accumulated > 0:
-        entry["totalReturnPct"] = round(((portfolio_value - accumulated) / accumulated) * 100, 2)
+        entry["totalReturnPct"] = round((portfolio_value - accumulated) / accumulated, 6)
     else:
         entry["totalReturnPct"] = 0
 

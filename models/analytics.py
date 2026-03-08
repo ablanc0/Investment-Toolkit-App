@@ -93,13 +93,15 @@ def compute_benchmark_comparison(annual_data, historic_data):
 
 def compute_monthly_tracker_stats(monthly_data):
     """Compute enhanced monthly performance statistics."""
-    if len(monthly_data) < 2:
+    # Filter to entries with actual portfolio data (skip empty future months)
+    valid_data = [m for m in monthly_data if m.get("portfolioValue", 0) > 0]
+    if len(valid_data) < 2:
         return {"monthlyReturns": [], "summary": {}}
 
     monthly_returns = []
-    for i in range(1, len(monthly_data)):
-        prev = monthly_data[i - 1]
-        curr = monthly_data[i]
+    for i in range(1, len(valid_data)):
+        prev = valid_data[i - 1]
+        curr = valid_data[i]
         prev_val = prev.get("portfolioValue", 0)
         curr_val = curr.get("portfolioValue", 0)
         contrib = curr.get("contributions", 0)
@@ -150,11 +152,11 @@ def compute_monthly_tracker_stats(monthly_data):
         twr *= (1 + m["return"] / 100)
     twr = (twr - 1) * 100
 
-    # Totals
-    total_contribs = sum(m.get("contributions", 0) for m in monthly_data[1:])
-    total_divs = sum(m.get("dividendIncome", 0) for m in monthly_data[1:])
-    last_val = monthly_data[-1].get("portfolioValue", 0)
-    first_val = monthly_data[0].get("portfolioValue", 0)
+    # Totals (from valid data only)
+    total_contribs = sum(m.get("contributions", 0) for m in valid_data[1:])
+    total_divs = sum(m.get("dividendIncome", 0) for m in valid_data[1:])
+    last_val = valid_data[-1].get("portfolioValue", 0)
+    first_val = valid_data[0].get("portfolioValue", 0)
     total_market_gains = last_val - first_val - total_contribs
 
     return {

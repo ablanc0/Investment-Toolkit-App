@@ -321,6 +321,19 @@ function renderMonthlyData(items) {
     const kpis = document.getElementById('mdKpis');
     if (!container) return;
 
+    // Pre-compute month-over-month returns
+    const moReturns = [null]; // first entry has no prior month
+    for (let i = 1; i < items.length; i++) {
+        const prevVal = items[i - 1].portfolioValue || 0;
+        const currVal = items[i].portfolioValue || 0;
+        const contrib = items[i].contributions || 0;
+        if (prevVal > 0 && currVal > 0) {
+            moReturns.push(((currVal - prevVal - contrib) / prevVal) * 100);
+        } else {
+            moReturns.push(null);
+        }
+    }
+
     // Group by year
     const years = {};
     items.forEach((m, i) => {
@@ -370,13 +383,16 @@ function renderMonthlyData(items) {
                         <th>Month</th><th style="text-align:right;">Portfolio Value</th><th style="text-align:right;">Contributions</th>
                         <th style="text-align:right;">Dividend Income</th><th style="text-align:right;">Accum. Investment</th>
                         <th style="text-align:right;">Total Return</th><th style="text-align:right;">Return %</th>
+                        <th style="text-align:right;">Mo. Return %</th>
                     </tr></thead><tbody>`;
 
         for (const entry of entries) {
             const shortMonth = entry.month.split(' ')[0].substring(0, 3);
             const hasVal = entry.portfolioValue > 0 || entry.contributions > 0;
             const rowStyle = hasVal ? '' : 'opacity: 0.35;';
-            const retPct = entry.totalReturnPct || 0;
+            const rawRetPct = entry.totalReturnPct || 0;
+            // Normalize: values > 1 or < -1 are legacy percentage format (e.g. 19.35 = 19.35%)
+            const retPct = Math.abs(rawRetPct) > 1 ? rawRetPct / 100 : rawRetPct;
             const retClass = retPct > 0 ? 'positive' : retPct < 0 ? 'negative' : '';
 
             html += `<tr style="${rowStyle}">
@@ -408,6 +424,7 @@ function renderMonthlyData(items) {
                 </td>
                 <td style="text-align:right; color: ${(entry.totalReturn||0) >= 0 ? '#4ade80' : '#f87171'};">${entry.totalReturn ? formatMoney(entry.totalReturn) : '—'}</td>
                 <td style="text-align:right;" class="${retClass}">${retPct ? (retPct * 100).toFixed(2) + '%' : '—'}</td>
+                <td style="text-align:right; color: ${moReturns[entry._idx] > 0 ? '#4ade80' : moReturns[entry._idx] < 0 ? '#f87171' : 'var(--text-dim)'}; font-weight:600;">${moReturns[entry._idx] !== null ? moReturns[entry._idx].toFixed(2) + '%' : '—'}</td>
             </tr>`;
         }
         html += `</tbody></table></div></div></div>`;
@@ -517,13 +534,20 @@ function renderMonthlyTrackerStats(stats) {
     const kpis = document.getElementById('monthlyTrackerKpis');
     if (!kpis || !stats.summary) return;
     const s = stats.summary;
+    const avgColor = s.avgMonthlyReturn >= 0 ? '#22c55e' : '#ef4444';
+    const twrColor = s.timeWeightedReturn >= 0 ? '#22c55e' : '#ef4444';
+    const mgColor = s.totalMarketGains >= 0 ? '#22c55e' : '#ef4444';
     kpis.innerHTML = `
         <div class="kpi-card"><div class="kpi-label">Best Month</div><div class="kpi-value positive">${formatPercent(s.bestMonth.return)}</div><div class="kpi-sub">${s.bestMonth.month}</div></div>
         <div class="kpi-card"><div class="kpi-label">Worst Month</div><div class="kpi-value negative">${formatPercent(s.worstMonth.return)}</div><div class="kpi-sub">${s.worstMonth.month}</div></div>
-        <div class="kpi-card"><div class="kpi-label">Win Rate</div><div class="kpi-value">${s.winRate.toFixed(0)}%</div><div class="kpi-sub">${s.positiveMonths} positive / ${s.negativeMonths} negative</div></div>
-        <div class="kpi-card"><div class="kpi-label">Max Drawdown</div><div class="kpi-value negative">${s.maxDrawdown.toFixed(1)}%</div><div class="kpi-sub">${s.maxDrawdownPeriod || '-'}</div></div>
-        <div class="kpi-card"><div class="kpi-label">Time-Weighted Return</div><div class="kpi-value" style="color:${s.timeWeightedReturn >= 0 ? '#22c55e' : '#ef4444'}">${s.timeWeightedReturn.toFixed(1)}%</div></div>
+        <div class="kpi-card"><div class="kpi-label">Average Month</div><div class="kpi-value" style="color:${avgColor}">${formatPercent(s.avgMonthlyReturn)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Positive Months</div><div class="kpi-value positive">${s.positiveMonths}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Negative Months</div><div class="kpi-value negative">${s.negativeMonths}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Win Rate</div><div class="kpi-value">${s.winRate.toFixed(1)}%</div></div>
         <div class="kpi-card"><div class="kpi-label">Total Contributions</div><div class="kpi-value">${formatMoney(s.totalContributions)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Total Market Gains</div><div class="kpi-value" style="color:${mgColor}">${formatMoney(s.totalMarketGains)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Total Dividends</div><div class="kpi-value positive">${formatMoney(s.totalDividends)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Time-Weighted Return</div><div class="kpi-value" style="color:${twrColor}">${s.timeWeightedReturn.toFixed(1)}%</div><div class="kpi-sub">Max DD: ${s.maxDrawdown.toFixed(1)}% ${s.maxDrawdownPeriod ? '(' + s.maxDrawdownPeriod + ')' : ''}</div></div>
     `;
 
     // Monthly returns chart
@@ -548,10 +572,11 @@ function renderMonthlyReturnsChart(returns) {
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
             plugins: { legend: { display: false } },
             scales: {
-                x: { ticks: { color: '#9ca3af', maxRotation: 45, font: { size: 10 } }, grid: { display: false } },
-                y: { ticks: { callback: v => v + '%', color: '#9ca3af' }, grid: { color: '#ffffff10' } },
+                x: { ticks: { color: getChartTextColor(), maxRotation: 45, font: { size: 10 } }, grid: { display: false } },
+                y: { ticks: { callback: v => v + '%', color: getChartTextColor() }, grid: { color: getChartGridColor() } },
             }
         }
     });
