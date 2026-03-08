@@ -106,18 +106,21 @@ function renderCOLChart() {
     const canvas = document.getElementById('colChart');
     if (!canvas || !allCOLData.length) return;
     if (canvas._chart) canvas._chart.destroy();
-    // Home city = 1.0x factor, so home equivalent = referenceSalary
     const homeEquiv = colConfig.referenceSalary || 1;
-    const sorted = [...allCOLData].sort((a, b) => a.equivalentSalary - b.equivalentSalary);
+    const homeName = colConfig.homeCityName || 'My City';
+    // Insert home city into sorted list
+    const withHome = [...allCOLData.map(c => ({ label: `${c.metro} (${c.type[0]})`, salary: c.equivalentSalary, isHome: false })),
+        { label: `${homeName} (HOME)`, salary: homeEquiv, isHome: true }
+    ].sort((a, b) => a.salary - b.salary);
     canvas._chart = new Chart(canvas, {
         type: 'bar',
         data: {
-            labels: sorted.map(c => `${c.metro} (${c.type[0]})`),
+            labels: withHome.map(c => c.label),
             datasets: [{
                 label: 'Equivalent Salary',
-                data: sorted.map(c => c.equivalentSalary),
-                backgroundColor: sorted.map(c =>
-                    c.equivalentSalary <= homeEquiv ? '#4ade8080' : '#f8717180'),
+                data: withHome.map(c => c.salary),
+                backgroundColor: withHome.map(c =>
+                    c.isHome ? '#4ade80' : c.salary <= homeEquiv ? '#4ade8060' : '#f8717180'),
             }]
         },
         options: {
