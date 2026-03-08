@@ -38,6 +38,7 @@ function renderSalaryFull(data) {
     renderIncomeStreams(profile.incomeStreams || []);
     renderTaxTable(breakdown);
     renderEmployerCost(breakdown.employer || {});
+    renderHsaCalculator(breakdown.hsa, profile.hsaExtraIncome || 0);
     renderProjectedSalary(breakdown.projected, profile.projectedSalary || 0, breakdown.summary || {});
     renderSalaryHistory(profile);
 }
@@ -198,6 +199,42 @@ function renderEmployerCost(employer) {
         <td>Total Cost to Company</td><td style="text-align:right; color:#6366f1;">${formatMoney(employer.costToCompany)}</td><td style="text-align:right; color:#6366f1;">${formatMoney(employer.costToCompanyMonthly)}</td></tr>`;
     html += '</tbody></table></div>';
     div.innerHTML = html;
+}
+
+function renderHsaCalculator(hsa, hsaExtraIncome) {
+    const input = document.getElementById('hsaExtraIncomeInput');
+    const div = document.getElementById('hsaCalculatorTable');
+    if (input) input.value = hsaExtraIncome || '';
+    if (!div) return;
+    if (!hsa) {
+        div.innerHTML = '<p style="font-size:0.82rem; color:var(--text-dim);">Enter the extra W-2 income from choosing Bronze to see the HSA analysis.</p>';
+        return;
+    }
+    const th = 'style="text-align:right;"';
+    const green = 'style="text-align:right; color:#4ade80; font-weight:600;"';
+    const red = 'style="text-align:right; color:#f87171;"';
+    const bold = 'style="font-weight:700;"';
+    const sep = `<tr><td colspan="3" style="border-top:2px solid var(--border); padding:0;"></td></tr>`;
+    let html = `<div class="table-wrapper"><table style="width:100%; font-size:0.82rem;">
+        <thead><tr><th style="text-align:left;"></th><th ${th}>Annual</th><th ${th}>Monthly</th></tr></thead><tbody>`;
+    html += `<tr><td>Extra W-2 Income</td><td ${green}>${formatMoney(hsa.extraIncome)}</td><td ${green}>${formatMoney(hsa.extraIncome / 12)}</td></tr>`;
+    html += `<tr><td>FICA (7.65%, irrecoverable)</td><td ${red}>-${formatMoney(hsa.ficaCost)}</td><td ${red}>-${formatMoney(hsa.ficaCost / 12)}</td></tr>`;
+    html += `<tr ${bold}><td>Effective Economic Gain</td><td ${green}>${formatMoney(hsa.effectiveGain)}</td><td ${green}>${formatMoney(hsa.effectiveGain / 12)}</td></tr>`;
+    html += sep;
+    html += `<tr><td colspan="3" style="font-weight:700; padding-top:8px;">Aggressive Strategy <span style="font-weight:400; color:var(--text-dim);">(contribute full extra income)</span></td></tr>`;
+    html += `<tr><td style="padding-left:16px;">HSA Contribution</td><td ${th}>${formatMoney(hsa.aggressive.contribution)}</td><td ${th}>${formatMoney(hsa.aggressive.contribution / 12)}</td></tr>`;
+    html += `<tr><td style="padding-left:16px;">Income Tax Recovered</td><td ${green}>${formatMoney(hsa.aggressive.taxRecovered)}</td><td ${green}>${formatMoney(hsa.aggressive.taxRecovered / 12)}</td></tr>`;
+    html += sep;
+    html += `<tr><td colspan="3" style="font-weight:700; padding-top:8px;">Cash-Neutral Strategy <span style="font-weight:400; color:var(--text-dim);">(contribute only the effective gain)</span></td></tr>`;
+    html += `<tr><td style="padding-left:16px;">HSA Contribution</td><td ${th}>${formatMoney(hsa.cashNeutral.contribution)}</td><td ${th}>${formatMoney(hsa.cashNeutral.contribution / 12)}</td></tr>`;
+    html += `<tr><td style="padding-left:16px;">Income Tax Recovered</td><td ${green}>${formatMoney(hsa.cashNeutral.taxRecovered)}</td><td ${green}>${formatMoney(hsa.cashNeutral.taxRecovered / 12)}</td></tr>`;
+    html += '</tbody></table></div>';
+    html += `<p style="font-size:0.75rem; color:var(--text-dim); margin-top:8px;">Combined marginal tax rate: ${hsa.combinedMarginalRate}% (Federal + State + City)</p>`;
+    div.innerHTML = html;
+}
+
+function updateHsaExtraIncome(value) {
+    saveSalaryUpdate({ hsaExtraIncome: parseFloat(value) || 0 });
 }
 
 function renderProjectedSalary(projected, projAmount, currentSumm) {

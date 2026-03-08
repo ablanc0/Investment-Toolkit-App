@@ -231,6 +231,49 @@ def compute_salary_breakdown(profile):
         "costToCompanyMonthly": round((w2 + emp_total)/12, 2),
     }
 
+    # HSA Calculator
+    hsa_extra = profile.get("hsaExtraIncome", 0)
+    hsa = None
+    if hsa_extra > 0:
+        fica_rate = ss_pct + medicare_pct  # 0.0765
+        fica_cost = round(hsa_extra * fica_rate, 2)
+        effective_gain = round(hsa_extra - fica_cost, 2)
+
+        # Compute marginal combined tax rate dynamically
+        total_fed_taxable = w2_fed_taxable + t1099_fed_taxable
+        marginal_fed_rate = 0
+        for limit, rate in FEDERAL_BRACKETS:
+            if total_fed_taxable <= limit:
+                marginal_fed_rate = rate
+                break
+        marginal_state = taxes.get("stateTax", {}).get("rate", 0) if taxes.get("stateTax", {}).get("enabled") else 0
+        marginal_city = sum(
+            taxes.get(k, {}).get("rate", 0)
+            for k in ("cityResidentTax",)
+            if taxes.get(k, {}).get("enabled")
+        )
+        combined_marginal = marginal_fed_rate + marginal_state + marginal_city
+
+        aggressive = hsa_extra
+        cash_neutral = effective_gain
+        tax_recovered_agg = round(aggressive * combined_marginal, 2)
+        tax_recovered_neutral = round(cash_neutral * combined_marginal, 2)
+
+        hsa = {
+            "extraIncome": hsa_extra,
+            "ficaCost": fica_cost,
+            "effectiveGain": effective_gain,
+            "combinedMarginalRate": round(combined_marginal * 100, 2),
+            "aggressive": {
+                "contribution": aggressive,
+                "taxRecovered": tax_recovered_agg,
+            },
+            "cashNeutral": {
+                "contribution": cash_neutral,
+                "taxRecovered": tax_recovered_neutral,
+            },
+        }
+
     # Projected salary (W2 only, same tax config)
     proj_amount = profile.get("projectedSalary", 0)
     projected = None
@@ -261,6 +304,7 @@ def compute_salary_breakdown(profile):
         },
         "employer": employer,
         "projected": projected,
+        "hsa": hsa,
     }
 
 

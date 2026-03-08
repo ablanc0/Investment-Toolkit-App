@@ -735,6 +735,19 @@
                 <div id="employerCostTable" style="margin-top: 12px;"></div>
             </details>
 
+            <!-- HSA Calculator (collapsible) -->
+            <details class="card" style="margin-top: 16px;">
+                <summary style="cursor:pointer; font-weight:700; font-size:0.95rem; padding: 4px 0;">HSA Calculator &mdash; Bronze vs Silver</summary>
+                <div style="margin-top: 12px;">
+                    <p style="font-size:0.78rem; color:var(--text-dim); margin-bottom:12px;">Choosing the Bronze health plan gives you extra W-2 income. Contributing it to your HSA provides triple tax benefits (pre-tax, tax-free growth, tax-free medical withdrawals).</p>
+                    <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px;">
+                        <label style="font-size:0.82rem; color:var(--text-dim);">Extra W-2 Income (Bronze vs Silver):</label>
+                        <input type="number" id="hsaExtraIncomeInput" class="form-input" style="width:140px; font-size:0.85rem;" onchange="updateHsaExtraIncome(this.value)">
+                    </div>
+                    <div id="hsaCalculatorTable"></div>
+                </div>
+            </details>
+
             <!-- Projected Salary (collapsible) -->
             <details class="card" style="margin-top: 16px;">
                 <summary style="cursor:pointer; font-weight:700; font-size:0.95rem; padding: 4px 0;">Projected Salary — What If?</summary>
