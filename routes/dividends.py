@@ -4,6 +4,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request
 
 from services.data_store import load_portfolio, save_portfolio, crud_list, crud_add, crud_update, crud_delete
+from services.yfinance_svc import fetch_sp500_annual_returns
 
 bp = Blueprint('dividends', __name__)
 
@@ -245,12 +246,14 @@ def api_annual_data():
     dividend_log = portfolio.get("dividendLog", [])
     existing_annual = portfolio.get("annualData", [])
 
-    # Build a map of existing sp500YieldPct by year
-    sp500_map = {}
+    # Fetch live S&P 500 annual returns from yfinance
+    sp500_map = fetch_sp500_annual_returns()
+
+    # Fallback to stored data for any years not covered by live data
     for item in existing_annual:
         year = item.get("year")
         sp500_yield = item.get("sp500YieldPct", 0)
-        if year:
+        if year and str(year) not in sp500_map and sp500_yield:
             sp500_map[str(year)] = sp500_yield
 
     # Group monthly data by year

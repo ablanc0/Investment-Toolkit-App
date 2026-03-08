@@ -4,7 +4,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request
 
 from services.data_store import load_portfolio, get_settings
-from services.yfinance_svc import fetch_all_quotes
+from services.yfinance_svc import fetch_all_quotes, fetch_sp500_annual_returns
 from models.tax_optimization import compute_tax_positions, compute_tax_summary
 from models.risk_analysis import (
     compute_sector_concentration, compute_stress_test,
@@ -253,7 +253,13 @@ def api_portfolio_benchmark():
     portfolio = load_portfolio()
     # Compute annual data (reuse logic from dividends route)
     monthly_data = portfolio.get("monthlyData", [])
-    historic_data = portfolio.get("historicData", [])
+
+    # Fetch live S&P 500 returns, fallback to stored historicData
+    sp500_returns = fetch_sp500_annual_returns()
+    if sp500_returns:
+        historic_data = [{"year": y, "annualReturn": r} for y, r in sp500_returns.items()]
+    else:
+        historic_data = portfolio.get("historicData", [])
 
     # Build simple annual data from monthlyData
     annual_map = {}
