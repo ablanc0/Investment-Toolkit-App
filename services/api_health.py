@@ -117,8 +117,9 @@ def run_health_check():
     # EDGAR
     start = time.time()
     try:
+        from config import EDGAR_USER_AGENT
         r = http_requests.get("https://www.sec.gov/files/company_tickers.json",
-                              headers={"User-Agent": "InvToolkit/1.0 ale.blancoglez91@gmail.com"}, timeout=10)
+                              headers={"User-Agent": EDGAR_USER_AGENT}, timeout=10)
         latency = int((time.time() - start) * 1000)
         record_api_call("edgar", success=r.status_code == 200, latency_ms=latency,
                         error_msg=None if r.status_code == 200 else f"HTTP {r.status_code}")

@@ -35,15 +35,23 @@ def _resolve_data_dir():
 
     # 3. Google Drive default paths (Mac / Windows)
     home = Path.home()
-    gdrive_candidates = [
-        # macOS Google Drive
-        home / "Library" / "CloudStorage" / "GoogleDrive-ale.blancoglez91@gmail.com" / "My Drive" / "Investments" / "portfolio-app",
-        # Windows Google Drive (stream)
+    subfolder = Path("My Drive") / "Investments" / "portfolio-app"
+
+    # macOS: auto-detect any GoogleDrive-* account folder
+    cloud_storage = home / "Library" / "CloudStorage"
+    if cloud_storage.exists():
+        for gd_folder in cloud_storage.iterdir():
+            if gd_folder.name.startswith("GoogleDrive-"):
+                candidate = gd_folder / subfolder
+                if candidate.exists():
+                    return candidate
+
+    # Windows Google Drive (stream / mirror)
+    win_candidates = [
         Path("G:/My Drive/Investments/portfolio-app"),
-        # Windows Google Drive (mirror)
         home / "Google Drive" / "My Drive" / "Investments" / "portfolio-app",
     ]
-    for candidate in gdrive_candidates:
+    for candidate in win_candidates:
         if candidate.exists():
             return candidate
 
@@ -133,7 +141,7 @@ DEFAULT_SETTINGS = {
 
 # ── SEC EDGAR API ───────────────────────────────────────────────────────
 
-EDGAR_USER_AGENT  = "InvToolkit ale.blancoglez91@gmail.com"
+EDGAR_USER_AGENT  = os.environ.get("EDGAR_USER_AGENT", "InvToolkit user@example.com")
 EDGAR_FACTS_URL   = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 EDGAR_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 
@@ -168,7 +176,7 @@ SUPER_INVESTORS = {
 
 # ── FMP API ─────────────────────────────────────────────────────────────
 
-FMP_API_KEY = "Yt3XCJh6dH3GNabskOSVMpQqKBzbSh70"
+FMP_API_KEY = os.environ.get("FMP_API_KEY", "")
 FMP_BASE    = "https://financialmodelingprep.com/stable"
 
 # ── Tax Constants ───────────────────────────────────────────────────────

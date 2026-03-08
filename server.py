@@ -44,6 +44,14 @@ def create_app(testing=False):
     application.register_blueprint(analytics_bp)
     application.register_blueprint(tax_accounts_bp)
 
+    @application.after_request
+    def add_security_headers(response):
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        return response
+
     return application
 
 
@@ -53,6 +61,7 @@ app = create_app()
 # ── Main ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    import os
     from services.cache import load_disk_cache
     from services.edgar_13f import _load_13f_history
     from services.api_health import load_quota_from_cache
@@ -64,6 +73,10 @@ if __name__ == "__main__":
     from services.backup import run_backup
     backup_result = run_backup()
 
+    debug = os.environ.get("FLASK_DEBUG", "0") == "1"
+    host = os.environ.get("FLASK_HOST", "127.0.0.1")
+    port = int(os.environ.get("FLASK_PORT", "5050"))
+
     print("\n" + "=" * 55)
     print("  InvToolkit — Investment Dashboard")
     print("=" * 55)
@@ -71,7 +84,7 @@ if __name__ == "__main__":
     print(f"  Data dir:    {DATA_DIR}")
     print(f"  Portfolio:   {PORTFOLIO_FILE}")
     print(f"  Backups:     {backup_result['filesCopied']} copied, {backup_result['filesSkipped']} skipped")
-    print(f"  Dashboard:   http://localhost:5050")
+    print(f"  Dashboard:   http://{host}:{port}")
     print("=" * 55 + "\n")
 
-    app.run(host="0.0.0.0", port=5050, debug=True)
+    app.run(host=host, port=port, debug=debug)
