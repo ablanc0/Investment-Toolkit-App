@@ -106,10 +106,17 @@ def fetch_all_us_cities():
         "x-rapidapi-key": key,
     }
 
-    # Step 1: discover available US cities
-    us_city_names, err = _fetch_us_city_names(headers)
-    if err:
-        return None, err
+    # Step 1: discover available US cities (use cached names if available)
+    cached_names = _col_data.get("cityNames", [])
+    if cached_names:
+        us_city_names = cached_names
+        print(f"[COL] Using cached city list ({len(us_city_names)} cities)")
+    else:
+        us_city_names, err = _fetch_us_city_names(headers)
+        if err:
+            return None, err
+        # Rate limit: free tier allows 1 req/min, wait before second call
+        time.sleep(62)
 
     # Step 2: bulk-fetch details for all US cities
     post_headers = {
@@ -157,13 +164,14 @@ def fetch_all_us_cities():
         _col_data.clear()
         _col_data.update({
             "cities": merged,
+            "cityNames": us_city_names,  # Cache for next refresh (skip discovery call)
             "fetchedAt": datetime.now().isoformat(),
             "cityCount": len(merged),
             "newCitiesAdded": new_count,
         })
         _save_col_data()
 
-        return cities, None
+        return merged, None
 
     except Exception as e:
         latency = int((time.time() - start) * 1000)
@@ -199,19 +207,34 @@ def _normalize_cities(raw_list):
             "country": city.get("country", ""),
             "state": city.get("us_state", ""),
             # Indices (relative to NYC = 100)
-            "colIndex": city.get("cost_of_living_index", 0),
-            "rentIndex": city.get("rent_index", 0),
-            "groceriesIndex": city.get("groceries_index", 0),
-            "restaurantIndex": city.get("restaurant_price_index", 0),
-            "colPlusRentIndex": city.get("cost_of_living_plus_rent_index", 0),
-            "purchasingPowerIndex": city.get("local_purchasing_power_index", 0),
-            # Key dollar amounts
+            "colIndex": _parse_value(city.get("cost_of_living_index", 0)),
+            "rentIndex": _parse_value(city.get("rent_index", 0)),
+            "groceriesIndex": _parse_value(city.get("groceries_index", 0)),
+            "restaurantIndex": _parse_value(city.get("restaurant_price_index", 0)),
+            "colPlusRentIndex": _parse_value(city.get("cost_of_living_plus_rent_index", 0)),
+            "purchasingPowerIndex": _parse_value(city.get("local_purchasing_power_index", 0)),
+            # Rent variants
             "rent1brCity": details.get("Apartment (1 bedroom) in City Centre", 0),
             "rent1brSuburb": details.get("Apartment (1 bedroom) Outside of Centre", 0),
             "rent3brCity": details.get("Apartment (3 bedrooms) in City Centre", 0),
             "rent3brSuburb": details.get("Apartment (3 bedrooms) Outside of Centre", 0),
+            # Cost & salary
             "monthlyCostsNoRent": details.get("Estimated Monthly Costs Without Rent", 0),
             "avgNetSalary": details.get("Average Monthly Net Salary (After Tax)", 0),
+            # Utilities & transport
+            "utilities": details.get("Basic (Electricity, Heating, Cooling, Water, Garbage) for 915 sq ft Apartment", 0),
+            "internet": details.get("Internet (60 Mbps or More, Unlimited Data, Cable/ADSL)", 0),
+            "monthlyTransitPass": details.get("Monthly Pass (Regular Price)", 0),
+            "gasoline": details.get("Gasoline (1 gallon)", 0),
+            # Lifestyle
+            "mealInexpensive": details.get("Meal, Inexpensive Restaurant", 0),
+            "mealMidRange": details.get("Meal for 2 People, Mid-range Restaurant, Three-course", 0),
+            "gym": details.get("Fitness Club, Monthly Fee for 1 Adult", 0),
+            "preschool": details.get("Preschool (or Kindergarten), Full Day, Private, Monthly for 1 Child", 0),
+            # Real estate
+            "priceSqFtCity": details.get("Price per Square Feet to Buy Apartment in City Centre", 0),
+            "priceSqFtSuburb": details.get("Price per Square Feet to Buy Apartment Outside of Centre", 0),
+            "mortgageRate": details.get("Mortgage Interest Rate in Percentages (%), Yearly, for 20 Years Fixed-Rate", 0),
             "lastUpdated": city.get("last_updated_timestamp", ""),
         })
     return sorted(cities, key=lambda c: c["name"])

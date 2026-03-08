@@ -25,7 +25,7 @@ def _default_col_config():
 
 
 def _compute_col_entry(entry, config):
-    """Recompute housingMult, overallFactor, equivalentSalary, elEquivalent from rent + config."""
+    """Recompute all derived fields from rent, API data, and config."""
     hw = config.get("housingWeight", 0.30)
     ref_salary = config.get("referenceSalary", 140000)
     comp_salary = config.get("comparisonSalary", 200000)
@@ -43,8 +43,16 @@ def _compute_col_entry(entry, config):
             entry["type"] = "Downtown" if loc == "city" else "Suburban"
         # Derive nonHousingMult from colIndex (unless user overrode)
         if not entry.get("nhmOverride") and api_data:
-            col_index = api_data.get("colIndex", 100)
+            col_index = float(api_data.get("colIndex", 100))
             entry["nonHousingMult"] = round(col_index / 100, 2) if col_index > 0 else 1.0
+        # Populate extra API metrics for display
+        if api_data:
+            entry["groceriesIndex"] = float(api_data.get("groceriesIndex", 0))
+            entry["restaurantIndex"] = float(api_data.get("restaurantIndex", 0))
+            entry["purchasingPower"] = float(api_data.get("purchasingPowerIndex", 0))
+            entry["avgNetSalary"] = float(api_data.get("avgNetSalary", 0))
+            entry["monthlyCostsNoRent"] = float(api_data.get("monthlyCostsNoRent", 0))
+            entry["utilities"] = float(api_data.get("utilities", 0))
 
     # housingMult = city rent / user's rent (baseline)
     city_rent = float(entry.get("rent", 0))
@@ -55,6 +63,9 @@ def _compute_col_entry(entry, config):
     entry["overallFactor"] = factor
     entry["equivalentSalary"] = round(ref_salary * factor)
     entry["elEquivalent"] = round(comp_salary / factor) if factor > 0 else 0
+    # Monthly cost estimate (rent + estimated non-housing costs for API cities)
+    costs_no_rent = float(entry.get("monthlyCostsNoRent", 0))
+    entry["totalMonthlyCost"] = round(city_rent + costs_no_rent) if costs_no_rent > 0 else 0
 
 
 @bp.route("/api/cost-of-living")
@@ -211,6 +222,52 @@ def api_col_fetch_all():
     meta = get_col_metadata()
     return jsonify({"ok": True, "cityCount": meta["cityCount"], "fetchedAt": meta["fetchedAt"],
                      "newCitiesAdded": meta.get("newCitiesAdded", 0)})
+
+
+@bp.route("/api/cost-of-living/upgrade", methods=["POST"])
+def api_col_upgrade():
+    """Match existing manual cities against API data and upgrade them."""
+    from services.col_api import get_col_cities
+
+    api_cities = get_col_cities()
+    if not api_cities:
+        return jsonify({"ok": False, "error": "No API data available. Click 'Refresh API Data' first."}), 400
+
+    # Build lookup: lowercase name → api city
+    api_lookup = {c["name"].lower(): c for c in api_cities}
+    # Add common aliases
+    api_lookup["new york city"] = api_lookup.get("new york", {})
+    api_lookup["washington, dc"] = api_lookup.get("washington", {})
+    api_lookup["san francisco bay area"] = api_lookup.get("san francisco", {})
+
+    portfolio = load_portfolio()
+    config = portfolio.get("colConfig", _default_col_config())
+    cities = portfolio.get("costOfLiving", [])
+
+    upgraded = 0
+    for city in cities:
+        if city.get("source") == "api":
+            continue  # Already API-sourced
+        metro_lower = city["metro"].lower()
+        api_match = api_lookup.get(metro_lower)
+        if not api_match:
+            # Try partial match
+            for api_name, api_city in api_lookup.items():
+                if api_city and (metro_lower in api_name or api_name in metro_lower):
+                    api_match = api_city
+                    break
+        if api_match and api_match.get("name"):
+            city["source"] = "api"
+            city["rentOverride"] = False
+            city["nhmOverride"] = False
+            city["apiData"] = api_match
+            city["area"] = api_match.get("state", city.get("area", ""))
+            _compute_col_entry(city, config)
+            upgraded += 1
+
+    portfolio["costOfLiving"] = cities
+    save_portfolio(portfolio)
+    return jsonify({"ok": True, "upgraded": upgraded, "costOfLiving": cities})
 
 
 @bp.route("/api/cost-of-living/api-cities")

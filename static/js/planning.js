@@ -174,6 +174,8 @@ function filterCOL(type, btn) {
         const apiBadge = isApi ? ' <span style="font-size:0.65rem; padding:1px 4px; border-radius:3px; background:#6366f120; color:#6366f1; vertical-align:middle;">API</span>' : '';
         const rentOverride = isApi && c.rentOverride ? ' <span title="Manually overridden" style="color:#f59e0b; font-size:0.7rem;">*</span>' : '';
         const nhmOverride = isApi && c.nhmOverride ? ' <span title="Manually overridden" style="color:#f59e0b; font-size:0.7rem;">*</span>' : '';
+        const totalCost = c.totalMonthlyCost ? formatMoney(c.totalMonthlyCost) : '—';
+        const pp = c.purchasingPower ? c.purchasingPower.toFixed(0) : '—';
         return `<tr>
             <td><strong>${c.metro}</strong>${apiBadge}</td>
             <td>${c.area}</td>
@@ -184,6 +186,8 @@ function filterCOL(type, btn) {
             <td class="editable" style="text-align:right; cursor:pointer;"
                 onclick="editCOLCell(this, ${realIdx}, 'nonHousingMult', ${c.nonHousingMult})">${(c.nonHousingMult || 0).toFixed(2)}x${nhmOverride}</td>
             <td style="text-align:right;">${(c.overallFactor || 0).toFixed(2)}x</td>
+            <td style="text-align:right; color:var(--text-dim);">${totalCost}</td>
+            <td style="text-align:right; color:${parseFloat(pp) >= 100 ? '#4ade80' : parseFloat(pp) > 0 ? '#f59e0b' : 'var(--text-dim)'};">${pp}</td>
             <td style="text-align:right; font-weight:600; color:#4ade80;">${formatMoney(c.equivalentSalary)}</td>
             <td style="text-align:right; color:#60a5fa;">${formatMoney(c.elEquivalent)}</td>
             <td><button class="delete-row-btn" onclick="deleteCOLCity(${realIdx})" title="Remove">&#10005;</button></td>
@@ -288,6 +292,26 @@ async function deleteCOLCity(index) {
             fetchCostOfLiving();
         }
     } catch(e) { showAlert('Failed to delete', 'error'); }
+}
+
+async function upgradeCOLFromApi() {
+    const btn = document.getElementById('colUpgradeBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Upgrading...'; }
+    try {
+        const resp = await fetch('/api/cost-of-living/upgrade', { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            showSaveToast(`Upgraded ${data.upgraded} cities with API data`);
+            allCOLData = data.costOfLiving || [];
+            renderCOLKpis();
+            renderCOLChart();
+            const activeType = document.querySelector('#colFilters .filter-btn.active');
+            filterCOL(activeType?.dataset?.type || 'all');
+        } else {
+            showAlert(data.error || 'Upgrade failed', 'error');
+        }
+    } catch(e) { showAlert('Upgrade failed: ' + e.message, 'error'); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = 'Upgrade from API'; } }
 }
 
 // ── Cost of Living API Integration ──────────────────
