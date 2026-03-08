@@ -488,10 +488,10 @@ function renderAnalyzerHeader(d) {
     const s = v.summary;
     return `
         <div class="analyzer-header">
-            <span class="ticker-badge">${d.ticker}</span>
+            <span class="ticker-badge">${escapeHtml(d.ticker)}</span>
             <div>
-                <h2>${d.name}</h2>
-                <span style="color: var(--text-dim); font-size: 0.85rem;">${d.sector || ''} ${d.industry ? '· ' + d.industry : ''}</span>
+                <h2>${escapeHtml(d.name)}</h2>
+                <span style="color: var(--text-dim); font-size: 0.85rem;">${escapeHtml(d.sector || '')} ${d.industry ? '· ' + escapeHtml(d.industry) : ''}</span>
             </div>
             <div style="margin-left: auto; text-align: right;">
                 <div style="font-size: 1.6rem; font-weight: 700;">${formatMoney(d.price)}</div>
@@ -504,7 +504,7 @@ function renderAnalyzerHeader(d) {
             </div>` : ''}
             ${d.recommendationKey ? `<div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
                 <span style="font-size:0.65rem; text-transform:uppercase; color:var(--text-dim); letter-spacing:0.5px;">Wall St. Analysts (${d.analystConsensus ? d.analystConsensus.numberOfAnalysts : ''})</span>
-                <span class="rec-badge" style="background:${rc.bg}; color:${rc.fg}; font-size:1rem; font-weight:700; padding:6px 20px; border-radius:6px;">${d.recommendationKey.replace('_',' ')}</span>
+                <span class="rec-badge" style="background:${rc.bg}; color:${rc.fg}; font-size:1rem; font-weight:700; padding:6px 20px; border-radius:6px;">${escapeHtml(d.recommendationKey.replace('_',' '))}</span>
             </div>` : ''}
             ${d.analystConsensus && d.analystConsensus.targetMean ? `<div style="display:flex; flex-direction:column; align-items:center; gap:2px; margin-left:auto;">
                 <span style="font-size:0.65rem; text-transform:uppercase; color:var(--text-dim); letter-spacing:0.5px;">Analyst Target</span>
@@ -717,7 +717,7 @@ function renderInvtScore(data) {
         </div>
         <div style="flex:1; min-width:200px;">
             <div style="display:flex; align-items:center; gap:10px;">
-                <div style="font-size:1.1rem; font-weight:700; color:${c}; margin-bottom:4px;">${data.label}</div>
+                <div style="font-size:1.1rem; font-weight:700; color:${c}; margin-bottom:4px;">${escapeHtml(data.label)}</div>
                 <button onclick="loadInvtScore(true)" title="Refresh" style="background:none; border:1px solid var(--border); border-radius:6px; padding:4px 8px; cursor:pointer; color:var(--text-dim); font-size:0.75rem; line-height:1;">&#x21bb;</button>
             </div>
             <div style="display:flex; gap:16px; font-size:0.82rem; color:var(--text-dim);">
@@ -731,7 +731,7 @@ function renderInvtScore(data) {
             </div>` : ''}
             <div style="font-size:0.75rem; color:var(--text-dim); margin-top:6px; display:flex; gap:12px; flex-wrap:wrap;">
                 <span>${data.years ? data.years[0] + '–' + data.years[data.years.length - 1] : ''} (${data.years ? data.years.length : 0} yr)</span>
-                <span>Source: <strong style="color:var(--text);">${data.dataSource}</strong></span>
+                <span>Source: <strong style="color:var(--text);">${escapeHtml(data.dataSource)}</strong></span>
                 ${updatedStr ? `<span>Updated: ${updatedStr}</span>` : ''}
             </div>
         </div>
@@ -761,19 +761,19 @@ function renderInvtScore(data) {
                 if (sc == null) {
                     return prefix + `<div style="margin-bottom:14px; opacity:0.4;">
                         <div style="display:flex; justify-content:space-between; font-size:0.82rem; margin-bottom:4px;">
-                            <span style="color:var(--text);">${cat.label}</span>
-                            <span style="font-size:0.72rem; color:var(--text-dim);">${cat.note || 'Insufficient data'}</span>
+                            <span style="color:var(--text);">${escapeHtml(cat.label)}</span>
+                            <span style="font-size:0.72rem; color:var(--text-dim);">${escapeHtml(cat.note || 'Insufficient data')}</span>
                         </div>
                         <div style="background:rgba(255,255,255,0.06); border-radius:6px; height:10px;"></div>
                     </div>`;
                 }
                 const col = _invtScoreColor(sc);
                 const infoNote = isInfo ? ` <span style="font-size:0.68rem; color:var(--text-dim); font-weight:400;">(not in overall)</span>` : '';
-                const noteStr = cat.note ? `<div style="font-size:0.68rem; color:var(--text-dim); margin-top:1px;">${cat.note}</div>` : '';
+                const noteStr = cat.note ? `<div style="font-size:0.68rem; color:var(--text-dim); margin-top:1px;">${escapeHtml(cat.note)}</div>` : '';
                 const barStyle = isInfo ? 'border:1px dashed rgba(255,255,255,0.15);' : '';
                 return prefix + `<div style="margin-bottom:14px;${isInfo ? ' opacity:0.75;' : ''}">
                     <div style="display:flex; justify-content:space-between; font-size:0.82rem; margin-bottom:4px;">
-                        <span style="color:var(--text);">${cat.label}${infoNote}</span>
+                        <span style="color:var(--text);">${escapeHtml(cat.label)}${infoNote}</span>
                         <span style="font-weight:700; color:${col};">${Number(sc).toFixed(1)}</span>
                     </div>
                     <div style="background:rgba(255,255,255,0.06); border-radius:6px; height:10px; overflow:hidden;${barStyle}">
@@ -801,10 +801,10 @@ function renderInvtScore(data) {
         const scoreLabel = sc != null ? `<span style="color:${scCol};">${Number(sc).toFixed(1)}</span>` : `<span style="color:var(--text-dim);">—</span>`;
         const infoTag = isInfo ? ` <span style="font-size:0.68rem; color:var(--text-dim); font-weight:400;">(informational)</span>` : '';
         const sectionBorder = isInfo ? ' border-style:dashed;' : '';
-        const noteStr = cat.note ? `<p style="color:var(--text-dim); font-size:0.8rem; padding:4px 0 0;">${cat.note}</p>` : '';
+        const noteStr = cat.note ? `<p style="color:var(--text-dim); font-size:0.8rem; padding:4px 0 0;">${escapeHtml(cat.note)}</p>` : '';
 
         html += `<div class="analyzer-section" style="margin-bottom:16px;${sectionBorder}">
-            <div class="analyzer-section-title" style="color:${col};">${cat.label}${infoTag} — ${scoreLabel}</div>
+            <div class="analyzer-section-title" style="color:${col};">${escapeHtml(cat.label)}${infoTag} — ${scoreLabel}</div>
             ${noteStr}
             <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px;">
                 ${charts.map(ch => {
@@ -834,7 +834,7 @@ function renderInvtScore(data) {
         const scDisplay = cat.score != null ? `<span style="color:${_invtScoreColor(cat.score)};">${Number(cat.score).toFixed(1)}</span>` : `<span style="color:var(--text-dim);">—</span>`;
         const infoTag = isInfo ? ' <span style="font-size:0.68rem; color:var(--text-dim);">(informational)</span>' : '';
         html += `<div class="analyzer-section"${styleAttr}>
-            <div class="analyzer-section-title">${cat.label}${infoTag} — ${scDisplay}</div>
+            <div class="analyzer-section-title">${escapeHtml(cat.label)}${infoTag} — ${scDisplay}</div>
             <table class="fcf-table">
                 <thead><tr><th>Metric</th><th>10yr</th><th>5yr</th><th>Score</th></tr></thead>
                 <tbody>`;
@@ -1247,8 +1247,8 @@ function renderAnalyzerRelative(d) {
                 <tbody>
                     ${pc.peers.map((p, i) => `<tr>
                         <td><input type="checkbox" class="rel-peer-cb" data-idx="${i}" checked onchange="relUpdatePeerAvg()"></td>
-                        <td style="font-weight:600; color:var(--accent);">${p.ticker}</td>
-                        <td style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${p.name || ''}</td>
+                        <td style="font-weight:600; color:var(--accent);">${escapeHtml(p.ticker)}</td>
+                        <td style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(p.name || '')}</td>
                         <td style="text-align:right;">${fmt(p.pe)}</td>
                         <td style="text-align:right;">${fmt(p.evEbitda)}</td>
                         <td style="text-align:right;">${fmt(p.pb)}</td>
@@ -1280,7 +1280,7 @@ function renderAnalyzerRelative(d) {
     html += `
         <div class="valuation-card">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <div class="valuation-card-title" style="margin-bottom:0;">Implied Fair Value — ${rel.sector || 'Market Average'}</div>
+                <div class="valuation-card-title" style="margin-bottom:0;">Implied Fair Value — ${escapeHtml(rel.sector || 'Market Average')}</div>
                 ${!hasPeers ? '<span style="font-size:0.72rem; color:var(--text-dim);">Sector defaults (no peer data)</span>' : ''}
             </div>
             <table class="fcf-table">

@@ -60,7 +60,7 @@ function renderIncomeRank(positions, totalReceived) {
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border);">
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span style="color: var(--text-dim); font-size: 12px; width: 24px;">${i + 1}${i === 0 ? 'st' : i === 1 ? 'nd' : i === 2 ? 'rd' : 'th'}</span>
-                        <strong>${p.ticker}</strong>
+                        <strong>${escapeHtml(p.ticker)}</strong>
                     </div>
                     <span style="font-weight: 600;">${formatMoney(p.totalDivsReceived)}</span>
                 </div>
@@ -238,7 +238,7 @@ function renderDividendLog(data) {
                 <div class="table-wrapper"><table style="font-size: 0.82rem;">
                     <thead><tr>
                         <th style="min-width:80px;">Month</th>
-                        ${logTickers.map(t => `<th style="min-width:60px; text-align:right;">${t === 'cashInterest' ? 'Cash Int.' : t}</th>`).join('')}
+                        ${logTickers.map(t => `<th style="min-width:60px; text-align:right;">${t === 'cashInterest' ? 'Cash Int.' : escapeHtml(t)}</th>`).join('')}
                         <th style="min-width:70px; text-align:right; font-weight:700;">Total</th>
                     </tr></thead>
                     <tbody>`;
@@ -255,7 +255,7 @@ function renderDividendLog(data) {
                     <input type="number" step="0.01" value="${val || ''}" placeholder="—"
                         style="width: 60px; text-align: right; background: transparent; border: 1px solid transparent; color: ${val > 0 ? '#4ade80' : 'var(--text-dim)'}; padding: 3px 4px; border-radius: 4px; font-size: 0.82rem;"
                         onfocus="this.style.borderColor='var(--accent)'; this.style.background='var(--card-hover)';"
-                        onblur="this.style.borderColor='transparent'; this.style.background='transparent'; saveDividendCell(${year}, '${entry.month}', '${t}', this.value)"
+                        onblur="this.style.borderColor='transparent'; this.style.background='transparent'; saveDividendCell(${year}, '${escapeHtml(entry.month)}', '${escapeHtml(t)}', this.value)"
                         onkeydown="if(event.key==='Enter'){this.blur();}"
                     />
                 </td>`;
@@ -539,8 +539,8 @@ function renderMonthlyTrackerStats(stats) {
     const twrColor = s.timeWeightedReturn >= 0 ? '#22c55e' : '#ef4444';
     const mgColor = s.totalMarketGains >= 0 ? '#22c55e' : '#ef4444';
     kpis.innerHTML = `
-        <div class="kpi-card"><div class="kpi-label">Best Month</div><div class="kpi-value positive">${formatPercent(s.bestMonth.return)}</div><div class="kpi-sub">${s.bestMonth.month}</div></div>
-        <div class="kpi-card"><div class="kpi-label">Worst Month</div><div class="kpi-value negative">${formatPercent(s.worstMonth.return)}</div><div class="kpi-sub">${s.worstMonth.month}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Best Month</div><div class="kpi-value positive">${formatPercent(s.bestMonth.return)}</div><div class="kpi-sub">${escapeHtml(s.bestMonth.month)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Worst Month</div><div class="kpi-value negative">${formatPercent(s.worstMonth.return)}</div><div class="kpi-sub">${escapeHtml(s.worstMonth.month)}</div></div>
         <div class="kpi-card"><div class="kpi-label">Average Month</div><div class="kpi-value" style="color:${avgColor}">${formatPercent(s.avgMonthlyReturn)}</div></div>
         <div class="kpi-card"><div class="kpi-label">Positive Months</div><div class="kpi-value positive">${s.positiveMonths}</div></div>
         <div class="kpi-card"><div class="kpi-label">Negative Months</div><div class="kpi-value negative">${s.negativeMonths}</div></div>
@@ -548,7 +548,7 @@ function renderMonthlyTrackerStats(stats) {
         <div class="kpi-card"><div class="kpi-label">Total Contributions</div><div class="kpi-value">${formatMoney(s.totalContributions)}</div></div>
         <div class="kpi-card"><div class="kpi-label">Total Market Gains</div><div class="kpi-value" style="color:${mgColor}">${formatMoney(s.totalMarketGains)}</div></div>
         <div class="kpi-card"><div class="kpi-label">Total Dividends</div><div class="kpi-value positive">${formatMoney(s.totalDividends)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">Time-Weighted Return</div><div class="kpi-value" style="color:${twrColor}">${s.timeWeightedReturn.toFixed(1)}%</div><div class="kpi-sub">Max DD: ${s.maxDrawdown.toFixed(1)}% ${s.maxDrawdownPeriod ? '(' + s.maxDrawdownPeriod + ')' : ''}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Time-Weighted Return</div><div class="kpi-value" style="color:${twrColor}">${s.timeWeightedReturn.toFixed(1)}%</div><div class="kpi-sub">Max DD: ${s.maxDrawdown.toFixed(1)}% ${s.maxDrawdownPeriod ? '(' + escapeHtml(s.maxDrawdownPeriod) + ')' : ''}</div></div>
     `;
 
     // Monthly returns chart

@@ -14,9 +14,9 @@ function populatePositions() {
     const sectorFilter = document.getElementById('sectorFilter');
 
     categoryFilter.innerHTML = '<option value="">All Categories</option>' +
-        categories.map(c => `<option value="${c}">${c}</option>`).join('');
+        categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
     sectorFilter.innerHTML = '<option value="">All Sectors</option>' +
-        sectors.map(s => `<option value="${s}">${s}</option>`).join('');
+        sectors.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
 
     // Set default signal mode from settings
     const signalModeSelect = document.getElementById('signalMode');
@@ -47,10 +47,10 @@ function renderPositionsTable(positions) {
         const distDisplay = useIV && !p.intrinsicValue ? '—' : formatPercent(dist);
 
         return `<tr>
-            <td><strong>${p.ticker}</strong></td>
-            <td>${p.company}</td>
-            <td class="editable" onclick="editCell(this, '${p.ticker}', 'shares', ${p.shares}, 'number')">${parseFloat(p.shares).toFixed(3)}</td>
-            <td class="editable" onclick="editCell(this, '${p.ticker}', 'avgCost', ${p.avgCost}, 'number')">${formatMoney(p.avgCost)}</td>
+            <td><strong>${escapeHtml(p.ticker)}</strong></td>
+            <td>${escapeHtml(p.company)}</td>
+            <td class="editable" onclick="editCell(this, '${escapeHtml(p.ticker)}', 'shares', ${p.shares}, 'number')">${parseFloat(p.shares).toFixed(3)}</td>
+            <td class="editable" onclick="editCell(this, '${escapeHtml(p.ticker)}', 'avgCost', ${p.avgCost}, 'number')">${formatMoney(p.avgCost)}</td>
             <td>${formatMoney(p.price)}</td>
             <td class="${(p.dayChangeShare||0) >= 0 ? 'positive' : 'negative'}">${formatMoney(p.dayChangeShare)}</td>
             <td class="${(p.dayChangePct||0) >= 0 ? 'positive' : 'negative'}">${formatPercent(p.dayChangePct)}</td>
@@ -71,9 +71,9 @@ function renderPositionsTable(positions) {
             <td style="text-align:right;">${p.invtScore ? `<span style="color:${_invtScoreColor(p.invtScore)};font-weight:600">${Number(p.invtScore).toFixed(1)}</span>` : '—'}</td>
             <td class="${distClass}">${distDisplay}</td>
             <td>${getSignalBadge(signal)}</td>
-            <td class="editable" onclick="editCellSelect(this, '${p.ticker}', 'category', '${p.category}', ${JSON.stringify(categories).replace(/"/g, '&quot;')})">${getCategoryBadge(p.category)}</td>
-            <td class="editable" onclick="editCell(this, '${p.ticker}', 'sector', '${p.sector}', 'text')">${p.sector}</td>
-            <td><button class="delete-row-btn" onclick="deletePosition('${p.ticker}')" title="Remove position">✕</button></td>
+            <td class="editable" onclick="editCellSelect(this, '${escapeHtml(p.ticker)}', 'category', '${escapeHtml(p.category)}', ${JSON.stringify(categories).replace(/"/g, '&quot;')})">${getCategoryBadge(p.category)}</td>
+            <td class="editable" onclick="editCell(this, '${escapeHtml(p.ticker)}', 'sector', '${escapeHtml(p.sector)}', 'text')">${escapeHtml(p.sector)}</td>
+            <td><button class="delete-row-btn" onclick="deletePosition('${escapeHtml(p.ticker)}')" title="Remove position">✕</button></td>
         </tr>`;
     }).join('');
 
