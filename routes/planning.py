@@ -223,6 +223,7 @@ def api_col_check_cities():
         "ok": True,
         "totalAll": result["totalAll"],
         "totalUS": result["totalUS"],
+        "totalCountries": result.get("totalCountries", 0),
         "newCities": result["newCities"],
         "newCount": len(result["newCities"]),
     })

@@ -330,11 +330,11 @@ async function refreshCOLData() {
             return;
         }
 
-        const { totalAll, totalUS, newCount, newCities } = checkData;
+        const { totalAll, totalUS, totalCountries, newCount, newCities } = checkData;
         if (newCount > 0) {
             showSaveToast(`${newCount} new US cities detected: ${newCities.join(', ')}`);
         } else {
-            showSaveToast(`City list checked (${totalUS} US / ${totalAll} global). Updating data...`);
+            showSaveToast(`City list checked (${totalUS} US / ${totalAll} global across ${totalCountries} countries). Updating data...`);
         }
 
         // Phase 2: always fetch details (data may have changed) — wait 60s for rate limit

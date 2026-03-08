@@ -1,8 +1,12 @@
 """InvToolkit — RapidAPI Cost of Living data service.
 
 Fetches city-level cost data from the ditno Cities Cost of Living API
-and persists to col_data.json.  Follows the 13F history pattern
-(separate JSON file, module-level state, startup loader).
+and persists to col_data.json (normalized) + col_raw.json (raw responses).
+Follows the 13F history pattern (separate JSON, module-level state, startup loader).
+
+Refresh is 2-phase to conserve the 5 calls/month budget:
+  Phase 1 (check-cities): GET city list → detect new cities, store global list.
+  Phase 2 (fetch-details): POST bulk details → update data, save raw backup.
 """
 
 import json
@@ -13,6 +17,7 @@ import requests as http_requests
 
 from config import (
     COL_DATA_FILE,
+    COL_RAW_FILE,
     RAPIDAPI_COL_HOST,
     RAPIDAPI_COL_URL,
     RAPIDAPI_COL_CITIES_URL,
@@ -21,7 +26,7 @@ from services.data_store import get_settings
 
 # ── Module-level state (loaded at startup) ────────────────────────────
 
-_col_data = {}  # {"cities": [...], "fetchedAt": "...", "cityCount": N}
+_col_data = {}  # {"cities": [...], "cityNames": [...], "globalCityList": [...], ...}
 
 
 def _get_rapidapi_key():
@@ -47,25 +52,42 @@ def load_col_data():
 
 
 def _save_col_data():
-    """Persist COL data to disk."""
+    """Persist normalized COL data to disk."""
     try:
         COL_DATA_FILE.write_text(json.dumps(_col_data, default=str))
     except Exception as e:
         print(f"[COL] Failed to save data: {e}")
 
 
+def _save_raw(data, label=""):
+    """Persist raw API response to col_raw.json for future formula improvements."""
+    try:
+        # Load existing raw data and append/update
+        existing = {}
+        if COL_RAW_FILE.exists():
+            existing = json.loads(COL_RAW_FILE.read_text())
+        existing[label] = {"data": data, "savedAt": datetime.now().isoformat()}
+        COL_RAW_FILE.write_text(json.dumps(existing, default=str))
+        print(f"[COL] Saved raw '{label}' to {COL_RAW_FILE}")
+    except Exception as e:
+        print(f"[COL] Failed to save raw data: {e}")
+
+
 # ── Public accessors ──────────────────────────────────────────────────
 
 def get_col_cities():
-    """Return the stored list of API cities (or empty list)."""
+    """Return the stored list of normalized API cities (or empty list)."""
     return _col_data.get("cities", [])
 
 
 def get_col_metadata():
     """Return metadata about the stored COL data."""
+    global_list = _col_data.get("globalCityList", [])
+    countries = set(c.get("country", "") for c in global_list if isinstance(c, dict))
     return {
         "cityCount": len(_col_data.get("cities", [])),
-        "totalKnownCities": _col_data.get("totalKnownCities", 0),
+        "totalKnownCities": len(global_list),
+        "totalCountries": len(countries),
         "usCityCount": len(_col_data.get("cityNames", [])),
         "fetchedAt": _col_data.get("fetchedAt"),
         "newCitiesAdded": _col_data.get("newCitiesAdded", 0),
@@ -90,10 +112,11 @@ def lookup_city(city_name):
 # ── Fetch from RapidAPI ───────────────────────────────────────────────
 
 def check_for_new_cities():
-    """Phase 1: GET /get_cities_list to discover if new US cities exist.
+    """Phase 1: GET /get_cities_list — discover all cities globally.
 
-    Compares against stored city names.  Uses 1 API call.
-    Returns dict: {newCities: [...], totalAll, totalUS, usNames, error}.
+    Stores the full global city list, extracts US names, compares
+    against stored names to detect new additions.  Uses 1 API call.
+    Returns dict: {newCities, totalAll, totalUS, totalCountries, usNames, error}.
     """
     from services.api_health import record_api_call
 
@@ -109,7 +132,7 @@ def check_for_new_cities():
         if r.status_code != 200:
             record_api_call("rapidapi", success=False, latency_ms=latency,
                             error_msg=f"HTTP {r.status_code}")
-            return {"error": f"Cities list HTTP {r.status_code}"}
+            return {"error": f"Cities list HTTP {r.status_code}: {r.text[:200]}"}
 
         data = r.json()
         record_api_call("rapidapi", success=True, latency_ms=latency)
@@ -118,14 +141,23 @@ def check_for_new_cities():
             return {"error": data["message"]}
 
         all_cities = data.get("cities", data) if isinstance(data, dict) else data
+
+        # Save raw global list
+        _save_raw(all_cities, "cityList")
+
+        # Extract US cities
         us_names = sorted(c["name"] for c in all_cities
                           if isinstance(c, dict) and c.get("country") == "United States")
 
-        # Compare against what we already have
+        # Count countries
+        countries = set(c.get("country", "") for c in all_cities if isinstance(c, dict))
+
+        # Compare against cached
         cached_names = set(_col_data.get("cityNames", []))
         new_names = [n for n in us_names if n not in cached_names]
 
-        # Store the full global list count + updated US names (even before fetch)
+        # Store the full global list + updated US names
+        _col_data["globalCityList"] = all_cities
         _col_data["totalKnownCities"] = len(all_cities)
         _col_data["cityNames"] = us_names
         _save_col_data()
@@ -133,6 +165,7 @@ def check_for_new_cities():
         return {
             "totalAll": len(all_cities),
             "totalUS": len(us_names),
+            "totalCountries": len(countries),
             "newCities": new_names,
             "usNames": us_names,
         }
@@ -143,11 +176,12 @@ def check_for_new_cities():
         return {"error": str(e)}
 
 
-def fetch_city_details(us_city_names=None):
-    """Phase 2: POST bulk-fetch details for all US cities.
+def fetch_city_details(city_names=None):
+    """Phase 2: POST bulk-fetch details for all cities.
 
-    Uses stored cityNames if none provided.  Uses 1 API call.
-    Returns (cities_list, error_string_or_None).
+    Uses stored cityNames (US) if none provided.  Saves raw response
+    to col_raw.json for future formula improvements.  Uses 1 API call.
+    Returns (normalized_cities_list, error_string_or_None).
     """
     from services.api_health import record_api_call
 
@@ -155,9 +189,9 @@ def fetch_city_details(us_city_names=None):
     if not key:
         return None, "No RapidAPI key configured."
 
-    if not us_city_names:
-        us_city_names = _col_data.get("cityNames", [])
-    if not us_city_names:
+    if not city_names:
+        city_names = _col_data.get("cityNames", [])
+    if not city_names:
         return None, "No city names available. Run 'Check for cities' first."
 
     headers = {
@@ -166,13 +200,13 @@ def fetch_city_details(us_city_names=None):
         "Content-Type": "application/x-www-form-urlencoded",
     }
     payload = {
-        "cities": json.dumps([{"name": n, "country": "United States"} for n in us_city_names]),
+        "cities": json.dumps([{"name": n, "country": "United States"} for n in city_names]),
         "currencies": json.dumps(["USD"]),
     }
 
     start = time.time()
     try:
-        r = http_requests.post(RAPIDAPI_COL_URL, headers=headers, data=payload, timeout=90)
+        r = http_requests.post(RAPIDAPI_COL_URL, headers=headers, data=payload, timeout=120)
         latency = int((time.time() - start) * 1000)
 
         if r.status_code != 200:
@@ -187,6 +221,10 @@ def fetch_city_details(us_city_names=None):
             return None, raw["message"]
 
         raw_cities = raw.get("data", raw) if isinstance(raw, dict) else raw
+
+        # Save raw response for future formula improvements
+        _save_raw(raw_cities, "cityDetails")
+
         new_cities = _normalize_cities(raw_cities)
 
         # Merge: keep existing cities updated, add new ones
@@ -197,15 +235,16 @@ def fetch_city_details(us_city_names=None):
             if city["name"] not in existing:
                 new_count += 1
             merged.append(city)  # Fresh data replaces stale entries
-        # Keep any previously-stored cities no longer in the API
+        # Keep any previously-stored cities no longer returned by API
+        fetched_names = {c["name"] for c in new_cities}
         for name, city in existing.items():
-            if name not in {c["name"] for c in new_cities}:
+            if name not in fetched_names:
                 merged.append(city)
         merged.sort(key=lambda c: c["name"])
 
         _col_data.update({
             "cities": merged,
-            "cityNames": us_city_names,
+            "cityNames": city_names,
             "fetchedAt": datetime.now().isoformat(),
             "cityCount": len(merged),
             "newCitiesAdded": new_count,

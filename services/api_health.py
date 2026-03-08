@@ -31,9 +31,14 @@ def record_api_call(api_name, success, latency_ms=None, error_msg=None):
             h["status"] = "ok"
             h["lastSuccess"] = now
         else:
-            h["status"] = "error"
+            msg = error_msg or ""
+            # Detect monthly quota exhaustion for RapidAPI
+            if api_name == "rapidapi" and "MONTHLY" in msg.upper():
+                h["status"] = "exhausted"
+            else:
+                h["status"] = "error"
             h["lastError"] = now
-            h["lastErrorMsg"] = error_msg or ""
+            h["lastErrorMsg"] = msg
         # Track FMP quota
         if api_name == "fmp":
             _check_quota_reset()

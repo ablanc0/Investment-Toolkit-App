@@ -558,14 +558,14 @@ function renderApiHealthTable(data) {
 
     const apis = [
         { key: 'fmp', name: 'FMP (Financial Modeling Prep) — 250 calls/day', icon: '📈' },
-        { key: 'yfinance', name: 'Yahoo Finance', icon: '📊' },
-        { key: 'fred', name: 'FRED (AAA Bond Yield)', icon: '🏛' },
-        { key: 'edgar', name: 'SEC EDGAR', icon: '📋' },
-        { key: 'rapidapi', name: 'RapidAPI (Cost of Living)', icon: '🏙' },
+        { key: 'yfinance', name: 'Yahoo Finance — no limit', icon: '📊' },
+        { key: 'fred', name: 'FRED (AAA Bond Yield) — no limit', icon: '🏛' },
+        { key: 'edgar', name: 'SEC EDGAR — no limit', icon: '📋' },
+        { key: 'rapidapi', name: 'RapidAPI (Cost of Living) — 5 calls/month', icon: '🏙' },
     ];
 
     const dotColor = (status) => {
-        const colors = { ok: '#22c55e', degraded: '#f59e0b', error: '#ef4444', unknown: '#6b7280' };
+        const colors = { ok: '#22c55e', degraded: '#f59e0b', error: '#ef4444', exhausted: '#a855f7', unknown: '#6b7280' };
         return colors[status] || colors.unknown;
     };
 
