@@ -246,8 +246,10 @@ def api_annual_data():
     dividend_log = portfolio.get("dividendLog", [])
     existing_annual = portfolio.get("annualData", [])
 
-    # Fetch live S&P 500 annual returns from yfinance
-    sp500_map = fetch_sp500_annual_returns()
+    # Fetch live S&P 500 annual returns from yfinance (returns %, e.g. 23.31)
+    # Convert to decimal (0.2331) to match stored format used by frontend
+    sp500_live = fetch_sp500_annual_returns()
+    sp500_map = {y: round(r / 100, 6) for y, r in sp500_live.items()}
 
     # Fallback to stored data for any years not covered by live data
     for item in existing_annual:
