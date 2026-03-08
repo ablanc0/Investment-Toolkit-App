@@ -825,41 +825,14 @@
                             <button class="filter-btn" data-type="Downtown" onclick="filterCOL('Downtown', this)">Downtown</button>
                             <button class="filter-btn" data-type="Suburban" onclick="filterCOL('Suburban', this)">Suburban</button>
                         </div>
-                        <button class="btn-primary" id="addCOLBtn" onclick="showAddCOLForm()" style="font-size: 0.82rem; padding: 6px 12px;">+ Manual</button>
-                        <button class="btn-primary" id="addCOLApiBtn" onclick="showAddCOLApiForm()" style="font-size: 0.82rem; padding: 6px 12px; background: var(--accent);">+ API City</button>
-                    </div>
-                </div>
-                <!-- Add City Form (hidden) -->
-                <div id="addCOLForm" style="display:none; padding: 12px; background: var(--card-hover); border-radius: 8px; margin-bottom: 12px;">
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; align-items: end;">
-                        <div><label class="form-label">Metro</label>
-                            <input type="text" id="newCOLMetro" class="form-input" placeholder="e.g. Chicago" style="font-size:0.82rem;"></div>
-                        <div><label class="form-label">Area</label>
-                            <input type="text" id="newCOLArea" class="form-input" placeholder="e.g. Loop" style="font-size:0.82rem;"></div>
-                        <div><label class="form-label">Type</label>
-                            <select id="newCOLType" class="form-input" style="font-size:0.82rem;">
-                                <option value="Downtown">Downtown</option>
-                                <option value="Suburban">Suburban</option>
-                            </select></div>
-                        <div><label class="form-label">Rent/mo</label>
-                            <input type="number" id="newCOLRent" class="form-input" placeholder="2500" style="font-size:0.82rem;"></div>
-                        <div><label class="form-label">Monthly Costs <span style="font-size:0.65rem; color:var(--text-dim);">(no rent)</span></label>
-                            <input type="number" id="newCOLMonthlyCosts" class="form-input" placeholder="e.g. 1200" style="font-size:0.82rem;"></div>
-                        <div style="display: flex; gap: 6px;">
-                            <button class="btn-primary" onclick="addCOLCity()" style="font-size:0.82rem;">Add</button>
-                            <button class="btn-secondary" onclick="hideAddCOLForm()" style="font-size:0.82rem;">Cancel</button>
+                        <div style="position:relative;">
+                            <input type="text" id="addCityInput" class="form-input" style="font-size:0.82rem; width:200px; padding:5px 10px;" placeholder="Search city..." autocomplete="off" oninput="onCityInputSearch(this.value)">
+                            <div id="addCityResults" style="position:absolute; top:100%; right:0; width:340px; z-index:50; max-height:260px; overflow-y:auto; background:var(--card); border:1px solid var(--border); border-radius:6px; display:none; box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>
                         </div>
                     </div>
                 </div>
-                <!-- API City Search (hidden) -->
-                <div id="addCOLApiForm" style="display:none; padding: 12px; background: var(--card-hover); border-radius: 8px; margin-bottom: 12px;">
-                    <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
-                        <input type="text" id="colApiSearch" class="form-input" placeholder="Search API cities (e.g. Chicago, TX...)"
-                            style="flex:1; font-size:0.82rem;" oninput="onCOLCitySearch(this.value)">
-                        <button class="btn-secondary" onclick="hideAddCOLApiForm()" style="font-size:0.82rem;">Cancel</button>
-                    </div>
-                    <div id="colApiResults" style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px;"></div>
-                </div>
+                <!-- Manual entry fields (shown when no API match) -->
+                <div id="addCityManualFields" style="display:none; padding:12px; background:var(--card-hover); border-radius:8px; margin-bottom:12px;"></div>
                 <div class="table-wrapper"><table style="font-size: 0.82rem;">
                     <thead><tr>
                         <th style="width:36px; text-align:center;" title="Compare"><input type="checkbox" checked onchange="toggleAllCOLCities(this.checked)" title="Toggle all"></th>

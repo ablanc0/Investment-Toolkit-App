@@ -549,42 +549,99 @@ function editCOLCell(td, metro, field, currentValue) {
     });
 }
 
-function showAddCOLForm() {
-    document.getElementById('addCOLBtn').style.display = 'none';
-    document.getElementById('addCOLApiBtn').style.display = 'none';
-    document.getElementById('addCOLForm').style.display = 'block';
-    document.getElementById('addCOLApiForm').style.display = 'none';
-    document.getElementById('newCOLMetro').focus();
+function hideAddCityResults() {
+    const results = document.getElementById('addCityResults');
+    const manual = document.getElementById('addCityManualFields');
+    const input = document.getElementById('addCityInput');
+    if (results) results.style.display = 'none';
+    if (manual) manual.style.display = 'none';
+    if (input) input.value = '';
 }
 
-function hideAddCOLForm() {
-    document.getElementById('addCOLBtn').style.display = 'inline-flex';
-    document.getElementById('addCOLApiBtn').style.display = 'inline-flex';
-    document.getElementById('addCOLForm').style.display = 'none';
+function onCityInputSearch(query) {
+    const results = document.getElementById('addCityResults');
+    if (!results) return;
+    const q = query.trim().toLowerCase();
+    if (q.length < 2) { results.style.display = 'none'; return; }
+    const existing = new Set(allCOLData.map(c => c.metro.toLowerCase()));
+    const br = colConfig.bedroomCount || 1;
+    const loc = colConfig.locationType || 'city';
+    const rentKey = `rent${br}br${loc === 'city' ? 'City' : 'Suburb'}`;
+    const matches = colApiCities
+        .filter(c => c.name.toLowerCase().includes(q) && !existing.has(c.name.toLowerCase()))
+        .slice(0, 8);
+    if (matches.length === 0) {
+        results.innerHTML = `<div style="padding:10px; font-size:0.82rem; color:var(--text-muted);">No match found — <a href="#" onclick="showManualFields('${q}'); return false;" style="color:var(--accent);">add manually</a></div>`;
+        results.style.display = 'block';
+        return;
+    }
+    results.innerHTML = matches.map(c => {
+        const rent = c[rentKey] || 0;
+        const nameEsc = c.name.replace(/'/g, "\\'");
+        return `<div style="padding:8px 12px; cursor:pointer; font-size:0.82rem; border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''" onclick="selectCityResult('${nameEsc}')">
+            <strong>${c.name}</strong>, ${c.state || c.country} <span style="color:var(--text-muted); margin-left:8px;">$${rent.toLocaleString()}/mo · COL ${c.colIndex}</span></div>`;
+    }).join('');
+    if (matches.length > 0) {
+        results.innerHTML += `<div style="padding:8px 12px; cursor:pointer; font-size:0.82rem; color:var(--text-muted);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''" onclick="showManualFields('${q}')">Enter manually...</div>`;
+    }
+    results.style.display = 'block';
 }
 
-async function addCOLCity() {
-    const metro = document.getElementById('newCOLMetro').value.trim();
-    const area = document.getElementById('newCOLArea').value.trim();
-    const type = document.getElementById('newCOLType').value;
-    const rent = parseFloat(document.getElementById('newCOLRent').value);
-    const monthlyCosts = parseFloat(document.getElementById('newCOLMonthlyCosts')?.value) || 0;
-    if (!metro) { showAlert('Enter a metro name', 'error'); return; }
+function selectCityResult(name) {
+    const city = colApiCities.find(c => c.name === name);
+    if (!city) return;
+    const br = colConfig.bedroomCount || 1;
+    const loc = colConfig.locationType || 'city';
+    const rentKey = `rent${br}br${loc === 'city' ? 'City' : 'Suburb'}`;
+    const rent = city[rentKey] || 0;
+    const type = loc === 'city' ? 'Downtown' : 'Suburban';
+    hideAddCityResults();
+    addCOLApiCity(city.name, city.state || '', type, rent, 1.0, city);
+}
+
+function showManualFields(prefill) {
+    const results = document.getElementById('addCityResults');
+    const input = document.getElementById('addCityInput');
+    if (results) results.style.display = 'none';
+    if (input) input.value = '';
+    const container = document.getElementById('addCityManualFields');
+    if (!container) return;
+    const cityName = prefill ? prefill.charAt(0).toUpperCase() + prefill.slice(1) : '';
+    container.innerHTML = `<div style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
+        <div><label class="form-label">City</label>
+            <input type="text" id="addCityManualName" class="form-input" value="${cityName}" style="font-size:0.82rem; width:150px;"></div>
+        <div><label class="form-label">Area</label>
+            <input type="text" id="addCityManualArea" class="form-input" placeholder="e.g. IL" style="font-size:0.82rem; width:60px;"></div>
+        <div><label class="form-label">Type</label>
+            <select id="addCityManualType" class="form-input" style="font-size:0.82rem;">
+                <option value="Downtown">Downtown</option><option value="Suburban">Suburban</option></select></div>
+        <div><label class="form-label">Rent/mo</label>
+            <input type="number" id="addCityManualRent" class="form-input" placeholder="2500" style="font-size:0.82rem; width:90px;"></div>
+        <div><label class="form-label">Costs/mo</label>
+            <input type="number" id="addCityManualCosts" class="form-input" placeholder="1200" style="font-size:0.82rem; width:90px;"></div>
+        <button class="btn-primary" onclick="submitManualCity()" style="font-size:0.82rem;">Add</button>
+        <button class="btn-secondary" onclick="hideAddCityResults()" style="font-size:0.82rem;">Cancel</button>
+    </div>`;
+    container.style.display = 'block';
+}
+
+async function submitManualCity() {
+    const metro = document.getElementById('addCityManualName')?.value.trim();
+    const area = document.getElementById('addCityManualArea')?.value.trim();
+    const type = document.getElementById('addCityManualType')?.value || 'Downtown';
+    const rent = parseFloat(document.getElementById('addCityManualRent')?.value);
+    const costs = parseFloat(document.getElementById('addCityManualCosts')?.value) || 0;
+    if (!metro) { showAlert('Enter a city name', 'error'); return; }
     if (isNaN(rent) || rent <= 0) { showAlert('Enter valid rent', 'error'); return; }
     try {
         const resp = await fetch('/api/cost-of-living/add', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ metro, area, type, rent, monthlyCostsNoRent: monthlyCosts, nonHousingMult: 1.0 })
+            body: JSON.stringify({ metro, area, type, rent, monthlyCostsNoRent: costs, nonHousingMult: 1.0, pinned: false })
         });
         const result = await resp.json();
         if (resp.ok) {
-            showSaveToast(`${metro} added`);
-            hideAddCOLForm();
-            document.getElementById('newCOLMetro').value = '';
-            document.getElementById('newCOLArea').value = '';
-            document.getElementById('newCOLRent').value = '';
-            const costsEl = document.getElementById('newCOLMonthlyCosts');
-            if (costsEl) costsEl.value = '';
+            showSaveToast(`${metro} added (check to keep)`);
+            hideAddCityResults();
             fetchCostOfLiving();
         } else {
             showAlert(result.error || 'Failed to add city', 'error');
@@ -701,60 +758,9 @@ async function refreshCOLData() {
     }
 }
 
-function showAddCOLApiForm() {
-    document.getElementById('addCOLBtn').style.display = 'none';
-    document.getElementById('addCOLApiBtn').style.display = 'none';
-    document.getElementById('addCOLForm').style.display = 'none';
-    document.getElementById('addCOLApiForm').style.display = 'block';
-    document.getElementById('colApiSearch').value = '';
-    document.getElementById('colApiResults').innerHTML = '';
-    document.getElementById('colApiSearch').focus();
-}
-
-function hideAddCOLApiForm() {
-    document.getElementById('addCOLBtn').style.display = 'inline-flex';
-    document.getElementById('addCOLApiBtn').style.display = 'inline-flex';
-    document.getElementById('addCOLApiForm').style.display = 'none';
-    window._selectedApiCity = null;
-}
-
-function onCOLCitySearch(query) {
-    const results = document.getElementById('colApiResults');
-    if (!results || query.length < 2) { if (results) results.innerHTML = ''; return; }
-    const q = query.toLowerCase();
-    const existing = new Set(allCOLData.map(c => c.metro.toLowerCase()));
-    const matches = colApiCities
-        .filter(c => (c.name.toLowerCase().includes(q) || (c.state || '').toLowerCase().includes(q)) && !existing.has(c.name.toLowerCase()))
-        .slice(0, 12);
-    if (!matches.length) {
-        results.innerHTML = '<div style="padding:8px; color:var(--text-dim); font-size:0.82rem;">No matches found</div>';
-        return;
-    }
-    results.innerHTML = matches.map((c, i) => {
-        const br = colConfig.bedroomCount || 1;
-        const loc = colConfig.locationType || 'city';
-        const rentKey = `rent${br}br${loc === 'city' ? 'City' : 'Suburb'}`;
-        const rent = c[rentKey] || 0;
-        return `<div style="padding:6px 10px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border);"
-            onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''"
-            onclick='selectCOLApiCity(${JSON.stringify(c).replace(/'/g, "&#39;")})'>
-            <span><strong>${c.name}</strong>${c.state ? ', ' + c.state : ''}</span>
-            <span style="font-size:0.78rem; color:var(--text-dim);">$${rent.toLocaleString()}/mo | COL ${c.colIndex}</span>
-        </div>`;
-    }).join('');
-}
-
-function selectCOLApiCity(city) {
-    const br = colConfig.bedroomCount || 1;
-    const loc = colConfig.locationType || 'city';
-    const rentKey = `rent${br}br${loc === 'city' ? 'City' : 'Suburb'}`;
-    const rent = city[rentKey] || 0;
-    const homeCol = colConfig.homeColIndex || 100;
-    const nhm = city.colIndex ? (city.colIndex / homeCol).toFixed(2) : '1.00';
-    // Add directly
-    window._selectedApiCity = city;
-    addCOLApiCity(city.name, city.state || '', loc === 'city' ? 'Downtown' : 'Suburban', rent, parseFloat(nhm), city);
-}
+// Legacy aliases
+function showAddCOLForm() {}
+function showAddCOLApiForm() {}
 
 async function addCOLApiCity(metro, area, type, rent, nonHousingMult, apiData) {
     try {
@@ -764,7 +770,7 @@ async function addCOLApiCity(metro, area, type, rent, nonHousingMult, apiData) {
         });
         if (resp.ok) {
             showSaveToast(`${metro} added (check to keep)`);
-            hideAddCOLApiForm();
+            hideAddCityResults();
             fetchCostOfLiving();
         }
     } catch(e) { showAlert('Failed to add city', 'error'); }
