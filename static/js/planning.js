@@ -469,11 +469,15 @@ function renderCOLChart() {
 function filterCOL(type, btn) {
     const tbody = document.getElementById('colBody');
     if (!tbody) return;
-    const filtered = type === 'all' ? allCOLData : allCOLData.filter(c => c.type === type);
-    if (btn) {
+    // Toggle: clicking active filter deselects it (shows all)
+    if (btn && btn.classList.contains('active')) {
+        btn.classList.remove('active');
+        type = 'all';
+    } else if (btn) {
         document.querySelectorAll('#colFilters .filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
+    const filtered = type === 'all' ? allCOLData : allCOLData.filter(c => c.type === type);
     tbody.innerHTML = filtered.sort((a, b) => a.rent - b.rent).map(c => {
         const metroEsc = c.metro.replace(/'/g, "\\'");
         const isApi = c.source === 'api';
