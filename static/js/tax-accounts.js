@@ -195,6 +195,10 @@ function uploadHsaReceipt(index) {
 }
 
 function switchTaxAccountType() {
-    // Placeholder for future account types (IRA, 401k)
-    // Currently only HSA is available
+    const selected = document.getElementById('taxAccountType').value;
+    const sections = ['hsa', 'traditionalIra', 'rothIra', 'fsa'];
+    sections.forEach(id => {
+        const el = document.getElementById('taxAccountContent_' + id);
+        if (el) el.style.display = id === selected ? 'block' : 'none';
+    });
 }
