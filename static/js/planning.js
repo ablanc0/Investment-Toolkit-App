@@ -48,14 +48,20 @@ function renderCOLConfig() {
             <!-- Your City Section -->
             <div style="padding:12px; background:var(--bg); border-radius:8px; border:1px solid var(--border);">
                 <div style="font-size:0.82rem; font-weight:600; color:var(--text); margin-bottom:10px;">📍 Your City</div>
-                <div style="position:relative; margin-bottom:8px;">
-                    <label class="form-label" style="font-size:0.72rem;">City</label>
-                    <input type="text" id="homeCityInput" value="${homeName}" class="form-input"
-                        style="width:100%; font-size:0.82rem;" placeholder="Search or type your city..."
-                        autocomplete="off"
-                        oninput="onHomeCityInput(this.value)"
-                        onkeydown="if(event.key==='Enter'){event.preventDefault();confirmHomeCityName(this.value);}">
-                    <div id="homeCityResults" style="position:absolute; top:100%; left:0; width:100%; z-index:50; max-height:220px; overflow-y:auto; background:var(--card); border:1px solid var(--border); border-radius:6px; display:none; box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>
+                <div style="display:grid; grid-template-columns:1fr auto; gap:8px; margin-bottom:8px;">
+                    <div style="position:relative;">
+                        <label class="form-label" style="font-size:0.72rem;">City</label>
+                        <input type="text" id="homeCityInput" value="${homeName}" class="form-input"
+                            style="width:100%; font-size:0.82rem;" placeholder="Search or type your city..."
+                            autocomplete="off"
+                            oninput="onHomeCityInput(this.value)"
+                            onkeydown="if(event.key==='Enter'){event.preventDefault();confirmHomeCityName(this.value);}">
+                        <div id="homeCityResults" style="position:absolute; top:100%; left:0; width:100%; z-index:50; max-height:220px; overflow-y:auto; background:var(--card); border:1px solid var(--border); border-radius:6px; display:none; box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>
+                    </div>
+                    <div style="width:100px;">
+                        <label class="form-label" style="font-size:0.72rem;">State/Region</label>
+                        ${renderStateSelector()}
+                    </div>
                 </div>
                 ${renderDataSourceLine(matchedCity)}
                 <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:10px;">
@@ -177,6 +183,27 @@ function confirmHomeCityName(value) {
     const trimmed = value.trim();
     if (!trimmed || trimmed === (colConfig.homeCityName || '')) return;
     updateCOLConfig('homeCityName', trimmed);
+}
+
+function renderStateSelector() {
+    const homeState = colConfig.homeState || '';
+    const states = [...new Set(colApiCities.map(c => c.state).filter(Boolean))].sort();
+    if (states.length === 0) {
+        return `<input type="text" value="${homeState}" class="form-input"
+            style="width:100%; font-size:0.82rem;" placeholder="State"
+            onchange="updateCOLConfig('homeState', this.value)">`;
+    }
+    const opts = states.map(s => {
+        const sel = s.toLowerCase() === homeState.toLowerCase()
+            || homeState.toLowerCase().startsWith(s.toLowerCase())
+            || s.toLowerCase().startsWith(homeState.toLowerCase()) ? 'selected' : '';
+        return `<option value="${s}" ${sel}>${s}</option>`;
+    }).join('');
+    return `<select class="form-input" style="width:100%; font-size:0.82rem;"
+        onchange="updateCOLConfig('homeState', this.value)">
+        <option value="">--</option>
+        ${opts}
+    </select>`;
 }
 
 // ── Data source line + selector ──
