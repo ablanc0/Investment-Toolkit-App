@@ -383,8 +383,8 @@ def _project_dividends(ticker, div_history, frequency, shares, months_ahead, dec
     last_amount = last_div["dividend"]
     last_date = datetime.strptime(last_div["date"], "%Y-%m-%d").date()
 
-    # Add historical events within the window (past 3 months for context)
-    lookback = today - timedelta(days=90)
+    # Add historical events within the window (past 12 months to match forward horizon)
+    lookback = today - timedelta(days=months_ahead * 31)
     for d in sorted_divs:
         ddate = datetime.strptime(d["date"], "%Y-%m-%d").date()
         if lookback <= ddate <= today:
