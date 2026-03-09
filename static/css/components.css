@@ -267,6 +267,11 @@
             color: var(--red);
             background: rgba(239,68,68,0.1);
         }
+        .add-row-btn.active-filter {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: rgba(99,102,241,0.15);
+        }
         .save-toast {
             position: fixed;
             bottom: 24px;

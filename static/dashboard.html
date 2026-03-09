@@ -333,6 +333,14 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Dividend Growth YoY -->
+            <div class="card" style="margin-bottom: 24px;">
+                <div class="card-title">📈 Dividend Growth — Year over Year</div>
+                <div style="position: relative; height: 320px;">
+                    <canvas id="divGrowthYoYChart"></canvas>
+                </div>
+            </div>
         </div>
 
         <!-- Watchlist Tab -->
@@ -521,6 +529,7 @@
         <!-- ═══ MONTHLY DATA TAB ═══ -->
         <div class="tab-content" id="monthly">
             <div class="kpi-grid" id="monthlyTrackerKpis" style="margin-bottom: 16px;"></div>
+            <div id="monthlyReturnsFilters" style="display: flex; gap: 6px; margin-bottom: 8px;"></div>
             <div style="margin-bottom: 24px; position: relative; height: 250px;"><canvas id="monthlyReturnsChart"></canvas></div>
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">

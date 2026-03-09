@@ -39,6 +39,9 @@ function populateDividends() {
     // New charts
     renderDivYieldChart(positions);
     renderIncomeDistChart(positions);
+
+    // Dividend Growth YoY
+    if (dividendData.monthlyTotals) renderDivGrowthYoYChart(dividendData.monthlyTotals);
 }
 
 function renderIncomeRank(positions, totalReceived) {
@@ -157,6 +160,58 @@ function renderIncomeDistChart(positions) {
                         label: ctx => `${ctx.label}: $${ctx.raw.toFixed(2)} (${((ctx.raw / withIncome.reduce((s, p) => s + (p.annualDivIncome || 0), 0)) * 100).toFixed(1)}%)`
                     }
                 }
+            }
+        }
+    });
+}
+
+function renderDivGrowthYoYChart(monthlyTotals) {
+    const ctx = document.getElementById('divGrowthYoYChart');
+    if (!ctx) return;
+
+    // Group monthly totals by year → {2024: {Jan: 50, Feb: 30, ...}, 2025: {...}}
+    const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const yearData = {};
+    for (const [key, val] of Object.entries(monthlyTotals)) {
+        const [yr, mo] = key.split('-');
+        if (!yearData[yr]) yearData[yr] = {};
+        const mi = parseInt(mo, 10) - 1;
+        yearData[yr][MONTH_SHORT[mi]] = (yearData[yr][MONTH_SHORT[mi]] || 0) + val;
+    }
+
+    const years = Object.keys(yearData).sort();
+    if (years.length === 0) return;
+
+    const colors = ['#6366f1', '#22d3ee', '#f59e0b', '#4ade80', '#ec4899', '#ef4444', '#8b5cf6', '#14b8a6'];
+    const datasets = years.map((yr, i) => ({
+        label: yr,
+        data: MONTH_SHORT.map(m => yearData[yr][m] || 0),
+        backgroundColor: colors[i % colors.length] + 'cc',
+        borderColor: colors[i % colors.length],
+        borderWidth: 1,
+        borderRadius: 4,
+    }));
+
+    if (charts.divGrowthYoY) charts.divGrowthYoY.destroy();
+    charts.divGrowthYoY = new Chart(ctx.getContext('2d'), {
+        type: 'bar',
+        data: { labels: MONTH_SHORT, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: { color: getChartTextColor(), padding: 12, font: { size: 11 } }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => `${ctx.dataset.label}: $${ctx.raw.toFixed(2)}`
+                    }
+                }
+            },
+            scales: {
+                x: { ticks: { color: getChartTextColor() }, grid: { display: false } },
+                y: { ticks: { color: getChartTextColor(), callback: v => '$' + v }, grid: { color: getChartGridColor() } }
             }
         }
     });
@@ -555,7 +610,45 @@ function renderMonthlyTrackerStats(stats) {
     renderMonthlyReturnsChart(stats.monthlyReturns || []);
 }
 
+let _monthlyReturnsData = [];
+
 function renderMonthlyReturnsChart(returns) {
+    const canvas = document.getElementById('monthlyReturnsChart');
+    if (!canvas || !returns.length) return;
+
+    _monthlyReturnsData = returns;
+    _buildMonthlyReturnsFilters(returns);
+    _drawMonthlyReturnsChart(returns);
+}
+
+function _buildMonthlyReturnsFilters(returns) {
+    const container = document.getElementById('monthlyReturnsFilters');
+    if (!container) return;
+
+    const years = [...new Set(returns.map(r => r.month.split(' ').pop()))].sort();
+    const filters = [{ label: 'All', value: 'all' }, { label: '12M', value: '12m' }];
+    years.forEach(y => filters.push({ label: y, value: y }));
+
+    container.innerHTML = filters.map(f =>
+        `<button class="add-row-btn ${f.value === 'all' ? 'active-filter' : ''}" onclick="filterMonthlyReturns('${f.value}', this)" style="font-size: 12px; padding: 4px 10px;">${f.label}</button>`
+    ).join('');
+}
+
+function filterMonthlyReturns(filter, btn) {
+    const container = document.getElementById('monthlyReturnsFilters');
+    if (container) container.querySelectorAll('button').forEach(b => b.classList.remove('active-filter'));
+    if (btn) btn.classList.add('active-filter');
+
+    let filtered = _monthlyReturnsData;
+    if (filter === '12m') {
+        filtered = _monthlyReturnsData.slice(-12);
+    } else if (filter !== 'all') {
+        filtered = _monthlyReturnsData.filter(r => r.month.endsWith(filter));
+    }
+    _drawMonthlyReturnsChart(filtered);
+}
+
+function _drawMonthlyReturnsChart(returns) {
     const canvas = document.getElementById('monthlyReturnsChart');
     if (!canvas || !returns.length) return;
     if (canvas._chart) canvas._chart.destroy();
