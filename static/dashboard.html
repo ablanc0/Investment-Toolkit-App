@@ -136,41 +136,27 @@
                 </div>
             </div>
 
-            <!-- Allocation Charts -->
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-bottom: 32px;">
+            <!-- Diversification -->
+            <h3 class="section-title" style="display: flex; align-items: center; gap: 16px;">
+                DIVERSIFICATION
+                <span id="diversificationToggles" style="display: flex; gap: 6px;">
+                    <button class="add-row-btn active-filter" data-key="securityType" onclick="switchDiversificationChart('securityType')">Security Type</button>
+                    <button class="add-row-btn" data-key="country" onclick="switchDiversificationChart('country')">Country</button>
+                    <button class="add-row-btn" data-key="currency" onclick="switchDiversificationChart('currency')">Currency</button>
+                </span>
+            </h3>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 32px;">
                 <div class="card">
                     <div class="card-title">🏷️ Category Allocation</div>
-                    <div class="chart-container">
-                        <canvas id="categoryChart"></canvas>
-                    </div>
+                    <div class="chart-container"><canvas id="categoryChart"></canvas></div>
                 </div>
                 <div class="card">
                     <div class="card-title">🌍 By Sector</div>
-                    <div class="chart-container">
-                        <canvas id="sectorChart"></canvas>
-                    </div>
+                    <div class="chart-container"><canvas id="sectorChart"></canvas></div>
                 </div>
                 <div class="card">
-                    <div class="card-title">📦 Security Type</div>
-                    <div class="chart-container">
-                        <canvas id="securityChart"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px; margin-bottom: 32px;">
-                <div class="card">
-                    <div class="card-title">🌎 By Country</div>
-                    <div class="chart-container">
-                        <canvas id="countryChart"></canvas>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="card-title">💱 By Currency</div>
-                    <div class="chart-container">
-                        <canvas id="currencyChart"></canvas>
-                    </div>
+                    <div class="card-title" id="diversificationToggleTitle">📦 Security Type</div>
+                    <div class="chart-container"><canvas id="diversificationToggleChart"></canvas></div>
                 </div>
             </div>
 
