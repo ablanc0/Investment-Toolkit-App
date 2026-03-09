@@ -746,7 +746,7 @@ function _drawMonthlyReturnsChart(returns) {
             plugins: { legend: { display: false } },
             scales: {
                 x: { ticks: { color: getChartTextColor(), maxRotation: 45, font: { size: 10 } }, grid: { display: false } },
-                y: { ticks: { callback: v => v + '%', color: getChartTextColor() }, grid: { color: getChartGridColor() } },
+                y: { ticks: { callback: v => parseFloat(v.toFixed(2)) + '%', color: getChartTextColor() }, grid: { color: getChartGridColor() } },
             }
         }
     });
