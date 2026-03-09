@@ -799,8 +799,6 @@
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <div class="card-title" style="margin-bottom: 0;">Reference Inputs</div>
                     <div style="display: flex; gap: 6px;">
-                        <button id="colDedupBtn" class="add-row-btn" onclick="dedupCOLCities()" style="font-size: 0.78rem;">Dedup</button>
-                        <button id="colUpgradeBtn" class="add-row-btn" onclick="upgradeCOLFromApi()" style="font-size: 0.78rem;">Upgrade from API</button>
                         <button id="colRefreshBtn" class="add-row-btn" onclick="refreshCOLData()" style="font-size: 0.78rem;">Refresh API Data</button>
                     </div>
                 </div>
@@ -818,7 +816,11 @@
             <!-- Table -->
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-                    <div class="card-title" style="margin-bottom: 0;">Cost of Living Comparison</div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div class="card-title" style="margin-bottom: 0;">Cost of Living Comparison</div>
+                        <button id="colDedupBtn" class="add-row-btn" onclick="dedupCOLCities()" style="font-size: 0.72rem;">Remove Duplicates</button>
+                        <button id="colUpgradeBtn" class="add-row-btn" onclick="upgradeCOLFromApi()" style="font-size: 0.72rem;">Upgrade from API</button>
+                    </div>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <div style="position:relative; flex:1; max-width:280px;">
                             <input type="text" id="addCityInput" class="form-input" style="font-size:0.82rem; width:100%; padding:5px 10px;" placeholder="Search city..." autocomplete="off" oninput="onCityInputSearch(this.value)">

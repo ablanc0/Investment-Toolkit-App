@@ -114,6 +114,51 @@ def get_global_city_list():
     return _col_data.get("globalCityList", [])
 
 
+# ── Manual city entries ───────────────────────────────────────────────
+
+def save_manual_city(city_data):
+    """Save or update a manual city entry in col_data.json.
+
+    Manual entries have source='manual' and coexist with API entries.
+    If a manual entry with the same name already exists, it is updated.
+    Returns the saved city dict.
+    """
+    city_data["source"] = "manual"
+    cities = _col_data.get("cities", [])
+
+    # Check if manual entry with same name exists → update it
+    name_lower = city_data["name"].lower().strip()
+    for i, c in enumerate(cities):
+        if c["name"].lower() == name_lower and c.get("source") == "manual":
+            cities[i] = city_data
+            _col_data["cities"] = cities
+            _col_data["cityCount"] = len(cities)
+            _save_col_data()
+            return city_data
+
+    # New manual entry — append
+    cities.append(city_data)
+    cities.sort(key=lambda c: c["name"])
+    _col_data["cities"] = cities
+    _col_data["cityCount"] = len(cities)
+    _save_col_data()
+    return city_data
+
+
+def delete_manual_city(city_name):
+    """Delete a manual city entry by name. Only deletes source='manual'."""
+    cities = _col_data.get("cities", [])
+    name_lower = city_name.lower().strip()
+    original_len = len(cities)
+    cities = [c for c in cities if not (c["name"].lower() == name_lower and c.get("source") == "manual")]
+    if len(cities) < original_len:
+        _col_data["cities"] = cities
+        _col_data["cityCount"] = len(cities)
+        _save_col_data()
+        return True
+    return False
+
+
 # ── Fetch from RapidAPI ───────────────────────────────────────────────
 
 def check_for_new_cities():
@@ -232,17 +277,19 @@ def fetch_city_details(city_names=None):
 
         new_cities = _normalize_cities(raw_cities)
 
-        # Merge: keep existing cities updated, add new ones
-        existing = {c["name"]: c for c in _col_data.get("cities", [])}
-        merged = []
+        # Merge: update API entries, preserve manual entries untouched
+        manual_cities = [c for c in _col_data.get("cities", []) if c.get("source") == "manual"]
+        existing_api = {c["name"]: c for c in _col_data.get("cities", []) if c.get("source") != "manual"}
+        merged = list(manual_cities)  # Always keep manual entries
         new_count = 0
         for city in new_cities:
-            if city["name"] not in existing:
+            if city["name"] not in existing_api:
                 new_count += 1
-            merged.append(city)  # Fresh data replaces stale entries
-        # Keep any previously-stored cities no longer returned by API
+            city["source"] = "api"
+            merged.append(city)
+        # Keep API cities no longer returned by the fetch
         fetched_names = {c["name"] for c in new_cities}
-        for name, city in existing.items():
+        for name, city in existing_api.items():
             if name not in fetched_names:
                 merged.append(city)
         merged.sort(key=lambda c: c["name"])
@@ -264,15 +311,128 @@ def fetch_city_details(city_names=None):
         return None, str(e)
 
 
+def fetch_all_global_details(batch_size=50):
+    """Fetch details for ALL cities globally in batches.
+
+    Sends cities in batches to avoid API timeouts. Each batch is one API call.
+    Saves raw + normalized data after all batches complete.
+    Returns (normalized_cities_list, error_string_or_None).
+    """
+    from services.api_health import record_api_call
+
+    key = _get_rapidapi_key()
+    if not key:
+        return None, "No RapidAPI key configured."
+
+    global_list = _col_data.get("globalCityList", [])
+    if not global_list:
+        return None, "No global city list. Run 'Check for cities' first."
+
+    cities_payload = []
+    for c in global_list:
+        if isinstance(c, dict) and c.get("name") and c.get("country"):
+            cities_payload.append({"name": c["name"], "country": c["country"]})
+
+    if not cities_payload:
+        return None, "Global city list has no valid entries."
+
+    headers = {
+        "x-rapidapi-host": RAPIDAPI_COL_HOST,
+        "x-rapidapi-key": key,
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+
+    # Split into batches
+    batches = [cities_payload[i:i + batch_size]
+               for i in range(0, len(cities_payload), batch_size)]
+
+    all_raw = []
+    all_normalized = []
+    total_start = time.time()
+
+    for idx, batch in enumerate(batches):
+        print(f"[COL] Batch {idx + 1}/{len(batches)}: fetching {len(batch)} cities...")
+        payload = {
+            "cities": json.dumps(batch),
+            "currencies": json.dumps(["USD"]),
+        }
+        start = time.time()
+        try:
+            r = http_requests.post(RAPIDAPI_COL_URL, headers=headers, data=payload, timeout=120)
+            latency = int((time.time() - start) * 1000)
+
+            if r.status_code != 200:
+                record_api_call("rapidapi", success=False, latency_ms=latency,
+                                error_msg=f"HTTP {r.status_code}")
+                print(f"[COL] Batch {idx + 1} failed: HTTP {r.status_code}")
+                continue  # Skip failed batch, keep going
+
+            raw = r.json()
+            record_api_call("rapidapi", success=True, latency_ms=latency)
+
+            if "message" in raw and isinstance(raw["message"], str):
+                print(f"[COL] Batch {idx + 1} error: {raw['message']}")
+                continue
+
+            raw_cities = raw.get("data", raw) if isinstance(raw, dict) else raw
+            all_raw.extend(raw_cities)
+            all_normalized.extend(_normalize_cities(raw_cities))
+            print(f"[COL] Batch {idx + 1} OK: {len(raw_cities)} cities in {latency}ms")
+
+        except Exception as e:
+            latency = int((time.time() - start) * 1000)
+            record_api_call("rapidapi", success=False, latency_ms=latency, error_msg=str(e)[:80])
+            print(f"[COL] Batch {idx + 1} exception: {e}")
+            continue
+
+        # Brief pause between batches to be polite to the API
+        if idx < len(batches) - 1:
+            time.sleep(1)
+
+    if not all_normalized:
+        return None, "All batches failed. Check API key and quota."
+
+    # Save raw response
+    _save_raw(all_raw, "globalDetails")
+
+    # Deduplicate API entries by city name (last occurrence wins)
+    seen = {}
+    for c in all_normalized:
+        c["source"] = "api"
+        seen[c["name"]] = c
+    all_normalized = sorted(seen.values(), key=lambda c: c["name"])
+
+    # Preserve manual entries
+    manual_cities = [c for c in _col_data.get("cities", []) if c.get("source") == "manual"]
+    combined = manual_cities + all_normalized
+    combined.sort(key=lambda c: c["name"])
+
+    _col_data.update({
+        "cities": combined,
+        "fetchedAt": datetime.now().isoformat(),
+        "cityCount": len(all_normalized),
+    })
+    _save_col_data()
+
+    total_ms = int((time.time() - total_start) * 1000)
+    print(f"[COL] Fetched {len(all_normalized)} global cities total in {total_ms}ms "
+          f"({len(batches)} batches)")
+    return all_normalized, None
+
+
 # ── Normalization ─────────────────────────────────────────────────────
 
 def _normalize_cities(raw_list):
-    """Transform raw API response into our lean internal schema."""
+    """Transform raw API response into normalized schema.
+
+    Keeps backward-compatible top-level keys used by the app AND stores
+    the full details dict with all 87 raw items for future use.
+    """
     cities = []
     for city in raw_list:
         if not isinstance(city, dict):
             continue
-        details = _extract_details(city)
+        all_details = _extract_details(city)
         cities.append({
             "name": city.get("name", ""),
             "country": city.get("country", ""),
@@ -285,28 +445,30 @@ def _normalize_cities(raw_list):
             "colPlusRentIndex": _parse_value(city.get("cost_of_living_plus_rent_index", 0)),
             "purchasingPowerIndex": _parse_value(city.get("local_purchasing_power_index", 0)),
             # Rent variants
-            "rent1brCity": details.get("Apartment (1 bedroom) in City Centre", 0),
-            "rent1brSuburb": details.get("Apartment (1 bedroom) Outside of Centre", 0),
-            "rent3brCity": details.get("Apartment (3 bedrooms) in City Centre", 0),
-            "rent3brSuburb": details.get("Apartment (3 bedrooms) Outside of Centre", 0),
+            "rent1brCity": all_details.get("Apartment (1 bedroom) in City Centre", 0),
+            "rent1brSuburb": all_details.get("Apartment (1 bedroom) Outside of Centre", 0),
+            "rent3brCity": all_details.get("Apartment (3 bedrooms) in City Centre", 0),
+            "rent3brSuburb": all_details.get("Apartment (3 bedrooms) Outside of Centre", 0),
             # Cost & salary
-            "monthlyCostsNoRent": details.get("Estimated Monthly Costs Without Rent", 0),
-            "avgNetSalary": details.get("Average Monthly Net Salary (After Tax)", 0),
+            "monthlyCostsNoRent": all_details.get("Estimated Monthly Costs Without Rent", 0),
+            "avgNetSalary": all_details.get("Average Monthly Net Salary (After Tax)", 0),
             # Utilities & transport
-            "utilities": details.get("Basic (Electricity, Heating, Cooling, Water, Garbage) for 915 sq ft Apartment", 0),
-            "internet": details.get("Internet (60 Mbps or More, Unlimited Data, Cable/ADSL)", 0),
-            "monthlyTransitPass": details.get("Monthly Pass (Regular Price)", 0),
-            "gasoline": details.get("Gasoline (1 gallon)", 0),
+            "utilities": all_details.get("Basic (Electricity, Heating, Cooling, Water, Garbage) for 915 sq ft Apartment", 0),
+            "internet": all_details.get("Internet (60 Mbps or More, Unlimited Data, Cable/ADSL)", 0),
+            "monthlyTransitPass": all_details.get("Monthly Pass (Regular Price)", 0),
+            "gasoline": all_details.get("Gasoline (1 gallon)", 0),
             # Lifestyle
-            "mealInexpensive": details.get("Meal, Inexpensive Restaurant", 0),
-            "mealMidRange": details.get("Meal for 2 People, Mid-range Restaurant, Three-course", 0),
-            "gym": details.get("Fitness Club, Monthly Fee for 1 Adult", 0),
-            "preschool": details.get("Preschool (or Kindergarten), Full Day, Private, Monthly for 1 Child", 0),
+            "mealInexpensive": all_details.get("Meal, Inexpensive Restaurant", 0),
+            "mealMidRange": all_details.get("Meal for 2 People, Mid-range Restaurant, Three-course", 0),
+            "gym": all_details.get("Fitness Club, Monthly Fee for 1 Adult", 0),
+            "preschool": all_details.get("Preschool (or Kindergarten), Full Day, Private, Monthly for 1 Child", 0),
             # Real estate
-            "priceSqFtCity": details.get("Price per Square Feet to Buy Apartment in City Centre", 0),
-            "priceSqFtSuburb": details.get("Price per Square Feet to Buy Apartment Outside of Centre", 0),
-            "mortgageRate": details.get("Mortgage Interest Rate in Percentages (%), Yearly, for 20 Years Fixed-Rate", 0),
+            "priceSqFtCity": all_details.get("Price per Square Feet to Buy Apartment in City Centre", 0),
+            "priceSqFtSuburb": all_details.get("Price per Square Feet to Buy Apartment Outside of Centre", 0),
+            "mortgageRate": all_details.get("Mortgage Interest Rate in Percentages (%), Yearly, for 20 Years Fixed-Rate", 0),
             "lastUpdated": city.get("last_updated_timestamp", ""),
+            # Full details — all 87 raw items preserved
+            "details": all_details,
         })
     return sorted(cities, key=lambda c: c["name"])
 

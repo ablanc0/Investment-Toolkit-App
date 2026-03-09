@@ -33,18 +33,22 @@ def _default_col_config():
 
 def _state_match(city_state, home_state):
     """Flexible state match: handles 'MI' vs 'Michigan' mismatches."""
-    cs = (city_state or "").lower()
-    hs = (home_state or "").lower()
-    if not cs or not hs:
+    cs = (city_state or "").lower().strip()
+    hs = (home_state or "").lower().strip()
+    if not cs or not hs or cs == "n/a":
         return False
     return cs == hs or hs.startswith(cs) or cs.startswith(hs)
 
 
-def _filter_state_cities(api_cities, home_state):
-    """Return API cities matching the home state (handles abbreviation mismatches)."""
+def _filter_state_cities(api_cities, home_state, home_country=None):
+    """Return API cities matching the home state and optionally country."""
     if not home_state:
         return []
-    return [c for c in api_cities if _state_match(c.get("state"), home_state)]
+    filtered = api_cities
+    if home_country:
+        hc = home_country.lower().strip()
+        filtered = [c for c in filtered if (c.get("country") or "").lower() == hc]
+    return [c for c in filtered if _state_match(c.get("state"), home_state)]
 
 
 def _resolve_home_col(config, api_cities):
@@ -64,7 +68,7 @@ def _resolve_home_col(config, api_cities):
         return None, None
 
     if source == "stateAvg":
-        state_cities = _filter_state_cities(api_cities, config.get("homeState"))
+        state_cities = _filter_state_cities(api_cities, config.get("homeState"), config.get("homeCountry"))
         if not state_cities:
             return None, None
         avg_col = sum(c.get("colIndex", 0) for c in state_cities) / len(state_cities)
@@ -198,6 +202,11 @@ def api_cost_of_living_add():
         "equivalentSalary": 0,
         "elEquivalent": 0,
     }
+    # Optional fields from manual entry form
+    if b.get("bedrooms"):
+        item["bedrooms"] = int(b["bedrooms"])
+    if b.get("colIndex"):
+        item["colIndex"] = float(b["colIndex"])
     pinned = b.get("pinned", True)
     item["pinned"] = pinned
     if source == "api":
@@ -277,6 +286,9 @@ def api_col_config_update():
     b = request.get_json()
     portfolio = load_portfolio()
     config = portfolio.get("colConfig", _default_col_config())
+    # Migrate: ensure homeCountry exists
+    if "homeCountry" not in config:
+        config["homeCountry"] = "United States"
     for key in ("referenceSalary", "currentRent", "housingWeight", "comparisonSalary"):
         if key in b:
             config[key] = float(b[key])
@@ -313,7 +325,7 @@ def api_col_config_update():
         config["homeMonthlyCosts"] = matched.get("monthlyCostsNoRent")
     elif config.get("homeColSource") == "apiCity":
         # City was apiCity but no longer matches — auto-pick proxy from same state
-        state_cities = _filter_state_cities(api_cities, config.get("homeState"))
+        state_cities = _filter_state_cities(api_cities, config.get("homeState"), config.get("homeCountry"))
         if state_cities:
             config["homeColSource"] = "proxy"
             # Prefer existing proxy if it's in the same state
@@ -324,7 +336,7 @@ def api_col_config_update():
             config["homeColSource"] = "manual"
     # Auto-proxy for new non-DB cities without a source set
     if not matched and config.get("homeColSource") == "manual" and home_name:
-        state_cities = _filter_state_cities(api_cities, config.get("homeState"))
+        state_cities = _filter_state_cities(api_cities, config.get("homeState"), config.get("homeCountry"))
         if state_cities and not config.get("homeMonthlyCosts"):
             config["homeColSource"] = "proxy"
             existing_proxy = (config.get("homeProxyCity") or "").lower()
@@ -394,6 +406,83 @@ def api_col_check_cities():
     })
 
 
+@bp.route("/api/cost-of-living/save-manual-city", methods=["POST"])
+def api_col_save_manual_city():
+    """Save a manual city entry to col_data.json."""
+    from services.col_api import save_manual_city, get_col_cities, get_col_metadata
+    b = request.get_json()
+    name = (b.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "City name is required"}), 400
+
+    # Map bedroom/location to the right rent slot
+    bedrooms = int(b.get("bedroomCount", 1))
+    location = b.get("locationType", "city")
+    rent = float(b.get("rent", 0))
+
+    rent_map = {
+        (1, "city"): "rent1brCity", (1, "suburb"): "rent1brSuburb",
+        (3, "city"): "rent3brCity", (3, "suburb"): "rent3brSuburb",
+    }
+    rent_key = rent_map.get((bedrooms, location), "rent1brCity")
+
+    city_data = {
+        "name": name,
+        "country": b.get("country", ""),
+        "state": b.get("state", ""),
+        "source": "manual",
+        "colIndex": float(b.get("colIndex", 0)),
+        "monthlyCostsNoRent": float(b.get("monthlyCostsNoRent", 0)),
+        rent_key: rent,
+        # Default other rent slots to 0 unless provided
+        "rent1brCity": float(b.get("rent1brCity", 0)),
+        "rent1brSuburb": float(b.get("rent1brSuburb", 0)),
+        "rent3brCity": float(b.get("rent3brCity", 0)),
+        "rent3brSuburb": float(b.get("rent3brSuburb", 0)),
+        # Zero out indices not provided
+        "rentIndex": float(b.get("rentIndex", 0)),
+        "groceriesIndex": float(b.get("groceriesIndex", 0)),
+        "restaurantIndex": float(b.get("restaurantIndex", 0)),
+        "colPlusRentIndex": float(b.get("colPlusRentIndex", 0)),
+        "purchasingPowerIndex": float(b.get("purchasingPowerIndex", 0)),
+        "avgNetSalary": float(b.get("avgNetSalary", 0)),
+        "utilities": float(b.get("utilities", 0)),
+        "internet": float(b.get("internet", 0)),
+        "monthlyTransitPass": float(b.get("monthlyTransitPass", 0)),
+        "gasoline": float(b.get("gasoline", 0)),
+        "mealInexpensive": float(b.get("mealInexpensive", 0)),
+        "mealMidRange": float(b.get("mealMidRange", 0)),
+        "gym": float(b.get("gym", 0)),
+        "preschool": float(b.get("preschool", 0)),
+        "priceSqFtCity": float(b.get("priceSqFtCity", 0)),
+        "priceSqFtSuburb": float(b.get("priceSqFtSuburb", 0)),
+        "mortgageRate": float(b.get("mortgageRate", 0)),
+        "lastUpdated": datetime.now().isoformat(),
+        "details": {},
+    }
+    # Override the specific rent slot with the user's value
+    city_data[rent_key] = rent
+
+    saved = save_manual_city(city_data)
+    meta = get_col_metadata()
+    return jsonify({"ok": True, "city": saved, "cityCount": meta["cityCount"]})
+
+
+@bp.route("/api/cost-of-living/delete-manual-city", methods=["POST"])
+def api_col_delete_manual_city():
+    """Delete a manual city entry from col_data.json."""
+    from services.col_api import delete_manual_city, get_col_metadata
+    b = request.get_json()
+    name = (b.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "City name is required"}), 400
+    deleted = delete_manual_city(name)
+    if not deleted:
+        return jsonify({"ok": False, "error": f"Manual entry '{name}' not found"}), 404
+    meta = get_col_metadata()
+    return jsonify({"ok": True, "cityCount": meta["cityCount"]})
+
+
 @bp.route("/api/cost-of-living/fetch-details", methods=["POST"])
 def api_col_fetch_details():
     """Phase 2: Bulk-fetch city details (1 API call). Uses stored city names."""
@@ -410,14 +499,36 @@ def api_col_fetch_details():
     })
 
 
+@bp.route("/api/cost-of-living/fetch-all-global", methods=["POST"])
+def api_col_fetch_all_global():
+    """Fetch details for ALL cities globally (1 API call)."""
+    from services.col_api import fetch_all_global_details, get_col_metadata
+    cities, error = fetch_all_global_details()
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    meta = get_col_metadata()
+    return jsonify({
+        "ok": True,
+        "cityCount": len(cities),
+        "fetchedAt": meta["fetchedAt"],
+    })
+
+
 @bp.route("/api/cost-of-living/upgrade", methods=["POST"])
 def api_col_upgrade():
-    """Match existing manual cities against API data and upgrade them."""
+    """Match existing cities against API data and upgrade/refresh them.
+
+    Pass {"refresh": true} to also update already-API-sourced cities
+    with the latest fetched data.
+    """
     from services.col_api import get_col_cities
 
     api_cities = get_col_cities()
     if not api_cities:
         return jsonify({"ok": False, "error": "No API data available. Click 'Refresh API Data' first."}), 400
+
+    body = request.get_json(silent=True) or {}
+    refresh = body.get("refresh", False)
 
     # Build lookup: lowercase name → api city
     api_lookup = {c["name"].lower(): c for c in api_cities}
@@ -431,9 +542,11 @@ def api_col_upgrade():
     cities = portfolio.get("costOfLiving", [])
 
     upgraded = 0
+    refreshed = 0
     for city in cities:
-        if city.get("source") == "api":
-            continue  # Already API-sourced
+        already_api = city.get("source") == "api"
+        if already_api and not refresh:
+            continue
         metro_lower = city["metro"].lower()
         api_match = api_lookup.get(metro_lower)
         if not api_match:
@@ -449,11 +562,14 @@ def api_col_upgrade():
             city["apiData"] = api_match
             city["area"] = api_match.get("state", city.get("area", ""))
             _compute_col_entry(city, config)
-            upgraded += 1
+            if already_api:
+                refreshed += 1
+            else:
+                upgraded += 1
 
     portfolio["costOfLiving"] = cities
     save_portfolio(portfolio)
-    return jsonify({"ok": True, "upgraded": upgraded, "costOfLiving": cities})
+    return jsonify({"ok": True, "upgraded": upgraded, "refreshed": refreshed, "costOfLiving": cities})
 
 
 @bp.route("/api/cost-of-living/dedup", methods=["POST"])
