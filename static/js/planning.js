@@ -276,7 +276,8 @@ function renderDataSourceLine(matchedCity) {
         const homeState = (colConfig.homeState || '').toLowerCase();
         const homeCountry = (colConfig.homeCountry || '').toLowerCase();
         const stateSalaryCities = colApiCities.filter(c =>
-            (c.state || '').toLowerCase() === homeState
+            c.source !== 'manual'
+            && (c.state || '').toLowerCase() === homeState
             && (!homeCountry || (c.country || '').toLowerCase() === homeCountry)
             && c.avgNetSalary > 0);
         const stateAvgSalary = stateSalaryCities.length
@@ -446,7 +447,8 @@ function onEditSalarySourceChange(value) {
         const homeState = (colConfig.homeState || '').toLowerCase();
         const homeCountry = (colConfig.homeCountry || '').toLowerCase();
         const sc = colApiCities.filter(c =>
-            (c.state || '').toLowerCase() === homeState
+            c.source !== 'manual'
+            && (c.state || '').toLowerCase() === homeState
             && (!homeCountry || (c.country || '').toLowerCase() === homeCountry)
             && c.avgNetSalary > 0);
         input.value = sc.length ? Math.round(sc.reduce((s, c) => s + c.avgNetSalary, 0) / sc.length) : 0;

@@ -41,10 +41,11 @@ def _state_match(city_state, home_state):
 
 
 def _filter_state_cities(api_cities, home_state, home_country=None):
-    """Return API cities matching the home state and optionally country."""
+    """Return API-sourced cities matching the home state and optionally country.
+    Excludes manual entries to avoid contaminating averages."""
     if not home_state:
         return []
-    filtered = api_cities
+    filtered = [c for c in api_cities if c.get("source") != "manual"]
     if home_country:
         hc = home_country.lower().strip()
         filtered = [c for c in filtered if (c.get("country") or "").lower() == hc]
@@ -140,7 +141,8 @@ def _compute_col_entry(entry, config, api_cities=None):
                 entry_state = (entry.get("area") or "").lower()
                 entry_country = (entry.get("country") or "").lower()
                 state_cities = [c for c in api_cities
-                                if _state_match(c.get("state"), entry_state)
+                                if c.get("source") != "manual"
+                                and _state_match(c.get("state"), entry_state)
                                 and (not entry_country or (c.get("country") or "").lower() == entry_country)
                                 and c.get("avgNetSalary", 0) > 0]
                 if state_cities:
@@ -245,7 +247,8 @@ def api_cost_of_living():
                 home_state = (config.get("homeState") or "").lower()
                 home_country = (config.get("homeCountry") or "").lower()
                 state_cities = [c for c in api_cities
-                                if _state_match(c.get("state"), home_state)
+                                if c.get("source") != "manual"
+                                and _state_match(c.get("state"), home_state)
                                 and (not home_country or (c.get("country") or "").lower() == home_country)
                                 and c.get("avgNetSalary", 0) > 0]
                 if state_cities:
