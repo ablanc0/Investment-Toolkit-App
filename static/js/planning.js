@@ -269,7 +269,7 @@ function renderDataSourceLine(matchedCity) {
         const editLabel = matchedCity.source === 'manual' ? 'edit' : 'edit (creates manual entry)';
         let html = `<div style="padding:6px 8px; background:#22c55e10; border:1px solid #22c55e30; border-radius:6px; font-size:0.75rem;">
             <span style="color:#4ade80; font-weight:600;">✓ ${matchedCity.name}, ${loc}</span>${srcTag}
-            <span style="color:var(--text-dim);"> — COL ${matchedCity.colIndex} · $${matchedCity.monthlyCostsNoRent?.toLocaleString()}/mo</span>
+            <span style="color:var(--text-dim);"> — COL ${matchedCity.colIndex} · $${matchedCity.monthlyCostsNoRent?.toLocaleString()}/mo · Salary $${(matchedCity.avgNetSalary || 0).toLocaleString()}/mo</span>
             <a href="#" onclick="toggleEditManualCity(); return false;" style="color:var(--accent); font-size:0.7rem; margin-left:6px;">${editLabel}</a>
         </div>`;
         // Compute state avg salary for the selector
@@ -696,16 +696,20 @@ function filterCOL(type, btn) {
         const homeMatch = colApiCities.find(c => c.name.toLowerCase() === homeName);
         const homeCosts = homeMatch?.monthlyCostsNoRent || colConfig.homeMonthlyCosts || 0;
         const homeRent = colConfig.currentRent || 0;
+        const homeSalary = homeMatch?.avgNetSalary || 0;
+        const userMonthly = Math.round((colConfig.referenceSalary || 0) / 12);
+        const salSrc = homeSalary === userMonthly ? 'you' : homeSalary > 0 ? 'avg' : 'you';
         filtered.push({
             metro: colConfig.homeCityName, area: colConfig.homeState || '',
             type: (colConfig.locationType === 'city') ? 'Downtown' : 'Suburban',
             source: 'home', rent: homeRent, monthlyCostsNoRent: homeCosts,
             totalMonthlyCost: homeRent + homeCosts, overallFactor: 1.0,
             colIndex: colConfig.homeColIndex || homeMatch?.colIndex || 0,
+            avgNetSalary: homeSalary || userMonthly,
             equivalentSalary: colConfig.referenceSalary || 0,
             elEquivalent: colConfig.comparisonSalary || 0,
             purchasingPower: colConfig.homePurchasingPower || 0,
-            pinned: true, _isHome: true,
+            pinned: true, _isHome: true, _salarySource: salSrc,
         });
     }
     tbody.innerHTML = filtered.sort((a, b) => {
@@ -720,7 +724,7 @@ function filterCOL(type, btn) {
         const totalCost = c.totalMonthlyCost ? formatMoney(c.totalMonthlyCost) : '—';
         const colIdx = c.colIndex ? c.colIndex.toFixed(0) : '—';
         const pp = c.purchasingPower ? c.purchasingPower.toFixed(0) : '—';
-        const salSrc = c._isHome ? 'Your salary' : c.source === 'api' ? 'City avg' : 'Estimated';
+        const salSrc = c._isHome ? (c._salarySource === 'avg' ? 'State avg' : 'Your salary') : c.source === 'api' ? 'City avg' : 'Estimated';
         const isPinned = c.pinned !== false;
         const isHome = c._isHome;
         const rowStyle = isHome ? 'background:#4ade8012; border-left:3px solid #4ade80;'
@@ -739,7 +743,7 @@ function filterCOL(type, btn) {
             <td style="text-align:right; color:#22d3ee;">${colIdx}</td>
             <td style="text-align:right; font-weight:600; color:#4ade80;">${formatMoney(c.equivalentSalary)}</td>
             <td style="text-align:right; color:#60a5fa;">${formatMoney(c.elEquivalent)}</td>
-            <td style="text-align:right; color:${parseFloat(pp) >= 100 ? '#4ade80' : parseFloat(pp) > 0 ? '#f59e0b' : 'var(--text-dim)'};" title="Salary basis: ${salSrc} (${formatMoney(c.avgNetSalary || 0)}/mo)">${pp}${c._isHome ? ' <span style="font-size:0.55rem; color:var(--text-dim); vertical-align:middle;">YOU</span>' : ''}</td>
+            <td style="text-align:right; color:${parseFloat(pp) >= 100 ? '#4ade80' : parseFloat(pp) > 0 ? '#f59e0b' : 'var(--text-dim)'};" title="Salary basis: ${salSrc} (${formatMoney(c.avgNetSalary || 0)}/mo)">${pp}${c._isHome ? ` <span style="font-size:0.55rem; color:var(--text-dim); vertical-align:middle;">${c._salarySource === 'avg' ? 'AVG' : 'YOU'}</span>` : ''}</td>
         </tr>`;
     }).join('');
 }
