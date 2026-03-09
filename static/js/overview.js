@@ -164,7 +164,6 @@ function switchDiversificationChart(key) {
     const cfg = map[key];
     if (!cfg || !cfg.data) return;
 
-    document.getElementById('diversificationToggleTitle').textContent = cfg.title;
     createAllocationChart('diversificationToggleChart', cfg.data, cfg.label);
 
     document.querySelectorAll('#diversificationToggles .add-row-btn').forEach(btn => btn.classList.remove('active-filter'));
