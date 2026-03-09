@@ -44,6 +44,33 @@ function populatePerformance() {
         </div>
     `;
 
+    // Holdings performance ranking — sorted horizontal bar chart
+    renderHoldingsRanking(sorted);
+
     // Load performance attribution (merged into this tab)
     if (typeof fetchAttribution === 'function') fetchAttribution();
+}
+
+function renderHoldingsRanking(sorted) {
+    const container = document.getElementById('holdingsRankingChart');
+    if (!container) return;
+
+    const maxAbs = Math.max(...sorted.map(p => Math.abs(p.returnPercent || 0)), 1);
+
+    container.innerHTML = sorted.map(p => {
+        const pct = p.returnPercent || 0;
+        const isPositive = pct >= 0;
+        const barWidth = Math.min(Math.abs(pct) / maxAbs * 60, 60);
+        const color = isPositive ? '#22c55e' : '#ef4444';
+        return `
+            <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--border);">
+                <span style="width: 55px; font-weight: 600; font-size: 13px; color: var(--text);">${escapeHtml(p.ticker)}</span>
+                <div style="flex: 1; display: flex; align-items: center;">
+                    <div style="width: ${barWidth}%; height: 8px; background: ${color}; border-radius: 4px; transition: width 0.4s;"></div>
+                </div>
+                <span style="width: 75px; text-align: right; color: ${color}; font-weight: 600; font-size: 13px;">${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%</span>
+                <span style="width: 80px; text-align: right; color: var(--text-dim); font-size: 12px;">${formatMoney(p.marketReturn || 0)}</span>
+            </div>
+        `;
+    }).join('');
 }

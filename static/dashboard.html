@@ -100,11 +100,21 @@
         <!-- Overview Tab -->
         <div class="tab-content active" id="overview">
             <!-- Section 1: Portfolio Overview -->
-            <h3 style="color: var(--text); margin: 0 0 12px 0; font-size: 15px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim);">Portfolio Overview</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 12px 0;">
+                <h3 style="color: var(--text-dim); font-size: 15px; text-transform: uppercase; letter-spacing: 1px; margin: 0;">Portfolio Overview</h3>
+                <div style="display: flex; gap: 6px;">
+                    <button onclick="exportData('holdings','csv')" class="add-row-btn" title="Export holdings as CSV">CSV</button>
+                    <button onclick="exportData('holdings','xlsx')" class="add-row-btn" title="Export holdings as Excel">Excel</button>
+                </div>
+            </div>
             <div class="kpi-grid" id="overviewKpis"></div>
             <div id="healthSummaryBar" style="margin: 12px 0 0 0; display: flex; gap: 12px; flex-wrap: wrap;"></div>
 
-            <!-- Section 2: Dividend Stats -->
+            <!-- Section 2: Portfolio Metrics -->
+            <h3 style="color: var(--text); margin: 24px 0 12px 0; font-size: 15px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim);">Portfolio Metrics</h3>
+            <div class="kpi-grid" id="portfolioMetricsKpis"></div>
+
+            <!-- Section 3: Dividend Stats -->
             <h3 style="color: var(--text); margin: 24px 0 12px 0; font-size: 15px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim);">Dividend Stats</h3>
             <div class="kpi-grid" id="dividendKpis"></div>
 
@@ -238,6 +248,12 @@
                 </div>
             </div>
 
+            <!-- Holdings Performance Ranking -->
+            <div class="card" style="margin-bottom: 32px;">
+                <div class="card-title">📊 All Holdings — Total Return</div>
+                <div id="holdingsRankingChart" style="min-height: 40px;"></div>
+            </div>
+
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 32px;">
                 <div class="card">
                     <div class="card-title">📈 Best Day Change</div>
@@ -268,6 +284,10 @@
 
         <!-- Dividends Tab -->
         <div class="tab-content" id="dividends">
+            <div style="display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 12px;">
+                <button onclick="exportData('dividends','csv')" class="add-row-btn" title="Export dividend log as CSV">CSV</button>
+                <button onclick="exportData('dividends','xlsx')" class="add-row-btn" title="Export dividend log as Excel">Excel</button>
+            </div>
             <div class="kpi-grid" id="dividendKpis"></div>
 
             <!-- Income Rank -->

@@ -219,6 +219,24 @@ def api_portfolio():
     portfolio_yoc = round((total_annual_div_income / total_cost_basis * 100) if total_cost_basis > 0 else 0, 2)
     lifetime_divs = round(sum(total_divs_received.values()), 2)
 
+    # Portfolio-level weighted P/E and Beta
+    pe_weight_sum = 0.0
+    pe_alloc_sum = 0.0
+    beta_weight_sum = 0.0
+    beta_alloc_sum = 0.0
+    for pos in enriched:
+        alloc = pos.get("allocation", 0)
+        pe_val = pos.get("pe", 0)
+        beta_val = pos.get("beta", 0)
+        if pe_val and pe_val > 0:
+            pe_weight_sum += pe_val * alloc
+            pe_alloc_sum += alloc
+        if beta_val and beta_val > 0:
+            beta_weight_sum += beta_val * alloc
+            beta_alloc_sum += alloc
+    portfolio_pe = round(pe_weight_sum / pe_alloc_sum, 1) if pe_alloc_sum > 0 else 0
+    portfolio_beta = round(beta_weight_sum / beta_alloc_sum, 2) if beta_alloc_sum > 0 else 0
+
     # Sold positions summary
     sold_list = portfolio.get("soldPositions", [])
     sold_market_return = 0
@@ -256,6 +274,8 @@ def api_portfolio():
             "lifetimeDivsReceived": lifetime_divs,
             "soldReturn": sold_total_return,
             "soldPositionsCount": len(sold_list),
+            "portfolioPE": portfolio_pe,
+            "portfolioBeta": portfolio_beta,
         },
         "allocations": {
             "category": cat_alloc,

@@ -71,7 +71,10 @@ function populateOverview() {
     // Health summary bar
     renderHealthSummary();
 
-    // Section 2: Dividend Stats
+    // Section 2: Portfolio Metrics (P/E, Beta)
+    renderPortfolioMetrics(summary);
+
+    // Section 3: Dividend Stats
     const divStatsKpis = [
         {
             label: '📊 Portfolio Yield',
@@ -229,6 +232,53 @@ function renderDayMovers() {
     container.innerHTML = html;
 }
 
+function renderPortfolioMetrics(summary) {
+    const container = document.getElementById('portfolioMetricsKpis');
+    if (!container) return;
+
+    const pe = summary.portfolioPE || 0;
+    const beta = summary.portfolioBeta || 0;
+
+    // P/E gauge: 0-70 range, market avg ~22
+    const peMax = 70;
+    const pePct = Math.min(pe / peMax * 100, 100);
+    const peColor = pe === 0 ? 'var(--text-dim)' : pe < 15 ? '#22c55e' : pe < 25 ? '#22d3ee' : pe < 35 ? '#f59e0b' : '#ef4444';
+    const peLabel = pe === 0 ? 'N/A' : pe < 15 ? 'Undervalued' : pe < 25 ? 'Fair' : pe < 35 ? 'Expensive' : 'Very Expensive';
+
+    // Beta: <1 less volatile, 1 = market, >1 more volatile
+    const betaColor = beta === 0 ? 'var(--text-dim)' : beta < 0.8 ? '#22c55e' : beta < 1.2 ? '#22d3ee' : '#f59e0b';
+    const betaLabel = beta === 0 ? 'N/A' : beta < 0.8 ? 'Low volatility' : beta < 1.2 ? 'Market-like' : 'High volatility';
+
+    container.innerHTML = `
+        <div class="kpi-card">
+            <div class="kpi-label">Portfolio P/E</div>
+            <div class="kpi-value" style="color: ${peColor}; font-size: 28px;">${pe > 0 ? pe.toFixed(1) + 'x' : '—'}</div>
+            <div style="margin: 10px 0 4px; height: 6px; background: var(--border); border-radius: 3px; position: relative;">
+                <div style="width: ${pePct}%; height: 100%; background: ${peColor}; border-radius: 3px; transition: width 0.5s;"></div>
+                <div style="position: absolute; left: ${22/peMax*100}%; top: -3px; width: 2px; height: 12px; background: var(--text-dim); border-radius: 1px;" title="S&P 500 avg ~22x"></div>
+            </div>
+            <div class="kpi-sub" style="display: flex; justify-content: space-between;">
+                <span>0x</span>
+                <span style="color: ${peColor};">${peLabel}</span>
+                <span>${peMax}x</span>
+            </div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Portfolio Beta</div>
+            <div class="kpi-value" style="color: ${betaColor}; font-size: 28px;">${beta > 0 ? beta.toFixed(2) : '—'}</div>
+            <div style="margin: 10px 0 4px; height: 6px; background: var(--border); border-radius: 3px; position: relative;">
+                <div style="width: ${Math.min(beta / 2 * 100, 100)}%; height: 100%; background: ${betaColor}; border-radius: 3px; transition: width 0.5s;"></div>
+                <div style="position: absolute; left: 50%; top: -3px; width: 2px; height: 12px; background: var(--text-dim); border-radius: 1px;" title="Market = 1.0"></div>
+            </div>
+            <div class="kpi-sub" style="display: flex; justify-content: space-between;">
+                <span>0</span>
+                <span style="color: ${betaColor};">${betaLabel}</span>
+                <span>2.0</span>
+            </div>
+        </div>
+    `;
+}
+
 function editCashValue(element, currentValue) {
     if (element.querySelector('input')) return;
 
@@ -275,4 +325,9 @@ function editCashValue(element, currentValue) {
             element.innerHTML = originalHTML;
         }
     });
+}
+
+function exportData(section, format) {
+    const url = `/api/export/${section}?format=${format}`;
+    window.open(url, '_blank');
 }
