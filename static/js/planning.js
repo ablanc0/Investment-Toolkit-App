@@ -637,6 +637,44 @@ function renderCOLChart() {
     });
 }
 
+let colSortCol = 'rent';
+let colSortAsc = true;
+
+const _colSortKeys = {
+    metro:   c => (c.metro || '').toLowerCase(),
+    area:    c => (c.area || '').toLowerCase(),
+    rent:    c => c.rent || 0,
+    costs:   c => c.monthlyCostsNoRent || 0,
+    total:   c => c.totalMonthlyCost || 0,
+    factor:  c => c.overallFactor || 0,
+    equiv:   c => c.equivalentSalary || 0,
+    elEquiv: c => c.elEquivalent || 0,
+    ppi:     c => c.purchasingPower || 0,
+};
+
+function sortCOLTable(col) {
+    if (colSortCol === col) { colSortAsc = !colSortAsc; }
+    else { colSortCol = col; colSortAsc = true; }
+    // Update header indicators
+    const table = document.getElementById('colBody')?.closest('table');
+    if (table) {
+        table.querySelectorAll('th.sortable').forEach(th => {
+            th.textContent = th.textContent.replace(/ [▲▼]$/, '');
+            const match = th.getAttribute('onclick')?.match(/sortCOLTable\('(\w+)'\)/);
+            if (match && match[1] === col) {
+                th.textContent += colSortAsc ? ' ▲' : ' ▼';
+            }
+        });
+    }
+    filterCOL(_colActiveFilter());
+}
+
+function _colActiveFilter() {
+    const activeBtn = document.querySelector('#colFilters .filter-btn.active');
+    if (!activeBtn) return 'all';
+    return activeBtn.textContent.trim() === 'Downtown' ? 'Downtown' : 'Suburban';
+}
+
 function filterCOL(type, btn) {
     const tbody = document.getElementById('colBody');
     if (!tbody) return;
@@ -648,8 +686,31 @@ function filterCOL(type, btn) {
         document.querySelectorAll('#colFilters .filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
+    const keyFn = _colSortKeys[colSortCol] || (c => c.rent || 0);
+    const dir = colSortAsc ? 1 : -1;
     const filtered = type === 'all' ? allCOLData : allCOLData.filter(c => c.type === type);
-    tbody.innerHTML = filtered.sort((a, b) => a.rent - b.rent).map(c => {
+    // Inject home city row
+    const homeName = (colConfig.homeCityName || '').toLowerCase();
+    if (homeName && !filtered.some(c => c.metro.toLowerCase() === homeName)) {
+        const homeMatch = colApiCities.find(c => c.name.toLowerCase() === homeName);
+        const homeCosts = homeMatch?.monthlyCostsNoRent || colConfig.homeMonthlyCosts || 0;
+        const homeRent = colConfig.currentRent || 0;
+        filtered.push({
+            metro: colConfig.homeCityName, area: colConfig.homeState || '',
+            type: (colConfig.locationType === 'city') ? 'Downtown' : 'Suburban',
+            source: 'home', rent: homeRent, monthlyCostsNoRent: homeCosts,
+            totalMonthlyCost: homeRent + homeCosts, overallFactor: 1.0,
+            equivalentSalary: colConfig.referenceSalary || 0,
+            elEquivalent: colConfig.comparisonSalary || 0,
+            purchasingPower: colConfig.homePurchasingPower || 0,
+            formulaUsed: 'direct', pinned: true, _isHome: true,
+        });
+    }
+    tbody.innerHTML = filtered.sort((a, b) => {
+        const va = keyFn(a), vb = keyFn(b);
+        if (typeof va === 'string') return dir * va.localeCompare(vb);
+        return dir * (va - vb);
+    }).map(c => {
         const metroEsc = c.metro.replace(/'/g, "\\'");
         const isApi = c.source === 'api';
         const apiBadge = isApi ? ' <span style="font-size:0.65rem; padding:1px 4px; border-radius:3px; background:#6366f120; color:#6366f1; vertical-align:middle;">API</span>' : '';
@@ -660,11 +721,14 @@ function filterCOL(type, btn) {
             ? '<span style="font-size:0.65rem; padding:1px 6px; border-radius:3px; background:#22c55e20; color:#22c55e;">DIRECT</span>'
             : '<span style="font-size:0.65rem; padding:1px 6px; border-radius:3px; background:#f59e0b20; color:#f59e0b;">WEIGHTED</span>';
         const pp = c.purchasingPower ? c.purchasingPower.toFixed(0) : '—';
-        const isPinned = c.pinned !== false; // default to pinned for legacy entries
-        const rowStyle = isPinned ? '' : 'opacity:0.7; border-left:3px solid #f59e0b;';
+        const isPinned = c.pinned !== false;
+        const isHome = c._isHome;
+        const rowStyle = isHome ? 'background:#4ade8012; border-left:3px solid #4ade80;'
+            : isPinned ? '' : 'opacity:0.7; border-left:3px solid #f59e0b;';
+        const homeBadge = isHome ? ' <span style="font-size:0.6rem; padding:1px 4px; border-radius:3px; background:#4ade8020; color:#4ade80; vertical-align:middle;">HOME</span>' : '';
         return `<tr style="${rowStyle}">
-            <td style="text-align:center;"><input type="checkbox" ${isPinned ? 'checked' : ''} onchange="toggleCOLCity('${metroEsc}', this.checked)" title="${isPinned ? 'Uncheck to remove' : 'Check to pin'}"></td>
-            <td><strong>${c.metro}</strong>${apiBadge}${!isPinned ? ' <span style="font-size:0.6rem; color:#f59e0b;">TEMP</span>' : ''}</td>
+            <td style="text-align:center;">${isHome ? '' : `<input type="checkbox" ${isPinned ? 'checked' : ''} onchange="toggleCOLCity('${metroEsc}', this.checked)" title="${isPinned ? 'Uncheck to remove' : 'Check to pin'}">`}</td>
+            <td><strong>${c.metro}</strong>${apiBadge}${homeBadge}${!isPinned && !isHome ? ' <span style="font-size:0.6rem; color:#f59e0b;">TEMP</span>' : ''}</td>
             <td>${c.area}</td>
             <td><span style="padding:2px 6px; border-radius:4px; font-size:0.75rem; background:${c.type==='Downtown'?'#f59e0b20':'#22c55e20'}; color:${c.type==='Downtown'?'#f59e0b':'#22c55e'};">${c.type}</span></td>
             <td style="text-align:right; cursor:pointer;" class="editable"

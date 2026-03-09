@@ -837,15 +837,17 @@
                 <div class="table-wrapper"><table style="font-size: 0.82rem;">
                     <thead><tr>
                         <th style="width:36px; text-align:center;" title="Compare"><input type="checkbox" checked onchange="toggleAllCOLCities(this.checked)" title="Toggle all"></th>
-                        <th>Metro</th><th>Area</th><th>Type</th>
-                        <th style="text-align:right;">Rent/mo</th>
-                        <th style="text-align:right;">Costs/mo</th>
-                        <th style="text-align:right;">Total/mo</th>
-                        <th style="text-align:right;">Factor</th>
+                        <th class="sortable" onclick="sortCOLTable('metro')">Metro</th>
+                        <th class="sortable" onclick="sortCOLTable('area')">Area</th>
+                        <th>Type</th>
+                        <th class="sortable" style="text-align:right;" onclick="sortCOLTable('rent')">Rent/mo</th>
+                        <th class="sortable" style="text-align:right;" onclick="sortCOLTable('costs')">Costs/mo</th>
+                        <th class="sortable" style="text-align:right;" onclick="sortCOLTable('total')">Total/mo</th>
+                        <th class="sortable" style="text-align:right;" onclick="sortCOLTable('factor')">Factor</th>
                         <th style="text-align:center;">Formula</th>
-                        <th style="text-align:right; color:#4ade80;">Equiv. Salary</th>
-                        <th style="text-align:right; color:#60a5fa;">EL Equivalent</th>
-                        <th style="text-align:right;">Purch. Power</th>
+                        <th class="sortable" style="text-align:right; color:#4ade80;" onclick="sortCOLTable('equiv')">Equiv. Salary</th>
+                        <th class="sortable" style="text-align:right; color:#60a5fa;" onclick="sortCOLTable('elEquiv')">Home Equiv.</th>
+                        <th class="sortable" style="text-align:right;" onclick="sortCOLTable('ppi')">Purch. Power</th>
                     </tr></thead><tbody id="colBody"></tbody>
                 </table></div>
             </div>
