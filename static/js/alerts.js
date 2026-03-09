@@ -485,6 +485,7 @@ let _dipData = null;
 async function fetchFindTheDip() {
     try {
         const resp = await fetch('/api/find-the-dip');
+        if (!resp.ok) return;
         _dipData = await resp.json();
         renderFindTheDip();
     } catch (e) {

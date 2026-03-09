@@ -1,7 +1,11 @@
 """Portfolio Blueprint — core portfolio, watchlist, dividend, and CRUD routes."""
 
+import json
+
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request
+
+import yfinance as yf
 
 from services.data_store import load_portfolio, save_portfolio, get_settings, crud_add, crud_delete
 from services.yfinance_svc import fetch_ticker_data, fetch_all_quotes, fetch_dividends
@@ -233,7 +237,7 @@ def api_portfolio():
         if pe_val and pe_val > 0:
             pe_weight_sum += pe_val * alloc
             pe_alloc_sum += alloc
-        if beta_val and beta_val > 0:
+        if beta_val is not None and beta_val != 0:
             beta_weight_sum += beta_val * alloc
             beta_alloc_sum += alloc
     portfolio_pe = round(pe_weight_sum / pe_alloc_sum, 1) if pe_alloc_sum > 0 else 0
@@ -648,8 +652,6 @@ def api_strategy_delete():
 @bp.route("/api/find-the-dip")
 def api_find_the_dip():
     """Compute SMA distances for all holdings. Returns positions trading below moving averages."""
-    import yfinance as yf
-
     cached = cache_get("find_the_dip")
     if cached:
         return jsonify(cached)
@@ -724,7 +726,6 @@ def _div_safety_score_component(value, thresholds):
 @bp.route("/api/dividend-safety")
 def api_dividend_safety():
     """Compute dividend safety rating for all holdings using InvT Score data."""
-    import json
 
     portfolio = load_portfolio()
     positions = portfolio.get("positions", [])

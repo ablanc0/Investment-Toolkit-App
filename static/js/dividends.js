@@ -225,6 +225,7 @@ function renderDivGrowthYoYChart(monthlyTotals) {
 async function fetchDividendSafety() {
     try {
         const resp = await fetch('/api/dividend-safety');
+        if (!resp.ok) return;
         const data = await resp.json();
         renderDividendSafety(data);
     } catch (e) {

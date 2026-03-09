@@ -4,7 +4,7 @@ import csv
 import io
 from datetime import datetime
 
-from flask import Blueprint, jsonify, make_response
+from flask import Blueprint, jsonify, make_response, request
 
 from services.data_store import load_portfolio
 from services.yfinance_svc import fetch_all_quotes
@@ -65,7 +65,6 @@ def _xlsx_response(rows, headers, filename, sheet_name="Data"):
 @bp.route("/api/export/holdings", methods=["GET"])
 def export_holdings():
     """Export current holdings as CSV."""
-    from flask import request
     fmt = request.args.get("format", "csv")
 
     portfolio = load_portfolio()
@@ -107,7 +106,6 @@ def export_holdings():
 @bp.route("/api/export/dividends", methods=["GET"])
 def export_dividends():
     """Export dividend log as CSV."""
-    from flask import request
     fmt = request.args.get("format", "csv")
 
     portfolio = load_portfolio()
@@ -129,7 +127,6 @@ def export_dividends():
 @bp.route("/api/export/watchlist", methods=["GET"])
 def export_watchlist():
     """Export watchlist as CSV."""
-    from flask import request
     fmt = request.args.get("format", "csv")
 
     portfolio = load_portfolio()
@@ -159,21 +156,25 @@ def export_watchlist():
 @bp.route("/api/export/monthly", methods=["GET"])
 def export_monthly():
     """Export monthly portfolio data as CSV."""
-    from flask import request
     fmt = request.args.get("format", "csv")
 
     portfolio = load_portfolio()
     monthly = portfolio.get("monthlyData", [])
+    dividend_log = portfolio.get("dividendLog", [])
+
+    # Pre-build lookup: (year, month_name) -> total dividend income
+    div_lookup = {}
+    for entry in dividend_log:
+        key = (entry.get("year"), entry.get("month", ""))
+        div_lookup[key] = entry.get("total", 0.0)
 
     headers = ["Month", "Portfolio Value", "Contributions", "Accumulated Investment",
                "Dividend Income"]
     rows = []
     for m in monthly:
-        div_income = sum(
-            sum(float(v) for v in entry.get("dividends", {}).values())
-            for entry in portfolio.get("dividendLog", [])
-            if entry.get("month", "").startswith(m.get("month", "???").split(" ")[0])
-        ) if "month" in m else 0
+        month_name = m.get("month", "").split(" ")[0]
+        year = m.get("year")
+        div_income = div_lookup.get((year, month_name), 0.0)
         rows.append([
             m.get("month", ""),
             m.get("portfolioValue", 0),
