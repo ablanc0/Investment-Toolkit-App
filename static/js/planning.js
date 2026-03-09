@@ -421,11 +421,18 @@ function updateEditPreview() {
     const nyc = colApiCities.find(c => c.name.toLowerCase() === 'new york');
     const nycCosts = nyc?.monthlyCostsNoRent || 1728;
     const nycSalary = nyc?.avgNetSalary || 5159;
+    const br = colConfig.bedroomCount || 1;
+    const loc = colConfig.locationType || 'city';
+    const rentKey = `rent${br}br${loc === 'city' ? 'City' : 'Suburb'}`;
+    const nycRent = nyc?.[rentKey] || 2697;
+    const homeRent = colConfig.currentRent || 0;
     if (costs <= 0) { line.innerHTML = ''; return; }
     const col = (costs / nycCosts * 100).toFixed(1);
+    const rentIdx = nycRent > 0 && homeRent > 0 ? (homeRent / nycRent * 100) : 0;
+    const cpr = rentIdx > 0 ? ((parseFloat(col) + rentIdx) / 2).toFixed(1) : col;
     let ppiHtml = '';
-    if (salary > 0 && col > 0) {
-        const ppi = ((salary / col) / (nycSalary / 100) * 100).toFixed(1);
+    if (salary > 0 && cpr > 0) {
+        const ppi = ((salary / cpr) / (nycSalary / 100) * 100).toFixed(1);
         const color = ppi >= 100 ? '#4ade80' : '#f59e0b';
         ppiHtml = ` · PPI <strong style="color:${color};">${ppi}</strong>`;
     }

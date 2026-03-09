@@ -115,12 +115,21 @@ def _compute_col_entry(entry, config, api_cities=None):
         if nyc_costs > 0:
             entry["colIndex"] = round((city_costs / nyc_costs) * 100, 1)
 
-    # Auto-compute PPI for non-API entries
+    # Auto-compute PPI for non-API entries using colPlusRentIndex (Numbeo-compatible)
     if entry.get("source") != "api" and api_cities:
         col_idx = float(entry.get("colIndex", 0))
         if col_idx > 0:
             nyc = next((c for c in api_cities if c["name"].lower() == "new york"), None)
             nyc_salary = float(nyc.get("avgNetSalary", 5159)) if nyc else 5159.0
+            # Compute colPlusRentIndex: avg of colIndex and rentIndex
+            br = config.get("bedroomCount", 1)
+            loc = config.get("locationType", "city")
+            rent_key = f"rent{br}br{'City' if loc == 'city' else 'Suburb'}"
+            nyc_rent = float(nyc.get(rent_key, 2697)) if nyc else 2697.0
+            rent_idx = round((city_rent / nyc_rent) * 100, 1) if nyc_rent > 0 and city_rent > 0 else 0
+            cpr_idx = (col_idx + rent_idx) / 2 if rent_idx > 0 else col_idx
+            entry["colPlusRentIndex"] = round(cpr_idx, 1)
+            entry["rentIndex"] = rent_idx
             # Use stored avgNetSalary if user explicitly set it, else compute
             stored_salary = float(entry.get("avgNetSalary", 0))
             if stored_salary > 0:
@@ -138,9 +147,9 @@ def _compute_col_entry(entry, config, api_cities=None):
                 else:
                     avg_salary = ref_salary / 12  # fallback: user reference salary (annual→monthly)
                 entry["avgNetSalary"] = round(avg_salary, 2)
-            # PPI = (salary / COL) / (NYC_salary / 100) × 100
-            if nyc_salary > 0:
-                entry["purchasingPower"] = round((avg_salary / col_idx) / (nyc_salary / 100) * 100, 1)
+            # PPI = (salary / colPlusRentIndex) / (NYC_salary / 100) × 100
+            if nyc_salary > 0 and cpr_idx > 0:
+                entry["purchasingPower"] = round((avg_salary / cpr_idx) / (nyc_salary / 100) * 100, 1)
 
     # Housing multiplier for display
     entry["housingMult"] = round(city_rent / current_rent, 2) if current_rent > 0 else 1.0
@@ -242,7 +251,15 @@ def api_cost_of_living():
                     avg_salary = sum(c["avgNetSalary"] for c in state_cities) / len(state_cities)
                 else:
                     avg_salary = config.get("referenceSalary", 140000) / 12
-            home_ppi = round((avg_salary / home_col) / (nyc_salary / 100) * 100, 1)
+            # Use colPlusRentIndex for Numbeo-compatible PPI
+            br = config.get("bedroomCount", 1)
+            loc = config.get("locationType", "city")
+            rent_key = f"rent{br}br{'City' if loc == 'city' else 'Suburb'}"
+            home_rent = float(config.get("currentRent") or 0)
+            nyc_rent = float(nyc.get(rent_key, 2697)) if nyc else 2697.0
+            rent_idx = (home_rent / nyc_rent * 100) if nyc_rent > 0 and home_rent > 0 else 0
+            cpr_idx = (home_col + rent_idx) / 2 if rent_idx > 0 else home_col
+            home_ppi = round((avg_salary / cpr_idx) / (nyc_salary / 100) * 100, 1) if cpr_idx > 0 else None
     config["homePurchasingPower"] = home_ppi
 
     return jsonify({
