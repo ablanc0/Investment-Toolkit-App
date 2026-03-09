@@ -647,6 +647,7 @@ const _colSortKeys = {
     costs:   c => c.monthlyCostsNoRent || 0,
     total:   c => c.totalMonthlyCost || 0,
     factor:  c => c.overallFactor || 0,
+    col:     c => c.colIndex || 0,
     equiv:   c => c.equivalentSalary || 0,
     elEquiv: c => c.elEquivalent || 0,
     ppi:     c => c.purchasingPower || 0,
@@ -700,10 +701,11 @@ function filterCOL(type, btn) {
             type: (colConfig.locationType === 'city') ? 'Downtown' : 'Suburban',
             source: 'home', rent: homeRent, monthlyCostsNoRent: homeCosts,
             totalMonthlyCost: homeRent + homeCosts, overallFactor: 1.0,
+            colIndex: colConfig.homeColIndex || homeMatch?.colIndex || 0,
             equivalentSalary: colConfig.referenceSalary || 0,
             elEquivalent: colConfig.comparisonSalary || 0,
             purchasingPower: colConfig.homePurchasingPower || 0,
-            formulaUsed: 'direct', pinned: true, _isHome: true,
+            pinned: true, _isHome: true,
         });
     }
     tbody.innerHTML = filtered.sort((a, b) => {
@@ -716,10 +718,7 @@ function filterCOL(type, btn) {
         const apiBadge = isApi ? ' <span style="font-size:0.65rem; padding:1px 4px; border-radius:3px; background:#6366f120; color:#6366f1; vertical-align:middle;">API</span>' : '';
         const costs = c.monthlyCostsNoRent ? formatMoney(c.monthlyCostsNoRent) : '—';
         const totalCost = c.totalMonthlyCost ? formatMoney(c.totalMonthlyCost) : '—';
-        const formulaUsed = c.formulaUsed || 'weighted';
-        const formulaBadge = formulaUsed === 'direct'
-            ? '<span style="font-size:0.65rem; padding:1px 6px; border-radius:3px; background:#22c55e20; color:#22c55e;">DIRECT</span>'
-            : '<span style="font-size:0.65rem; padding:1px 6px; border-radius:3px; background:#f59e0b20; color:#f59e0b;">WEIGHTED</span>';
+        const colIdx = c.colIndex ? c.colIndex.toFixed(0) : '—';
         const pp = c.purchasingPower ? c.purchasingPower.toFixed(0) : '—';
         const isPinned = c.pinned !== false;
         const isHome = c._isHome;
@@ -736,7 +735,7 @@ function filterCOL(type, btn) {
             <td style="text-align:right; color:var(--text-dim);">${costs}</td>
             <td style="text-align:right; font-weight:500;">${totalCost}</td>
             <td style="text-align:right; font-weight:600;">${(c.overallFactor || 0).toFixed(2)}x</td>
-            <td style="text-align:center;">${formulaBadge}</td>
+            <td style="text-align:right; color:#22d3ee;">${colIdx}</td>
             <td style="text-align:right; font-weight:600; color:#4ade80;">${formatMoney(c.equivalentSalary)}</td>
             <td style="text-align:right; color:#60a5fa;">${formatMoney(c.elEquivalent)}</td>
             <td style="text-align:right; color:${parseFloat(pp) >= 100 ? '#4ade80' : parseFloat(pp) > 0 ? '#f59e0b' : 'var(--text-dim)'};">${pp}</td>

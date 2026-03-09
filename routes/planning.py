@@ -104,6 +104,7 @@ def _compute_col_entry(entry, config, api_cities=None):
             entry["avgNetSalary"] = float(api_data.get("avgNetSalary", 0))
             entry["monthlyCostsNoRent"] = float(api_data.get("monthlyCostsNoRent", 0))
             entry["utilities"] = float(api_data.get("utilities", 0))
+            entry["colIndex"] = float(api_data.get("colIndex", 0))
 
     city_rent = float(entry.get("rent", 0))
     city_costs = float(entry.get("monthlyCostsNoRent", 0))
@@ -262,8 +263,13 @@ def api_cost_of_living():
             home_ppi = round((avg_salary / cpr_idx) / (nyc_salary / 100) * 100, 1) if cpr_idx > 0 else None
     config["homePurchasingPower"] = home_ppi
 
+    # Ensure computed fields (colIndex, PPI) are populated for display
+    col_entries = portfolio.get("costOfLiving", [])
+    for entry in col_entries:
+        _compute_col_entry(entry, config, api_cities)
+
     return jsonify({
-        "costOfLiving": portfolio.get("costOfLiving", []),
+        "costOfLiving": col_entries,
         "colConfig": config,
         "salaryProfiles": salary_profiles,
         "lastUpdated": datetime.now().isoformat(),
