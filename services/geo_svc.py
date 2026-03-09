@@ -1,6 +1,6 @@
 """
 InvToolkit — Geographic data resolution service.
-Cascade: etfpy → FMP profile → yfinance (+ ETF category heuristic).
+Cascade: FMP profile → yfinance (+ ETF category heuristic).
 Results persisted to geo_data.json (no TTL — fetch once, store forever).
 """
 
@@ -30,12 +30,8 @@ def resolve_geo(ticker, sec_type="Stocks"):
     if ticker in store and store[ticker].get("country"):
         return store[ticker]
 
-    # Cascade
-    result = None
-    if sec_type == "ETFs":
-        result = _try_etfpy(ticker)
-    if not result or not result.get("country"):
-        result = _try_fmp_profile(ticker)
+    # Cascade: FMP profile → yfinance (with ETF category heuristic)
+    result = _try_fmp_profile(ticker)
     if not result or not result.get("country"):
         result = _try_yfinance(ticker, is_etf=(sec_type == "ETFs"))
     if not result:
@@ -46,30 +42,12 @@ def resolve_geo(ticker, sec_type="Stocks"):
     return result
 
 
-def _try_etfpy(ticker):
-    """ETF country exposure from etfdb.com via etfpy."""
-    try:
-        from etfpy import ETF
-        etf = ETF(ticker)
-        exposure = etf.exposure or {}
-        countries = exposure.get("Country Breakdown", {})
-        if countries:
-            top_country = max(countries, key=countries.get)
-            return {
-                "country": top_country,
-                "currency": "USD",
-                "countries": countries,
-                "source": "etfpy",
-            }
-    except Exception as e:
-        print(f"[geo] etfpy failed for {ticker}: {e}")
-    return None
-
-
 def _try_fmp_profile(ticker):
-    """Company profile from FMP (has country field)."""
+    """Company profile from FMP (has country field). Requires FMP API key."""
     try:
-        from services.fmp import _fmp_get
+        from services.fmp import _fmp_get, _get_fmp_key
+        if not _get_fmp_key():
+            return None
         data = _fmp_get("profile", symbol=ticker)
         if data and isinstance(data, list) and len(data) > 0:
             p = data[0]
