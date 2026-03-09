@@ -7,6 +7,7 @@ from services.data_store import load_portfolio, save_portfolio, get_settings, cr
 from services.yfinance_svc import fetch_ticker_data, fetch_all_quotes, fetch_dividends
 from services.cache import cache_get, cache_set
 from services.validation import validate_ticker
+from config import ANALYZER_FILE
 
 bp = Blueprint('portfolio', __name__)
 
@@ -706,3 +707,110 @@ def api_find_the_dip():
     response = {"holdings": results, "lastUpdated": datetime.now().isoformat()}
     cache_set("find_the_dip", response)
     return jsonify(response)
+
+
+# ── Dividend Safety Rating ──────────────────────────────────────────
+
+def _div_safety_score_component(value, thresholds):
+    """Score a metric 0-100 based on thresholds list of (value, score) pairs."""
+    if value is None:
+        return None
+    for threshold, score in thresholds:
+        if value <= threshold:
+            return score
+    return thresholds[-1][1]
+
+
+@bp.route("/api/dividend-safety")
+def api_dividend_safety():
+    """Compute dividend safety rating for all holdings using InvT Score data."""
+    import json
+
+    portfolio = load_portfolio()
+    positions = portfolio.get("positions", [])
+    tickers = {p["ticker"] for p in positions if p.get("ticker")}
+
+    # Load analyzer store
+    store = {}
+    if ANALYZER_FILE.exists():
+        try:
+            store = json.loads(ANALYZER_FILE.read_text())
+        except Exception:
+            pass
+
+    # Payout ratio: lower is safer (30% weight)
+    payout_thresholds = [(30, 100), (40, 85), (50, 70), (60, 55), (70, 40), (80, 25), (100, 10)]
+    # FCF payout: lower is safer (30% weight)
+    fcf_thresholds = [(30, 100), (40, 85), (50, 70), (60, 55), (70, 40), (80, 25), (100, 10)]
+    # Div CAGR: higher is better (20% weight)
+    cagr_thresholds = [(-5, 10), (0, 30), (4, 50), (8, 70), (12, 85), (20, 100)]
+    # Interest coverage: higher is better (20% weight)
+    cov_thresholds = [(1, 10), (2, 30), (4, 50), (6, 70), (8, 85), (12, 100)]
+
+    results = []
+    for pos in positions:
+        ticker = pos["ticker"]
+        entry = store.get(ticker, {})
+        invt = entry.get("invtScore", {})
+        cats = invt.get("categories", {})
+
+        # Extract shareholder returns metrics
+        sr_metrics = {}
+        for m in (cats.get("shareholder_returns", {}).get("metrics") or []):
+            sr_metrics[m["key"]] = m.get("value5yr") if m.get("value5yr") is not None else m.get("value10yr")
+
+        # Extract interest coverage from debt category
+        interest_cov = None
+        for m in (cats.get("debt", {}).get("metrics") or []):
+            if m["key"] == "interest_cov":
+                interest_cov = m.get("value5yr") if m.get("value5yr") is not None else m.get("value10yr")
+
+        payout = sr_metrics.get("payout_ratio")
+        fcf_payout = sr_metrics.get("fcf_payout")
+        dps_cagr = sr_metrics.get("dps_cagr")
+
+        # Skip if no dividend data at all
+        if payout is None and fcf_payout is None and dps_cagr is None:
+            continue
+
+        # Compute component scores
+        s_payout = _div_safety_score_component(payout, payout_thresholds)
+        s_fcf = _div_safety_score_component(fcf_payout, fcf_thresholds)
+        s_cagr = _div_safety_score_component(dps_cagr, cagr_thresholds)
+        s_cov = _div_safety_score_component(interest_cov, cov_thresholds)
+
+        # Weighted average (skip None components)
+        weights = [(s_payout, 0.3), (s_fcf, 0.3), (s_cagr, 0.2), (s_cov, 0.2)]
+        valid = [(s, w) for s, w in weights if s is not None]
+        if not valid:
+            continue
+
+        total_weight = sum(w for _, w in valid)
+        composite = round(sum(s * w for s, w in valid) / total_weight, 1)
+
+        label = "Reliable" if composite >= 80 else "Safe" if composite >= 60 else "OK" if composite >= 40 else "Risky"
+
+        results.append({
+            "ticker": ticker,
+            "score": composite,
+            "label": label,
+            "payoutRatio": round(payout, 1) if payout is not None else None,
+            "fcfPayout": round(fcf_payout, 1) if fcf_payout is not None else None,
+            "dpsCagr": round(dps_cagr, 1) if dps_cagr is not None else None,
+            "interestCov": round(interest_cov, 1) if interest_cov is not None else None,
+            "annualDivIncome": pos.get("annualDivIncome", 0),
+            "category": pos.get("category", ""),
+        })
+
+    results.sort(key=lambda r: r["score"], reverse=True)
+
+    # Distribution summary
+    dist = {"Reliable": 0, "Safe": 0, "OK": 0, "Risky": 0}
+    for r in results:
+        dist[r["label"]] += 1
+
+    return jsonify({
+        "holdings": results,
+        "distribution": dist,
+        "lastUpdated": datetime.now().isoformat(),
+    })

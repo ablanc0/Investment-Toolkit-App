@@ -42,6 +42,9 @@ function populateDividends() {
 
     // Dividend Growth YoY
     if (dividendData.monthlyTotals) renderDivGrowthYoYChart(dividendData.monthlyTotals);
+
+    // Dividend Safety (async, loads from analyzer data)
+    fetchDividendSafety();
 }
 
 function renderIncomeRank(positions, totalReceived) {
@@ -215,6 +218,78 @@ function renderDivGrowthYoYChart(monthlyTotals) {
             }
         }
     });
+}
+
+// ── Dividend Safety Rating ──
+
+async function fetchDividendSafety() {
+    try {
+        const resp = await fetch('/api/dividend-safety');
+        const data = await resp.json();
+        renderDividendSafety(data);
+    } catch (e) {
+        console.error('[div-safety]', e);
+    }
+}
+
+function renderDividendSafety(data) {
+    const holdings = data.holdings || [];
+    const dist = data.distribution || {};
+
+    // Donut chart
+    const canvas = document.getElementById('divSafetyDonut');
+    if (canvas && holdings.length > 0) {
+        const labels = ['Reliable', 'Safe', 'OK', 'Risky'];
+        const colors = ['#22c55e', '#22d3ee', '#f59e0b', '#ef4444'];
+        const counts = labels.map(l => dist[l] || 0);
+
+        if (charts.divSafety) charts.divSafety.destroy();
+        charts.divSafety = new Chart(canvas.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{ data: counts, backgroundColor: colors, borderWidth: 0 }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '65%',
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        const legend = document.getElementById('divSafetyLegend');
+        if (legend) {
+            legend.innerHTML = labels.map((l, i) =>
+                counts[i] > 0 ? `<span style="color: ${colors[i]}; margin: 0 6px;">${l}: ${counts[i]}</span>` : ''
+            ).join('');
+        }
+    }
+
+    // Table
+    const tbody = document.getElementById('divSafetyBody');
+    if (!tbody) return;
+
+    if (holdings.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="color: var(--text-dim); text-align: center; padding: 24px;">Run Stock Analyzer on your holdings to see dividend safety ratings.</td></tr>';
+        return;
+    }
+
+    const ratingColors = { Reliable: '#22c55e', Safe: '#22d3ee', OK: '#f59e0b', Risky: '#ef4444' };
+
+    tbody.innerHTML = holdings.map(h => {
+        const color = ratingColors[h.label] || 'var(--text-dim)';
+        const fmtVal = (v) => v !== null && v !== undefined ? v.toFixed(1) : '—';
+        return `<tr>
+            <td><strong>${escapeHtml(h.ticker)}</strong></td>
+            <td><span style="color: ${color}; font-weight: 600; padding: 2px 8px; background: ${color}22; border-radius: 4px; font-size: 12px;">${h.label}</span></td>
+            <td style="font-weight: 600; color: ${color};">${h.score}</td>
+            <td style="text-align:right;">${fmtVal(h.payoutRatio)}</td>
+            <td style="text-align:right;">${fmtVal(h.fcfPayout)}</td>
+            <td style="text-align:right; color: ${(h.dpsCagr || 0) > 0 ? '#22c55e' : (h.dpsCagr || 0) < 0 ? '#ef4444' : 'var(--text-dim)'};">${fmtVal(h.dpsCagr)}</td>
+            <td style="text-align:right;">${fmtVal(h.interestCov)}</td>
+        </tr>`;
+    }).join('');
 }
 
 // ── Dividend Log (Calendar Matrix with Collapsible Years) ──

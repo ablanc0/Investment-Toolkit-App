@@ -341,6 +341,26 @@
                     <canvas id="divGrowthYoYChart"></canvas>
                 </div>
             </div>
+
+            <!-- Dividend Safety Rating -->
+            <div style="display: grid; grid-template-columns: 280px 1fr; gap: 24px; margin-bottom: 24px;">
+                <div class="card" style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div class="card-title" style="text-align: center;">🛡️ Dividend Safety</div>
+                    <div style="position: relative; width: 200px; height: 200px;">
+                        <canvas id="divSafetyDonut"></canvas>
+                    </div>
+                    <div id="divSafetyLegend" style="margin-top: 8px; font-size: 12px;"></div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Dividend Safety by Holding</div>
+                    <p style="color: var(--text-dim); font-size: 12px; margin: 0 0 8px 0;">Based on payout ratio, FCF payout, dividend growth, and interest coverage from InvT Score data.</p>
+                    <div class="table-wrapper">
+                        <table><thead><tr>
+                            <th>Ticker</th><th>Rating</th><th>Score</th><th style="text-align:right;">Payout %</th><th style="text-align:right;">FCF Payout %</th><th style="text-align:right;">Div CAGR %</th><th style="text-align:right;">Int. Coverage</th>
+                        </tr></thead><tbody id="divSafetyBody"></tbody></table>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Watchlist Tab -->
