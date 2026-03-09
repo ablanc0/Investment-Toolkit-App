@@ -752,6 +752,249 @@ function _drawMonthlyReturnsChart(returns) {
     });
 }
 
+// ── Dividend Calendar ──
+
+let _calendarData = { events: [], summary: {} };
+let _calMonth = new Date().getMonth();    // 0-based
+let _calYear = new Date().getFullYear();
+let _calView = 'grid';
+
+async function fetchDividendCalendar() {
+    try {
+        const resp = await fetch('/api/dividend-calendar?months=12');
+        if (!resp.ok) return;
+        _calendarData = await resp.json();
+        renderDividendCalendar();
+    } catch (e) {
+        console.error('[div-calendar]', e);
+    }
+}
+
+function renderDividendCalendar() {
+    const events = _calendarData.events || [];
+    const summary = _calendarData.summary || {};
+
+    // Month label
+    const label = document.getElementById('calMonthLabel');
+    if (label) {
+        label.textContent = new Date(_calYear, _calMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    }
+
+    // KPIs
+    const monthKey = `${_calYear}-${String(_calMonth + 1).padStart(2, '0')}`;
+    const monthTotal = (summary.monthlyTotals || {})[monthKey] || 0;
+    const monthEvents = events.filter(e => e.date.startsWith(monthKey));
+    const np = summary.nextPayout;
+
+    const kpiGrid = document.getElementById('calendarKpis');
+    if (kpiGrid) {
+        const kpis = [
+            { label: '💰 This Month', value: formatMoney(monthTotal), sub: `${monthEvents.length} events` },
+            { label: '📅 Annual Estimate', value: formatMoney(summary.annualEstimate || 0), sub: 'Next 12 months' },
+            { label: '⏭️ Next Payout', value: np ? `${escapeHtml(np.ticker)} ${formatMoney(np.income)}` : '—', sub: np ? np.date : 'None scheduled' },
+            { label: '📊 Total Events', value: summary.totalEvents || 0, sub: 'Paid + Declared + Estimated' },
+        ];
+        kpiGrid.innerHTML = kpis.map(kpi => `
+            <div class="kpi-card">
+                <div class="kpi-emoji">${kpi.label.split(' ')[0]}</div>
+                <div class="kpi-label">${kpi.label.split(' ').slice(1).join(' ')}</div>
+                <div class="kpi-value">${kpi.value}</div>
+                <div class="kpi-sub">${kpi.sub}</div>
+            </div>
+        `).join('');
+    }
+
+    // Render grid or list
+    if (_calView === 'grid') {
+        renderCalendarGrid(_calYear, _calMonth, events);
+    } else {
+        renderCalendarList(events);
+    }
+
+    // Monthly bar chart
+    renderCalendarBarChart(summary.monthlyTotals || {});
+}
+
+function renderCalendarGrid(year, month, allEvents) {
+    const container = document.getElementById('calendarContainer');
+    if (!container) return;
+
+    const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+    const events = allEvents.filter(e => e.date.startsWith(monthKey));
+
+    // Calendar math
+    const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    // Group events by day
+    const byDay = {};
+    events.forEach(ev => {
+        const day = parseInt(ev.date.split('-')[2], 10);
+        if (!byDay[day]) byDay[day] = [];
+        byDay[day].push(ev);
+    });
+
+    let html = '<div class="calendar-grid">';
+    // Header row
+    ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(d => {
+        html += `<div class="calendar-header">${d}</div>`;
+    });
+
+    // Empty cells before first day
+    for (let i = 0; i < firstDay; i++) {
+        html += '<div class="calendar-day empty"></div>';
+    }
+
+    // Day cells
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${monthKey}-${String(d).padStart(2, '0')}`;
+        const isToday = dateStr === todayStr;
+        const dayEvents = byDay[d] || [];
+        const hasEvents = dayEvents.length > 0;
+
+        html += `<div class="calendar-day${isToday ? ' today' : ''}${hasEvents ? ' has-events' : ''}">`;
+        html += `<div class="calendar-day-num">${d}</div>`;
+
+        for (const ev of dayEvents.slice(0, 3)) {
+            const statusClass = `div-${ev.status}`;
+            html += `<div class="calendar-event ${statusClass}" title="${escapeHtml(ev.ticker)}: $${ev.income.toFixed(2)} (${ev.status})">
+                <span class="calendar-event-ticker">${escapeHtml(ev.ticker)}</span>
+                <span class="calendar-event-amount">$${ev.income.toFixed(2)}</span>
+            </div>`;
+        }
+        if (dayEvents.length > 3) {
+            html += `<div style="font-size: 10px; color: var(--text-dim); text-align: center;">+${dayEvents.length - 3} more</div>`;
+        }
+        html += '</div>';
+    }
+
+    // Fill remaining cells
+    const totalCells = firstDay + daysInMonth;
+    const remaining = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+    for (let i = 0; i < remaining; i++) {
+        html += '<div class="calendar-day empty"></div>';
+    }
+
+    html += '</div>';
+
+    // Month total footer
+    const monthTotal = events.reduce((s, e) => s + e.income, 0);
+    if (events.length > 0) {
+        html += `<div style="margin-top: 12px; display: flex; gap: 16px; font-size: 13px; color: var(--text-dim);">
+            <span>Paid: <strong style="color: #22c55e;">${events.filter(e => e.status === 'paid').length}</strong></span>
+            <span>Declared: <strong style="color: #3b82f6;">${events.filter(e => e.status === 'declared').length}</strong></span>
+            <span>Estimated: <strong style="color: var(--text-dim);">${events.filter(e => e.status === 'estimated').length}</strong></span>
+            <span style="margin-left: auto;">Month Total: <strong style="color: var(--accent);">${formatMoney(monthTotal)}</strong></span>
+        </div>`;
+    }
+
+    container.innerHTML = html;
+}
+
+function renderCalendarList(allEvents) {
+    const container = document.getElementById('calendarContainer');
+    if (!container) return;
+
+    const monthKey = `${_calYear}-${String(_calMonth + 1).padStart(2, '0')}`;
+    const events = allEvents.filter(e => e.date.startsWith(monthKey));
+
+    if (events.length === 0) {
+        container.innerHTML = '<div class="card" style="padding: 24px; text-align: center; color: var(--text-dim);">No dividend events this month.</div>';
+        return;
+    }
+
+    const statusColors = { paid: '#22c55e', declared: '#3b82f6', estimated: 'var(--text-dim)' };
+
+    let html = '<div class="card"><div class="table-wrapper"><table style="font-size: 0.85rem;"><thead><tr>';
+    html += '<th>Date</th><th>Ticker</th><th style="text-align:right;">$/Share</th><th style="text-align:right;">Shares</th><th style="text-align:right;">Income</th><th>Status</th><th>Frequency</th>';
+    html += '</tr></thead><tbody>';
+
+    for (const ev of events) {
+        const color = statusColors[ev.status] || 'var(--text-dim)';
+        html += `<tr>
+            <td>${ev.date}</td>
+            <td><strong>${escapeHtml(ev.ticker)}</strong></td>
+            <td style="text-align:right;">$${ev.amount.toFixed(4)}</td>
+            <td style="text-align:right;">${ev.shares}</td>
+            <td style="text-align:right; font-weight:600; color: #4ade80;">${formatMoney(ev.income)}</td>
+            <td><span style="color: ${color}; font-weight:600; padding: 2px 8px; background: ${color}22; border-radius: 4px; font-size: 12px;">${ev.status}</span></td>
+            <td style="color: var(--text-dim);">${ev.frequency}</td>
+        </tr>`;
+    }
+
+    const total = events.reduce((s, e) => s + e.income, 0);
+    html += `<tr style="border-top: 2px solid var(--border); font-weight: 700;">
+        <td colspan="4">Total</td>
+        <td style="text-align:right; color: var(--accent);">${formatMoney(total)}</td>
+        <td colspan="2"></td>
+    </tr>`;
+
+    html += '</tbody></table></div></div>';
+    container.innerHTML = html;
+}
+
+function navigateMonth(delta) {
+    _calMonth += delta;
+    if (_calMonth > 11) { _calMonth = 0; _calYear++; }
+    if (_calMonth < 0) { _calMonth = 11; _calYear--; }
+    renderDividendCalendar();
+}
+
+function toggleCalendarView(mode, btn) {
+    _calView = mode;
+    // Update toggle button active state
+    if (btn) {
+        btn.parentElement.querySelectorAll('.add-row-btn').forEach(b => b.classList.remove('active-filter'));
+        btn.classList.add('active-filter');
+    }
+    renderDividendCalendar();
+}
+
+function renderCalendarBarChart(monthlyTotals) {
+    const canvas = document.getElementById('calendarBarChart');
+    if (!canvas) return;
+
+    const months = Object.keys(monthlyTotals).sort();
+    if (months.length === 0) return;
+
+    const labels = months.map(m => {
+        const [y, mo] = m.split('-');
+        return new Date(y, parseInt(mo) - 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    });
+    const values = months.map(m => monthlyTotals[m]);
+    const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+
+    if (charts.calendarBar) charts.calendarBar.destroy();
+    charts.calendarBar = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Monthly Dividends',
+                data: values,
+                backgroundColor: months.map(m => m <= currentMonth ? '#22c55e99' : '#3b82f666'),
+                borderColor: months.map(m => m <= currentMonth ? '#22c55e' : '#3b82f6'),
+                borderWidth: 1,
+                borderRadius: 4,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: ctx => '$' + ctx.raw.toFixed(2) } }
+            },
+            scales: {
+                x: { ticks: { color: getChartTextColor() }, grid: { display: false } },
+                y: { ticks: { color: getChartTextColor(), callback: v => '$' + v }, grid: { color: getChartGridColor() } }
+            }
+        }
+    });
+}
+
 // ── Annual Data (Computed from Monthly + Dividend Log) ──
 
 async function fetchAnnualData() {

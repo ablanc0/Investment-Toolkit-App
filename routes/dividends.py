@@ -1,10 +1,10 @@
-"""Dividends Blueprint — sold positions, dividend log, monthly data, and annual data routes."""
+"""Dividends Blueprint — sold positions, dividend log, monthly data, annual data, and dividend calendar routes."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request
 
 from services.data_store import load_portfolio, save_portfolio, crud_list, crud_add, crud_update, crud_delete
-from services.yfinance_svc import fetch_sp500_annual_returns
+from services.yfinance_svc import fetch_sp500_annual_returns, fetch_dividends, fetch_ticker_data
 
 bp = Blueprint('dividends', __name__)
 
@@ -330,3 +330,189 @@ def api_annual_data():
         prev_year_end_value = portfolio_value
 
     return jsonify({"annualData": result, "lastUpdated": datetime.now().isoformat()})
+
+
+# ── Dividend Calendar ──────────────────────────────────────────────
+
+def _detect_frequency(div_history):
+    """Analyze dividend intervals to detect payment frequency.
+    Returns: 'monthly', 'quarterly', 'semi-annual', 'annual', or 'unknown'.
+    """
+    if len(div_history) < 2:
+        return "unknown"
+
+    dates = sorted(datetime.strptime(d["date"], "%Y-%m-%d") for d in div_history)
+    # Use last 8 intervals max for recent pattern
+    recent = dates[-9:]
+    intervals = [(recent[i+1] - recent[i]).days for i in range(len(recent)-1)]
+    if not intervals:
+        return "unknown"
+
+    avg = sum(intervals) / len(intervals)
+    if avg < 45:
+        return "monthly"
+    elif avg < 135:
+        return "quarterly"
+    elif avg < 270:
+        return "semi-annual"
+    else:
+        return "annual"
+
+
+_FREQ_DAYS = {
+    "monthly": 30,
+    "quarterly": 91,
+    "semi-annual": 182,
+    "annual": 365,
+}
+
+
+def _project_dividends(ticker, div_history, frequency, shares, months_ahead, declared_dates=None):
+    """Project future dividend events based on history and frequency.
+    Returns list of event dicts.
+    """
+    events = []
+    today = datetime.now().date()
+    horizon = today + timedelta(days=months_ahead * 31)
+
+    # Last known dividend amount
+    if not div_history:
+        return events
+    sorted_divs = sorted(div_history, key=lambda d: d["date"])
+    last_div = sorted_divs[-1]
+    last_amount = last_div["dividend"]
+    last_date = datetime.strptime(last_div["date"], "%Y-%m-%d").date()
+
+    # Add historical events within the window (past 3 months for context)
+    lookback = today - timedelta(days=90)
+    for d in sorted_divs:
+        ddate = datetime.strptime(d["date"], "%Y-%m-%d").date()
+        if lookback <= ddate <= today:
+            events.append({
+                "ticker": ticker,
+                "date": d["date"],
+                "exDate": d["date"],
+                "amount": round(d["dividend"], 4),
+                "shares": shares,
+                "income": round(d["dividend"] * shares, 2),
+                "status": "paid",
+                "frequency": frequency,
+            })
+
+    # Declared dates from yfinance calendar override projections
+    declared_set = set()
+    if declared_dates:
+        for dd in declared_dates:
+            if today < dd <= horizon:
+                events.append({
+                    "ticker": ticker,
+                    "date": dd.isoformat(),
+                    "exDate": dd.isoformat(),
+                    "amount": round(last_amount, 4),
+                    "shares": shares,
+                    "income": round(last_amount * shares, 2),
+                    "status": "declared",
+                    "frequency": frequency,
+                })
+                declared_set.add(dd)
+
+    # Project forward at detected frequency
+    interval = _FREQ_DAYS.get(frequency)
+    if not interval:
+        return events
+
+    next_date = last_date + timedelta(days=interval)
+    while next_date <= horizon:
+        if next_date > today and next_date not in declared_set:
+            events.append({
+                "ticker": ticker,
+                "date": next_date.isoformat(),
+                "exDate": next_date.isoformat(),
+                "amount": round(last_amount, 4),
+                "shares": shares,
+                "income": round(last_amount * shares, 2),
+                "status": "estimated",
+                "frequency": frequency,
+            })
+        next_date += timedelta(days=interval)
+
+    return events
+
+
+def _get_declared_dates(ticker):
+    """Fetch next ex-dividend/payment dates from yfinance calendar."""
+    try:
+        import yfinance as yf
+        t = yf.Ticker(ticker)
+        cal = t.calendar
+        dates = []
+        if isinstance(cal, dict):
+            for key in ("Ex-Dividend Date", "Dividend Date"):
+                val = cal.get(key)
+                if val:
+                    if hasattr(val, "date"):
+                        dates.append(val.date() if callable(val.date) else val)
+                    elif isinstance(val, str):
+                        dates.append(datetime.strptime(val, "%Y-%m-%d").date())
+        return dates
+    except Exception:
+        return []
+
+
+@bp.route("/api/dividend-calendar")
+def api_dividend_calendar():
+    """GET: Returns dividend events (paid, declared, estimated) for calendar view."""
+    months = int(request.args.get("months", 12))
+    portfolio = load_portfolio()
+    positions = portfolio.get("positions", [])
+
+    all_events = []
+    for pos in positions:
+        ticker = pos.get("ticker", "")
+        shares = pos.get("shares", 0)
+        if not ticker or shares <= 0:
+            continue
+
+        # Check if position pays dividends
+        quote = fetch_ticker_data(ticker)
+        div_rate = quote.get("divRate", 0) or 0
+        if div_rate <= 0:
+            continue
+
+        # Fetch historical dividends
+        div_history = fetch_dividends(ticker)
+        if not div_history:
+            continue
+
+        frequency = _detect_frequency(div_history)
+        declared = _get_declared_dates(ticker)
+        events = _project_dividends(ticker, div_history, frequency, shares, months, declared)
+        all_events.extend(events)
+
+    # Sort by date
+    all_events.sort(key=lambda e: e["date"])
+
+    # Build monthly totals
+    monthly_totals = {}
+    for ev in all_events:
+        month_key = ev["date"][:7]  # "2026-03"
+        monthly_totals[month_key] = round(monthly_totals.get(month_key, 0) + ev["income"], 2)
+
+    # Annual estimate (next 12 months of future events only)
+    today = datetime.now().date().isoformat()
+    future_income = sum(ev["income"] for ev in all_events if ev["date"] > today)
+
+    # Next payout
+    future_events = [ev for ev in all_events if ev["date"] > today]
+    next_payout = future_events[0] if future_events else None
+
+    return jsonify({
+        "events": all_events,
+        "summary": {
+            "monthlyTotals": monthly_totals,
+            "annualEstimate": round(future_income, 2),
+            "nextPayout": next_payout,
+            "totalEvents": len(all_events),
+        },
+        "lastUpdated": datetime.now().isoformat(),
+    })

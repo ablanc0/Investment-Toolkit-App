@@ -230,6 +230,7 @@ function loadTabData(tabId) {
         apiHealth: fetchApiHealth,
         taxOptimization: fetchTaxOptimization,
         riskAnalysis: fetchRiskAnalysis,
+        divcalendar: fetchDividendCalendar,
         divDeep: fetchDividendDeepDive,
         screening: () => { populateScreening(); fetchFindTheDip(); },
         notesGoals: populateNotesGoals,
