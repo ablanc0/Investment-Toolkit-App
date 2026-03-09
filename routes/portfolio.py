@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, request
 
 from services.data_store import load_portfolio, save_portfolio, get_settings, crud_add, crud_delete
 from services.yfinance_svc import fetch_ticker_data, fetch_all_quotes, fetch_dividends
+from services.cache import cache_get, cache_set
 from services.validation import validate_ticker
 
 bp = Blueprint('portfolio', __name__)
@@ -639,3 +640,69 @@ def api_strategy_delete():
         return jsonify({"error": "Index required"}), 400
     crud_delete("strategy", int(index))
     return jsonify({"ok": True})
+
+
+# ── Find the Dip (SMA analysis) ────────────────────────────────────────
+
+@bp.route("/api/find-the-dip")
+def api_find_the_dip():
+    """Compute SMA distances for all holdings. Returns positions trading below moving averages."""
+    import yfinance as yf
+
+    cached = cache_get("find_the_dip")
+    if cached:
+        return jsonify(cached)
+
+    portfolio = load_portfolio()
+    positions = portfolio.get("positions", [])
+    tickers = [p["ticker"] for p in positions if p.get("ticker")]
+    if not tickers:
+        return jsonify({"holdings": []})
+
+    windows = [10, 50, 100, 200]
+    results = []
+
+    try:
+        data = yf.download(tickers, period="1y", interval="1d", progress=False)
+        close = data["Close"] if "Close" in data.columns else None
+        if close is None:
+            return jsonify({"holdings": []})
+
+        for pos in positions:
+            ticker = pos["ticker"]
+            try:
+                if hasattr(close, 'columns') and ticker in close.columns:
+                    series = close[ticker].dropna()
+                elif not hasattr(close, 'columns') and len(tickers) == 1:
+                    series = close.dropna()
+                else:
+                    continue
+
+                if len(series) < 10:
+                    continue
+
+                current_price = float(series.iloc[-1])
+                sma_data = {}
+                for w in windows:
+                    if len(series) >= w:
+                        sma_val = float(series.rolling(window=w).mean().iloc[-1])
+                        dist = round((current_price / sma_val - 1) * 100, 2)
+                        sma_data[f"sma{w}"] = round(sma_val, 2)
+                        sma_data[f"dist{w}"] = dist
+
+                results.append({
+                    "ticker": ticker,
+                    "price": round(current_price, 2),
+                    "category": pos.get("category", ""),
+                    **sma_data,
+                })
+            except Exception:
+                continue
+
+    except Exception as e:
+        print(f"[find-the-dip] Error: {e}")
+        return jsonify({"holdings": []})
+
+    response = {"holdings": results, "lastUpdated": datetime.now().isoformat()}
+    cache_set("find_the_dip", response)
+    return jsonify(response)

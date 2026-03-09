@@ -471,6 +471,29 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Find the Dip -->
+            <div class="card" style="margin-top: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div class="card-title" style="margin-bottom: 0;">📉 Find the Dip</div>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <select id="dipSmaSelect" onchange="renderFindTheDip()" style="padding: 6px 12px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 13px;">
+                            <option value="200">SMA 200</option>
+                            <option value="100">SMA 100</option>
+                            <option value="50">SMA 50</option>
+                            <option value="10">SMA 10</option>
+                        </select>
+                        <button class="add-row-btn" onclick="fetchFindTheDip()" title="Refresh SMA data">🔄</button>
+                    </div>
+                </div>
+                <p style="color: var(--text-dim); font-size: 12px; margin: 0 0 12px 0;">Holdings trading below their moving average — potential buying opportunities from a technical angle.</p>
+                <div id="dipChartContainer" style="position: relative; height: 250px; margin-bottom: 16px;"><canvas id="dipChart"></canvas></div>
+                <div class="table-wrapper">
+                    <table><thead><tr>
+                        <th>Ticker</th><th>Price</th><th style="text-align:right;">SMA 10</th><th style="text-align:right;">SMA 50</th><th style="text-align:right;">SMA 100</th><th style="text-align:right;">SMA 200</th><th>Category</th>
+                    </tr></thead><tbody id="dipBody"></tbody></table>
+                </div>
+            </div>
         </div>
 
         <!-- Notes & Goals Tab -->

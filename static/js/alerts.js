@@ -476,3 +476,102 @@ function populateIVList() {
         container.innerHTML = '<p style="color: var(--text-dim);">Intrinsic value list not available.</p>';
     }
 }
+
+
+// ── Find the Dip ───────────────────────────────────────────────────
+
+let _dipData = null;
+
+async function fetchFindTheDip() {
+    try {
+        const resp = await fetch('/api/find-the-dip');
+        _dipData = await resp.json();
+        renderFindTheDip();
+    } catch (e) {
+        console.error('[find-the-dip]', e);
+    }
+}
+
+function renderFindTheDip() {
+    if (!_dipData || !_dipData.holdings) return;
+    const sma = document.getElementById('dipSmaSelect')?.value || '200';
+    const distKey = `dist${sma}`;
+    const smaKey = `sma${sma}`;
+
+    // Only holdings with this SMA available and trading below it
+    const below = _dipData.holdings
+        .filter(h => h[distKey] !== undefined && h[distKey] < 0)
+        .sort((a, b) => a[distKey] - b[distKey]);
+
+    // Chart
+    _renderDipChart(below, distKey);
+
+    // Table — show ALL holdings sorted by distance
+    const all = _dipData.holdings
+        .filter(h => h[distKey] !== undefined)
+        .sort((a, b) => a[distKey] - b[distKey]);
+
+    const tbody = document.getElementById('dipBody');
+    if (!tbody) return;
+
+    tbody.innerHTML = all.map(h => {
+        const distCell = (key) => {
+            const v = h[key];
+            if (v === undefined) return '<td style="text-align:right; color: var(--text-dim);">—</td>';
+            const color = v < 0 ? '#ef4444' : v > 0 ? '#22c55e' : 'var(--text-dim)';
+            return `<td style="text-align:right; color: ${color}; font-weight: 600;">${v > 0 ? '+' : ''}${v.toFixed(1)}%</td>`;
+        };
+        return `<tr>
+            <td><strong>${escapeHtml(h.ticker)}</strong></td>
+            <td>${formatMoney(h.price)}</td>
+            ${distCell('dist10')}
+            ${distCell('dist50')}
+            ${distCell('dist100')}
+            ${distCell('dist200')}
+            <td style="color: var(--text-dim); font-size: 12px;">${escapeHtml(h.category || '')}</td>
+        </tr>`;
+    }).join('');
+}
+
+function _renderDipChart(below, distKey) {
+    const canvas = document.getElementById('dipChart');
+    if (!canvas) return;
+    const container = document.getElementById('dipChartContainer');
+
+    if (below.length === 0) {
+        if (charts.dip) charts.dip.destroy();
+        if (container) container.style.display = 'none';
+        return;
+    }
+    if (container) container.style.display = '';
+
+    if (charts.dip) charts.dip.destroy();
+    charts.dip = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: below.map(h => h.ticker),
+            datasets: [{
+                label: '% below SMA',
+                data: below.map(h => h[distKey]),
+                backgroundColor: below.map(h => {
+                    const d = h[distKey];
+                    return d < -10 ? '#ef4444cc' : d < -5 ? '#f59e0bcc' : '#fb923ccc';
+                }),
+                borderRadius: 4,
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: ctx => `${ctx.raw.toFixed(2)}% vs SMA` } }
+            },
+            scales: {
+                x: { ticks: { color: getChartTextColor(), callback: v => v + '%' }, grid: { color: getChartGridColor() } },
+                y: { ticks: { color: getChartTextColor() }, grid: { display: false } }
+            }
+        }
+    });
+}

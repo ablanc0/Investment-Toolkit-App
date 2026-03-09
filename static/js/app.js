@@ -231,7 +231,7 @@ function loadTabData(tabId) {
         taxOptimization: fetchTaxOptimization,
         riskAnalysis: fetchRiskAnalysis,
         divDeep: fetchDividendDeepDive,
-        screening: populateScreening,
+        screening: () => { populateScreening(); fetchFindTheDip(); },
         notesGoals: populateNotesGoals,
         taxAccounts: fetchTaxAccounts,
     };
