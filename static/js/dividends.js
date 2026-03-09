@@ -39,6 +39,12 @@ function populateDividends() {
     // New charts
     renderDivYieldChart(positions);
     renderIncomeDistChart(positions);
+
+    // Dividend Growth YoY
+    if (dividendData.monthlyTotals) renderDivGrowthYoYChart(dividendData.monthlyTotals);
+
+    // Dividend Safety (async, loads from analyzer data)
+    fetchDividendSafety();
 }
 
 function renderIncomeRank(positions, totalReceived) {
@@ -160,6 +166,131 @@ function renderIncomeDistChart(positions) {
             }
         }
     });
+}
+
+function renderDivGrowthYoYChart(monthlyTotals) {
+    const ctx = document.getElementById('divGrowthYoYChart');
+    if (!ctx) return;
+
+    // Group monthly totals by year → {2024: {Jan: 50, Feb: 30, ...}, 2025: {...}}
+    const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const yearData = {};
+    for (const [key, val] of Object.entries(monthlyTotals)) {
+        const [yr, mo] = key.split('-');
+        if (!yearData[yr]) yearData[yr] = {};
+        const mi = parseInt(mo, 10) - 1;
+        yearData[yr][MONTH_SHORT[mi]] = (yearData[yr][MONTH_SHORT[mi]] || 0) + val;
+    }
+
+    const years = Object.keys(yearData).sort();
+    if (years.length === 0) return;
+
+    const colors = ['#6366f1', '#22d3ee', '#f59e0b', '#4ade80', '#ec4899', '#ef4444', '#8b5cf6', '#14b8a6'];
+    const datasets = years.map((yr, i) => ({
+        label: yr,
+        data: MONTH_SHORT.map(m => yearData[yr][m] || 0),
+        backgroundColor: colors[i % colors.length] + 'cc',
+        borderColor: colors[i % colors.length],
+        borderWidth: 1,
+        borderRadius: 4,
+    }));
+
+    if (charts.divGrowthYoY) charts.divGrowthYoY.destroy();
+    charts.divGrowthYoY = new Chart(ctx.getContext('2d'), {
+        type: 'bar',
+        data: { labels: MONTH_SHORT, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: { color: getChartTextColor(), padding: 12, font: { size: 11 } }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => `${ctx.dataset.label}: $${ctx.raw.toFixed(2)}`
+                    }
+                }
+            },
+            scales: {
+                x: { ticks: { color: getChartTextColor() }, grid: { display: false } },
+                y: { ticks: { color: getChartTextColor(), callback: v => '$' + v }, grid: { color: getChartGridColor() } }
+            }
+        }
+    });
+}
+
+// ── Dividend Safety Rating ──
+
+async function fetchDividendSafety() {
+    try {
+        const resp = await fetch('/api/dividend-safety');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        renderDividendSafety(data);
+    } catch (e) {
+        console.error('[div-safety]', e);
+    }
+}
+
+function renderDividendSafety(data) {
+    const holdings = data.holdings || [];
+    const dist = data.distribution || {};
+
+    // Donut chart
+    const canvas = document.getElementById('divSafetyDonut');
+    if (canvas && holdings.length > 0) {
+        const labels = ['Reliable', 'Safe', 'OK', 'Risky'];
+        const colors = ['#22c55e', '#22d3ee', '#f59e0b', '#ef4444'];
+        const counts = labels.map(l => dist[l] || 0);
+
+        if (charts.divSafety) charts.divSafety.destroy();
+        charts.divSafety = new Chart(canvas.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{ data: counts, backgroundColor: colors, borderWidth: 0 }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '65%',
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        const legend = document.getElementById('divSafetyLegend');
+        if (legend) {
+            legend.innerHTML = labels.map((l, i) =>
+                counts[i] > 0 ? `<span style="color: ${colors[i]}; margin: 0 6px;">${l}: ${counts[i]}</span>` : ''
+            ).join('');
+        }
+    }
+
+    // Table
+    const tbody = document.getElementById('divSafetyBody');
+    if (!tbody) return;
+
+    if (holdings.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="color: var(--text-dim); text-align: center; padding: 24px;">Run Stock Analyzer on your holdings to see dividend safety ratings.</td></tr>';
+        return;
+    }
+
+    const ratingColors = { Reliable: '#22c55e', Safe: '#22d3ee', OK: '#f59e0b', Risky: '#ef4444' };
+
+    tbody.innerHTML = holdings.map(h => {
+        const color = ratingColors[h.label] || 'var(--text-dim)';
+        const fmtVal = (v) => v !== null && v !== undefined ? v.toFixed(1) : '—';
+        return `<tr>
+            <td><strong>${escapeHtml(h.ticker)}</strong></td>
+            <td><span style="color: ${color}; font-weight: 600; padding: 2px 8px; background: ${color}22; border-radius: 4px; font-size: 12px;">${h.label}</span></td>
+            <td style="font-weight: 600; color: ${color};">${h.score}</td>
+            <td style="text-align:right;">${fmtVal(h.payoutRatio)}</td>
+            <td style="text-align:right;">${fmtVal(h.fcfPayout)}</td>
+            <td style="text-align:right; color: ${(h.dpsCagr || 0) > 0 ? '#22c55e' : (h.dpsCagr || 0) < 0 ? '#ef4444' : 'var(--text-dim)'};">${fmtVal(h.dpsCagr)}</td>
+            <td style="text-align:right;">${fmtVal(h.interestCov)}</td>
+        </tr>`;
+    }).join('');
 }
 
 // ── Dividend Log (Calendar Matrix with Collapsible Years) ──
@@ -555,7 +686,45 @@ function renderMonthlyTrackerStats(stats) {
     renderMonthlyReturnsChart(stats.monthlyReturns || []);
 }
 
+let _monthlyReturnsData = [];
+
 function renderMonthlyReturnsChart(returns) {
+    const canvas = document.getElementById('monthlyReturnsChart');
+    if (!canvas || !returns.length) return;
+
+    _monthlyReturnsData = returns;
+    _buildMonthlyReturnsFilters(returns);
+    _drawMonthlyReturnsChart(returns);
+}
+
+function _buildMonthlyReturnsFilters(returns) {
+    const container = document.getElementById('monthlyReturnsFilters');
+    if (!container) return;
+
+    const years = [...new Set(returns.map(r => r.month.split(' ').pop()))].sort();
+    const filters = [{ label: 'All', value: 'all' }, { label: '12M', value: '12m' }];
+    years.forEach(y => filters.push({ label: y, value: y }));
+
+    container.innerHTML = filters.map(f =>
+        `<button class="add-row-btn ${f.value === 'all' ? 'active-filter' : ''}" onclick="filterMonthlyReturns('${f.value}', this)" style="font-size: 12px; padding: 4px 10px;">${f.label}</button>`
+    ).join('');
+}
+
+function filterMonthlyReturns(filter, btn) {
+    const container = document.getElementById('monthlyReturnsFilters');
+    if (container) container.querySelectorAll('button').forEach(b => b.classList.remove('active-filter'));
+    if (btn) btn.classList.add('active-filter');
+
+    let filtered = _monthlyReturnsData;
+    if (filter === '12m') {
+        filtered = _monthlyReturnsData.slice(-12);
+    } else if (filter !== 'all') {
+        filtered = _monthlyReturnsData.filter(r => r.month.endsWith(filter));
+    }
+    _drawMonthlyReturnsChart(filtered);
+}
+
+function _drawMonthlyReturnsChart(returns) {
     const canvas = document.getElementById('monthlyReturnsChart');
     if (!canvas || !returns.length) return;
     if (canvas._chart) canvas._chart.destroy();
@@ -577,7 +746,7 @@ function renderMonthlyReturnsChart(returns) {
             plugins: { legend: { display: false } },
             scales: {
                 x: { ticks: { color: getChartTextColor(), maxRotation: 45, font: { size: 10 } }, grid: { display: false } },
-                y: { ticks: { callback: v => v + '%', color: getChartTextColor() }, grid: { color: getChartGridColor() } },
+                y: { ticks: { callback: v => parseFloat(v.toFixed(2)) + '%', color: getChartTextColor() }, grid: { color: getChartGridColor() } },
             }
         }
     });

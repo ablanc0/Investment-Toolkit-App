@@ -206,3 +206,76 @@ function updateRebalRow(input) {
     if (remaining > 0) projAllocPct['Cash'] = round2(remaining / newTotalPortfolio * 100);
     createAllocationChart('rebalProjectedChart', projAllocPct, 'After Buys');
 }
+
+
+// ── Category Target Editor ─────────────────────────────────────────
+
+function toggleCategoryTargetEdit() {
+    const editor = document.getElementById('categoryTargetEditor');
+    if (!editor || !portfolioData) return;
+    const visible = editor.style.display !== 'none';
+    editor.style.display = visible ? 'none' : '';
+    if (visible) return;
+
+    const allocations = portfolioData.allocations?.category || {};
+    const targets = portfolioData.targets?.category || portfolioData.targets || {};
+    const categories = [...new Set([...Object.keys(allocations), ...Object.keys(targets)])].sort();
+
+    let html = '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-bottom: 8px;">';
+    for (const cat of categories) {
+        const target = targets[cat] || 0;
+        html += `<div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 13px; min-width: 80px;">${escapeHtml(cat)}</span>
+            <input type="number" min="0" max="100" step="1" value="${target}"
+                data-cat="${escapeHtml(cat)}" class="cat-target-input"
+                style="width: 60px; padding: 4px 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; text-align: center;">
+            <span style="color: var(--text-dim); font-size: 12px;">%</span>
+        </div>`;
+    }
+    html += '</div>';
+    html += '<div style="display: flex; gap: 8px; align-items: center;">';
+    html += '<button class="add-row-btn" onclick="saveCategoryTargets()" style="border-color: var(--green); color: var(--green);">💾 Save</button>';
+    html += '<span id="catTargetTotal" style="color: var(--text-dim); font-size: 12px;"></span>';
+    html += '</div>';
+    editor.innerHTML = html;
+
+    // Update total on input change
+    editor.querySelectorAll('.cat-target-input').forEach(inp => {
+        inp.addEventListener('input', updateCatTargetTotal);
+    });
+    updateCatTargetTotal();
+}
+
+function updateCatTargetTotal() {
+    const inputs = document.querySelectorAll('.cat-target-input');
+    const total = [...inputs].reduce((s, inp) => s + (parseFloat(inp.value) || 0), 0);
+    const el = document.getElementById('catTargetTotal');
+    if (el) {
+        const color = total === 100 ? '#22c55e' : total > 100 ? '#ef4444' : '#f59e0b';
+        el.innerHTML = `Total: <strong style="color: ${color};">${total}%</strong>`;
+    }
+}
+
+async function saveCategoryTargets() {
+    const inputs = document.querySelectorAll('.cat-target-input');
+    const category = {};
+    inputs.forEach(inp => {
+        const val = parseFloat(inp.value) || 0;
+        if (val > 0) category[inp.dataset.cat] = val;
+    });
+
+    try {
+        const resp = await fetch('/api/targets/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category })
+        });
+        if (resp.ok) {
+            showSaveToast('Category targets saved');
+            document.getElementById('categoryTargetEditor').style.display = 'none';
+            await fetchAllData();
+        }
+    } catch (e) {
+        console.error('[targets]', e);
+    }
+}

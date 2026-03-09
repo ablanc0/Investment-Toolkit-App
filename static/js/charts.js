@@ -11,45 +11,96 @@ function getChartGridColor() {
 
 let charts = {};
 
-function createReturnsChart(positions) {
-    const sorted = positions
-        .filter(p => p.totalReturn > 0)
-        .sort((a, b) => b.totalReturn - a.totalReturn)
-        .slice(0, 10);
+function createPortfolioValueChart(monthlyData) {
+    const canvas = document.getElementById('portfolioValueChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (charts.portfolioValue) charts.portfolioValue.destroy();
 
-    const ctx = document.getElementById('returnsChart').getContext('2d');
-    if (charts.returns) charts.returns.destroy();
+    const filtered = monthlyData.filter(m => m.portfolioValue > 0);
+    if (filtered.length === 0) return;
 
-    charts.returns = new Chart(ctx, {
-        type: 'bar',
+    const labels = filtered.map(m => m.month);
+    const values = filtered.map(m => m.portfolioValue);
+    // Carry forward accumulated investment when a month has 0 (not yet filled)
+    let lastAI = 0;
+    const invested = filtered.map(m => {
+        if (m.accumulatedInvestment > 0) lastAI = m.accumulatedInvestment;
+        return lastAI;
+    });
+
+    charts.portfolioValue = new Chart(ctx, {
+        type: 'line',
         data: {
-            labels: sorted.map(p => p.ticker),
-            datasets: [{
-                label: 'Total Return ($)',
-                data: sorted.map(p => p.totalReturn),
-                backgroundColor: '#22c55e',
-                borderColor: '#22c55e',
-                borderRadius: 8,
-            }]
+            labels,
+            datasets: [
+                {
+                    label: 'Portfolio Value',
+                    data: values,
+                    borderColor: '#22c55e',
+                    backgroundColor: 'rgba(34, 197, 94, 0.08)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                    borderWidth: 2.5,
+                },
+                {
+                    label: 'Accumulated Investment',
+                    data: invested,
+                    borderColor: '#6366f1',
+                    backgroundColor: 'rgba(99, 102, 241, 0.08)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                    borderWidth: 2,
+                },
+            ],
         },
         options: {
-            indexAxis: 'y',
             responsive: true,
             maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: { display: false }
+                legend: {
+                    labels: { color: getChartTextColor(), usePointStyle: true, padding: 15 },
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            return ctx.dataset.label + ': ' + formatMoney(ctx.parsed.y);
+                        },
+                        afterBody: function(tooltipItems) {
+                            if (tooltipItems.length >= 2) {
+                                const pv = tooltipItems[0].parsed.y;
+                                const ai = tooltipItems[1].parsed.y;
+                                const gain = pv - ai;
+                                const pct = ai > 0 ? ((gain / ai) * 100).toFixed(2) : '0.00';
+                                return 'Market Gain: ' + formatMoney(gain) + ' (' + pct + '%)';
+                            }
+                        },
+                    },
+                },
             },
             scales: {
                 x: {
-                    ticks: { color: getChartTextColor() },
-                    grid: { color: getChartGridColor() }
+                    ticks: { color: getChartTextColor(), maxTicksLimit: 12, maxRotation: 45 },
+                    grid: { display: false },
                 },
                 y: {
-                    ticks: { color: getChartTextColor() },
-                    grid: { display: false }
-                }
-            }
-        }
+                    ticks: {
+                        color: getChartTextColor(),
+                        callback: function(v) {
+                            if (v >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M';
+                            if (v >= 1e3) return '$' + (v / 1e3).toFixed(0) + 'K';
+                            return '$' + v;
+                        },
+                    },
+                    grid: { color: getChartGridColor() },
+                },
+            },
+        },
     });
 }
 

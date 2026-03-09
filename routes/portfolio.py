@@ -1,11 +1,17 @@
 """Portfolio Blueprint — core portfolio, watchlist, dividend, and CRUD routes."""
 
+import json
+
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request
 
+import yfinance as yf
+
 from services.data_store import load_portfolio, save_portfolio, get_settings, crud_add, crud_delete
 from services.yfinance_svc import fetch_ticker_data, fetch_all_quotes, fetch_dividends
+from services.cache import cache_get, cache_set
 from services.validation import validate_ticker
+from config import ANALYZER_FILE
 
 bp = Blueprint('portfolio', __name__)
 
@@ -219,6 +225,24 @@ def api_portfolio():
     portfolio_yoc = round((total_annual_div_income / total_cost_basis * 100) if total_cost_basis > 0 else 0, 2)
     lifetime_divs = round(sum(total_divs_received.values()), 2)
 
+    # Portfolio-level weighted P/E and Beta
+    pe_weight_sum = 0.0
+    pe_alloc_sum = 0.0
+    beta_weight_sum = 0.0
+    beta_alloc_sum = 0.0
+    for pos in enriched:
+        alloc = pos.get("allocation", 0)
+        pe_val = pos.get("pe", 0)
+        beta_val = pos.get("beta", 0)
+        if pe_val and pe_val > 0:
+            pe_weight_sum += pe_val * alloc
+            pe_alloc_sum += alloc
+        if beta_val is not None and beta_val != 0:
+            beta_weight_sum += beta_val * alloc
+            beta_alloc_sum += alloc
+    portfolio_pe = round(pe_weight_sum / pe_alloc_sum, 1) if pe_alloc_sum > 0 else 0
+    portfolio_beta = round(beta_weight_sum / beta_alloc_sum, 2) if beta_alloc_sum > 0 else 0
+
     # Sold positions summary
     sold_list = portfolio.get("soldPositions", [])
     sold_market_return = 0
@@ -256,6 +280,8 @@ def api_portfolio():
             "lifetimeDivsReceived": lifetime_divs,
             "soldReturn": sold_total_return,
             "soldPositionsCount": len(sold_list),
+            "portfolioPE": portfolio_pe,
+            "portfolioBeta": portfolio_beta,
         },
         "allocations": {
             "category": cat_alloc,
@@ -619,3 +645,173 @@ def api_strategy_delete():
         return jsonify({"error": "Index required"}), 400
     crud_delete("strategy", int(index))
     return jsonify({"ok": True})
+
+
+# ── Find the Dip (SMA analysis) ────────────────────────────────────────
+
+@bp.route("/api/find-the-dip")
+def api_find_the_dip():
+    """Compute SMA distances for all holdings. Returns positions trading below moving averages."""
+    cached = cache_get("find_the_dip")
+    if cached:
+        return jsonify(cached)
+
+    portfolio = load_portfolio()
+    positions = portfolio.get("positions", [])
+    tickers = [p["ticker"] for p in positions if p.get("ticker")]
+    if not tickers:
+        return jsonify({"holdings": []})
+
+    windows = [10, 50, 100, 200]
+    results = []
+
+    try:
+        data = yf.download(tickers, period="1y", interval="1d", progress=False)
+        close = data["Close"] if "Close" in data.columns else None
+        if close is None:
+            return jsonify({"holdings": []})
+
+        for pos in positions:
+            ticker = pos["ticker"]
+            try:
+                if hasattr(close, 'columns') and ticker in close.columns:
+                    series = close[ticker].dropna()
+                elif not hasattr(close, 'columns') and len(tickers) == 1:
+                    series = close.dropna()
+                else:
+                    continue
+
+                if len(series) < 10:
+                    continue
+
+                current_price = float(series.iloc[-1])
+                sma_data = {}
+                for w in windows:
+                    if len(series) >= w:
+                        sma_val = float(series.rolling(window=w).mean().iloc[-1])
+                        dist = round((current_price / sma_val - 1) * 100, 2)
+                        sma_data[f"sma{w}"] = round(sma_val, 2)
+                        sma_data[f"dist{w}"] = dist
+
+                results.append({
+                    "ticker": ticker,
+                    "price": round(current_price, 2),
+                    "category": pos.get("category", ""),
+                    **sma_data,
+                })
+            except Exception:
+                continue
+
+    except Exception as e:
+        print(f"[find-the-dip] Error: {e}")
+        return jsonify({"holdings": []})
+
+    response = {"holdings": results, "lastUpdated": datetime.now().isoformat()}
+    cache_set("find_the_dip", response)
+    return jsonify(response)
+
+
+# ── Dividend Safety Rating ──────────────────────────────────────────
+
+def _div_safety_score_component(value, thresholds):
+    """Score a metric 0-100 based on thresholds list of (value, score) pairs."""
+    if value is None:
+        return None
+    for threshold, score in thresholds:
+        if value <= threshold:
+            return score
+    return thresholds[-1][1]
+
+
+@bp.route("/api/dividend-safety")
+def api_dividend_safety():
+    """Compute dividend safety rating for all holdings using InvT Score data."""
+
+    portfolio = load_portfolio()
+    positions = portfolio.get("positions", [])
+    tickers = {p["ticker"] for p in positions if p.get("ticker")}
+
+    # Load analyzer store
+    store = {}
+    if ANALYZER_FILE.exists():
+        try:
+            store = json.loads(ANALYZER_FILE.read_text())
+        except Exception:
+            pass
+
+    # Payout ratio: lower is safer (30% weight)
+    payout_thresholds = [(30, 100), (40, 85), (50, 70), (60, 55), (70, 40), (80, 25), (100, 10)]
+    # FCF payout: lower is safer (30% weight)
+    fcf_thresholds = [(30, 100), (40, 85), (50, 70), (60, 55), (70, 40), (80, 25), (100, 10)]
+    # Div CAGR: higher is better (20% weight)
+    cagr_thresholds = [(-5, 10), (0, 30), (4, 50), (8, 70), (12, 85), (20, 100)]
+    # Interest coverage: higher is better (20% weight)
+    cov_thresholds = [(1, 10), (2, 30), (4, 50), (6, 70), (8, 85), (12, 100)]
+
+    results = []
+    for pos in positions:
+        ticker = pos["ticker"]
+        entry = store.get(ticker, {})
+        invt = entry.get("invtScore", {})
+        cats = invt.get("categories", {})
+
+        # Extract shareholder returns metrics
+        sr_metrics = {}
+        for m in (cats.get("shareholder_returns", {}).get("metrics") or []):
+            sr_metrics[m["key"]] = m.get("value5yr") if m.get("value5yr") is not None else m.get("value10yr")
+
+        # Extract interest coverage from debt category
+        interest_cov = None
+        for m in (cats.get("debt", {}).get("metrics") or []):
+            if m["key"] == "interest_cov":
+                interest_cov = m.get("value5yr") if m.get("value5yr") is not None else m.get("value10yr")
+
+        payout = sr_metrics.get("payout_ratio")
+        fcf_payout = sr_metrics.get("fcf_payout")
+        dps_cagr = sr_metrics.get("dps_cagr")
+
+        # Skip if no dividend data at all
+        if payout is None and fcf_payout is None and dps_cagr is None:
+            continue
+
+        # Compute component scores
+        s_payout = _div_safety_score_component(payout, payout_thresholds)
+        s_fcf = _div_safety_score_component(fcf_payout, fcf_thresholds)
+        s_cagr = _div_safety_score_component(dps_cagr, cagr_thresholds)
+        s_cov = _div_safety_score_component(interest_cov, cov_thresholds)
+
+        # Weighted average (skip None components)
+        weights = [(s_payout, 0.3), (s_fcf, 0.3), (s_cagr, 0.2), (s_cov, 0.2)]
+        valid = [(s, w) for s, w in weights if s is not None]
+        if not valid:
+            continue
+
+        total_weight = sum(w for _, w in valid)
+        composite = round(sum(s * w for s, w in valid) / total_weight, 1)
+
+        label = "Reliable" if composite >= 80 else "Safe" if composite >= 60 else "OK" if composite >= 40 else "Risky"
+
+        results.append({
+            "ticker": ticker,
+            "score": composite,
+            "label": label,
+            "payoutRatio": round(payout, 1) if payout is not None else None,
+            "fcfPayout": round(fcf_payout, 1) if fcf_payout is not None else None,
+            "dpsCagr": round(dps_cagr, 1) if dps_cagr is not None else None,
+            "interestCov": round(interest_cov, 1) if interest_cov is not None else None,
+            "annualDivIncome": pos.get("annualDivIncome", 0),
+            "category": pos.get("category", ""),
+        })
+
+    results.sort(key=lambda r: r["score"], reverse=True)
+
+    # Distribution summary
+    dist = {"Reliable": 0, "Safe": 0, "OK": 0, "Risky": 0}
+    for r in results:
+        dist[r["label"]] += 1
+
+    return jsonify({
+        "holdings": results,
+        "distribution": dist,
+        "lastUpdated": datetime.now().isoformat(),
+    })
