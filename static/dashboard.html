@@ -126,31 +126,30 @@
             <h3 style="color: var(--text); margin: 24px 0 12px 0; font-size: 15px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim);">Sold Positions</h3>
             <div class="kpi-grid" id="soldKpis"></div>
 
-            <!-- Charts -->
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px; margin: 32px 0;">
+            <!-- Portfolio Value Over Time -->
+            <div style="margin: 32px 0 24px 0;">
                 <div class="card">
-                    <div class="card-title">📈 Total Returns by Holding</div>
-                    <div class="chart-container">
-                        <canvas id="returnsChart"></canvas>
+                    <div class="card-title">📈 Portfolio Value Over Time</div>
+                    <div class="chart-container large">
+                        <canvas id="portfolioValueChart"></canvas>
                     </div>
                 </div>
+            </div>
 
+            <!-- Allocation Charts -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-bottom: 32px;">
                 <div class="card">
                     <div class="card-title">🏷️ Category Allocation</div>
                     <div class="chart-container">
                         <canvas id="categoryChart"></canvas>
                     </div>
                 </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px; margin-bottom: 32px;">
                 <div class="card">
                     <div class="card-title">🌍 By Sector</div>
                     <div class="chart-container">
                         <canvas id="sectorChart"></canvas>
                     </div>
                 </div>
-
                 <div class="card">
                     <div class="card-title">📦 Security Type</div>
                     <div class="chart-container">

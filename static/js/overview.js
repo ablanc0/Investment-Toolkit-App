@@ -140,10 +140,9 @@ function populateOverview() {
     ];
     renderKpiGrid('soldKpis', soldKpis);
 
-    // Charts
-    if (portfolioData.positions && portfolioData.positions.length > 0) {
-        createReturnsChart(portfolioData.positions);
-    }
+    // Charts — Portfolio Value Over Time (async, loads independently)
+    fetchPortfolioValueChart();
+
     if (allocations.category) {
         createAllocationChart('categoryChart', allocations.category, 'Category Allocation');
     }
@@ -330,4 +329,17 @@ function editCashValue(element, currentValue) {
 function exportData(section, format) {
     const url = `/api/export/${section}?format=${format}`;
     window.open(url, '_blank');
+}
+
+async function fetchPortfolioValueChart() {
+    try {
+        const resp = await fetch('/api/monthly-data');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.monthlyData && data.monthlyData.length > 0) {
+            createPortfolioValueChart(data.monthlyData);
+        }
+    } catch (e) {
+        console.error('[portfolio-value-chart]', e);
+    }
 }
