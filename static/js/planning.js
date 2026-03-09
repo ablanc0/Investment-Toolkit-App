@@ -720,6 +720,7 @@ function filterCOL(type, btn) {
         const totalCost = c.totalMonthlyCost ? formatMoney(c.totalMonthlyCost) : '—';
         const colIdx = c.colIndex ? c.colIndex.toFixed(0) : '—';
         const pp = c.purchasingPower ? c.purchasingPower.toFixed(0) : '—';
+        const salSrc = c._isHome ? 'Your salary' : c.source === 'api' ? 'City avg' : 'Estimated';
         const isPinned = c.pinned !== false;
         const isHome = c._isHome;
         const rowStyle = isHome ? 'background:#4ade8012; border-left:3px solid #4ade80;'
@@ -738,7 +739,7 @@ function filterCOL(type, btn) {
             <td style="text-align:right; color:#22d3ee;">${colIdx}</td>
             <td style="text-align:right; font-weight:600; color:#4ade80;">${formatMoney(c.equivalentSalary)}</td>
             <td style="text-align:right; color:#60a5fa;">${formatMoney(c.elEquivalent)}</td>
-            <td style="text-align:right; color:${parseFloat(pp) >= 100 ? '#4ade80' : parseFloat(pp) > 0 ? '#f59e0b' : 'var(--text-dim)'};">${pp}</td>
+            <td style="text-align:right; color:${parseFloat(pp) >= 100 ? '#4ade80' : parseFloat(pp) > 0 ? '#f59e0b' : 'var(--text-dim)'};" title="Salary basis: ${salSrc} (${formatMoney(c.avgNetSalary || 0)}/mo)">${pp}${c._isHome ? ' <span style="font-size:0.55rem; color:var(--text-dim); vertical-align:middle;">YOU</span>' : ''}</td>
         </tr>`;
     }).join('');
 }
