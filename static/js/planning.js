@@ -272,22 +272,34 @@ function renderDataSourceLine(matchedCity) {
             <span style="color:var(--text-dim);"> — COL ${matchedCity.colIndex} · $${matchedCity.monthlyCostsNoRent?.toLocaleString()}/mo</span>
             <a href="#" onclick="toggleEditManualCity(); return false;" style="color:var(--accent); font-size:0.7rem; margin-left:6px;">${editLabel}</a>
         </div>`;
-        const br = colConfig.bedroomCount || 1;
-        const locType = colConfig.locationType || 'city';
-        const rentKey = `rent${br}br${locType === 'city' ? 'City' : 'Suburb'}`;
-        const cityRent = matchedCity[rentKey] || 0;
+        // Compute state avg salary for the selector
+        const homeState = (colConfig.homeState || '').toLowerCase();
+        const homeCountry = (colConfig.homeCountry || '').toLowerCase();
+        const stateSalaryCities = colApiCities.filter(c =>
+            (c.state || '').toLowerCase() === homeState
+            && (!homeCountry || (c.country || '').toLowerCase() === homeCountry)
+            && c.avgNetSalary > 0);
+        const stateAvgSalary = stateSalaryCities.length
+            ? Math.round(stateSalaryCities.reduce((s, c) => s + c.avgNetSalary, 0) / stateSalaryCities.length)
+            : 0;
+        const userMonthlySalary = Math.round((colConfig.referenceSalary || 0) / 12);
+        const currentSalary = matchedCity.avgNetSalary || stateAvgSalary || userMonthlySalary || 0;
         html += `<div id="editManualCityFields" style="display:none; margin-top:6px; padding:8px; background:var(--card-hover); border-radius:6px;">
-            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;">
-                <div><label class="form-label" style="font-size:0.68rem;">COL Index</label>
-                    <input type="number" id="editManualCol" value="${matchedCity.colIndex || ''}" class="form-input"
-                        step="0.1" style="width:100%; font-size:0.78rem; padding:4px 8px;"></div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
                 <div><label class="form-label" style="font-size:0.68rem;">Costs/mo (no rent)</label>
                     <input type="number" id="editManualCosts" value="${matchedCity.monthlyCostsNoRent || ''}" class="form-input"
-                        style="width:100%; font-size:0.78rem; padding:4px 8px;"></div>
-                <div><label class="form-label" style="font-size:0.68rem;">Rent (${br}BR ${locType === 'city' ? 'City' : 'Suburb'})</label>
-                    <input type="number" id="editManualRent" value="${cityRent || ''}" class="form-input"
-                        style="width:100%; font-size:0.78rem; padding:4px 8px;"></div>
+                        style="width:100%; font-size:0.78rem; padding:4px 8px;" oninput="updateEditPreview()"></div>
+                <div><label class="form-label" style="font-size:0.68rem;">Avg Net Salary/mo (for PPI)</label>
+                    <select id="editManualSalarySource" class="form-input" style="width:100%; font-size:0.72rem; padding:4px 8px; margin-bottom:4px;"
+                        onchange="onEditSalarySourceChange(this.value)">
+                        ${stateAvgSalary ? `<option value="stateAvg" ${currentSalary === stateAvgSalary ? 'selected' : ''}>State avg ($${stateAvgSalary.toLocaleString()}/mo from ${stateSalaryCities.length} cities)</option>` : ''}
+                        <option value="user" ${currentSalary === userMonthlySalary ? 'selected' : ''}>Your salary ($${userMonthlySalary.toLocaleString()}/mo)</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                    <input type="number" id="editManualSalary" value="${currentSalary}" class="form-input"
+                        style="width:100%; font-size:0.78rem; padding:4px 8px;" oninput="updateEditPreview()"></div>
             </div>
+            <div id="editPreviewLine" style="margin-top:6px; font-size:0.75rem; color:var(--text-dim);"></div>
             <div style="margin-top:6px; text-align:right;">
                 <button class="btn-secondary" style="font-size:0.72rem; padding:3px 10px;" onclick="toggleEditManualCity()">Cancel</button>
                 <button class="btn-primary" style="font-size:0.72rem; padding:3px 10px; margin-left:4px;" onclick="saveEditManualCity()">Save</button>
@@ -341,15 +353,11 @@ function renderDataSourceLine(matchedCity) {
 
     // Manual inputs (shown only when manual is selected)
     if (colSource === 'manual') {
-        html += `<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
-            <div><label class="form-label" style="font-size:0.68rem;">Monthly Costs (no rent)</label>
-                <input type="number" id="manualCosts" value="${resolvedCosts || ''}" class="form-input"
-                    placeholder="e.g. 1100" style="width:100%; font-size:0.78rem; padding:4px 8px;"
-                    onchange="updateCOLConfig('homeMonthlyCosts', this.value ? parseFloat(this.value) : null)"></div>
-            <div><label class="form-label" style="font-size:0.68rem;">COL Index <span style="color:var(--text-dim);">(opt)</span></label>
-                <input type="number" id="manualCol" value="${resolvedCol || ''}" class="form-input"
-                    placeholder="e.g. 70" step="0.1" style="width:100%; font-size:0.78rem; padding:4px 8px;"
-                    onchange="updateCOLConfig('homeColIndex', this.value ? parseFloat(this.value) : null)"></div>
+        html += `<div>
+            <label class="form-label" style="font-size:0.68rem;">Monthly Costs (no rent)</label>
+            <input type="number" id="manualCosts" value="${resolvedCosts || ''}" class="form-input"
+                placeholder="e.g. 1100" style="width:100%; font-size:0.78rem; padding:4px 8px;"
+                onchange="updateCOLConfig('homeMonthlyCosts', this.value ? parseFloat(this.value) : null)">
         </div>
         <div style="margin-top:6px; text-align:right;">
             <button class="add-row-btn" style="font-size:0.72rem;" onclick="saveManualCityToDb()">Save to Database</button>
@@ -371,7 +379,6 @@ async function saveManualCityToDb() {
     const name = (colConfig.homeCityName || '').trim();
     if (!name) { showAlert('Enter a city name first', 'error'); return; }
     const costs = parseFloat(document.getElementById('manualCosts')?.value) || 0;
-    const col = parseFloat(document.getElementById('manualCol')?.value) || 0;
     if (!costs) { showAlert('Enter monthly costs to save', 'error'); return; }
     const rent = colConfig.currentRent || 0;
     const bedrooms = colConfig.bedroomCount || 1;
@@ -381,7 +388,7 @@ async function saveManualCityToDb() {
             method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
                 name, country: colConfig.homeCountry || '', state: colConfig.homeState || '',
-                monthlyCostsNoRent: costs, colIndex: col, rent, bedroomCount: bedrooms, locationType: location
+                monthlyCostsNoRent: costs, rent, bedroomCount: bedrooms, locationType: location
             })
         });
         const data = await resp.json();
@@ -391,7 +398,7 @@ async function saveManualCityToDb() {
             const apiResp = await fetch('/api/cost-of-living/api-cities?include_global=1').then(r => r.json()).catch(() => ({ cities: [] }));
             colApiCities = apiResp.cities || [];
             colApiMeta = apiResp.meta || {};
-            renderCOLConfig();
+            fetchCostOfLiving();  // refresh KPI cards + colConfig with updated PPI
         } else {
             showAlert(data.error || 'Save failed', 'error');
         }
@@ -400,16 +407,60 @@ async function saveManualCityToDb() {
 
 function toggleEditManualCity() {
     const el = document.getElementById('editManualCityFields');
-    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    if (el) {
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        if (el.style.display === 'block') updateEditPreview();
+    }
+}
+
+function updateEditPreview() {
+    const line = document.getElementById('editPreviewLine');
+    if (!line) return;
+    const costs = parseFloat(document.getElementById('editManualCosts')?.value) || 0;
+    const salary = parseFloat(document.getElementById('editManualSalary')?.value) || 0;
+    const nyc = colApiCities.find(c => c.name.toLowerCase() === 'new york');
+    const nycCosts = nyc?.monthlyCostsNoRent || 1728;
+    const nycSalary = nyc?.avgNetSalary || 5159;
+    if (costs <= 0) { line.innerHTML = ''; return; }
+    const col = (costs / nycCosts * 100).toFixed(1);
+    let ppiHtml = '';
+    if (salary > 0 && col > 0) {
+        const ppi = ((salary / col) / (nycSalary / 100) * 100).toFixed(1);
+        const color = ppi >= 100 ? '#4ade80' : '#f59e0b';
+        ppiHtml = ` · PPI <strong style="color:${color};">${ppi}</strong>`;
+    }
+    line.innerHTML = `COL <strong style="color:#22d3ee;">${col}</strong>${ppiHtml} <span style="font-size:0.68rem; color:var(--text-muted);">(NYC = 100)</span>`;
+}
+
+function onEditSalarySourceChange(value) {
+    const input = document.getElementById('editManualSalary');
+    if (!input) return;
+    if (value === 'stateAvg') {
+        const homeState = (colConfig.homeState || '').toLowerCase();
+        const homeCountry = (colConfig.homeCountry || '').toLowerCase();
+        const sc = colApiCities.filter(c =>
+            (c.state || '').toLowerCase() === homeState
+            && (!homeCountry || (c.country || '').toLowerCase() === homeCountry)
+            && c.avgNetSalary > 0);
+        input.value = sc.length ? Math.round(sc.reduce((s, c) => s + c.avgNetSalary, 0) / sc.length) : 0;
+        input.readOnly = true;
+    } else if (value === 'user') {
+        input.value = Math.round((colConfig.referenceSalary || 0) / 12);
+        input.readOnly = true;
+    } else {
+        input.readOnly = false;
+        input.focus();
+    }
+    updateEditPreview();
 }
 
 async function saveEditManualCity() {
     const name = (colConfig.homeCityName || '').trim();
     if (!name) return;
-    const col = parseFloat(document.getElementById('editManualCol')?.value) || 0;
     const costs = parseFloat(document.getElementById('editManualCosts')?.value) || 0;
-    const rent = parseFloat(document.getElementById('editManualRent')?.value) || 0;
-    if (!costs && !col) { showAlert('Enter at least costs or COL index', 'error'); return; }
+    const salary = parseFloat(document.getElementById('editManualSalary')?.value) || 0;
+    if (!costs) { showAlert('Enter monthly costs', 'error'); return; }
+    const rent = colConfig.currentRent || 0;
     const bedrooms = colConfig.bedroomCount || 1;
     const location = colConfig.locationType || 'city';
     try {
@@ -417,7 +468,7 @@ async function saveEditManualCity() {
             method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
                 name, country: colConfig.homeCountry || '', state: colConfig.homeState || '',
-                monthlyCostsNoRent: costs, colIndex: col, rent, bedroomCount: bedrooms, locationType: location
+                monthlyCostsNoRent: costs, avgNetSalary: salary, rent, bedroomCount: bedrooms, locationType: location
             })
         });
         const data = await resp.json();
@@ -426,7 +477,7 @@ async function saveEditManualCity() {
             const apiResp = await fetch('/api/cost-of-living/api-cities?include_global=1').then(r => r.json()).catch(() => ({ cities: [] }));
             colApiCities = apiResp.cities || [];
             colApiMeta = apiResp.meta || {};
-            renderCOLConfig();
+            fetchCostOfLiving();  // refresh KPI cards + colConfig with updated PPI
         } else {
             showAlert(data.error || 'Save failed', 'error');
         }
@@ -478,30 +529,71 @@ async function dedupCOLCities() {
     finally { if (btn) { btn.disabled = false; btn.textContent = 'Dedup'; } }
 }
 
+function _colKpiSub(factor, colIdx, avgSalary, ppi) {
+    const colTag = colIdx ? `COL <strong style="color:#22d3ee;">${colIdx}</strong>` : '';
+    const salTag = avgSalary ? `$${Math.round(avgSalary).toLocaleString()}/mo` : '';
+    const ppiTag = ppi ? `PPI <strong style="color:${ppi >= 100 ? '#4ade80' : '#f59e0b'};">${ppi}</strong>` : '';
+    return [factor, colTag, salTag, ppiTag].filter(Boolean).join(' · ');
+}
+
+function _colKpiCountry(city) {
+    const country = city?.apiData?.country || '';
+    if (!country || country === 'United States') return city?.area || '';
+    return country;
+}
+
 function renderCOLKpis() {
     const div = document.getElementById('colKpis');
     if (!div || !allCOLData.length) return;
+    div.style.gridTemplateColumns = 'repeat(4, 1fr)';
     const homeName = colConfig.homeCityName || 'My City';
-    const homeRent = colConfig.currentRent || 0;
+    const homeCountry = colConfig.homeCountry || '';
+    const homeLabel = homeCountry && homeCountry !== 'United States'
+        ? `${homeName}, ${homeCountry}` : `${homeName}, ${colConfig.homeState || 'US'}`;
     const sorted = [...allCOLData].sort((a, b) => a.overallFactor - b.overallFactor);
     const cheapest = sorted[0];
     const mostExp = sorted[sorted.length - 1];
     const avgFactor = allCOLData.reduce((s, c) => s + (c.overallFactor || 0), 0) / allCOLData.length;
-    const homeCosts = colConfig.homeMonthlyCosts;
-    const homeColLabel = homeCosts ? `$${homeCosts.toLocaleString()}/mo costs` : 'costs not set';
+    // Home city data
+    const homeCol = colConfig.homeColIndex ? Math.round(colConfig.homeColIndex * 10) / 10 : null;
+    const homePPI = colConfig.homePurchasingPower;
+    // Find home avgNetSalary from matched DB city
+    const homeMatch = colApiCities.find(c => c.name.toLowerCase() === (colConfig.homeCityName || '').toLowerCase());
+    const homeAvgSalary = homeMatch?.avgNetSalary || 0;
+    // Cheapest/Most Expensive data
+    const cheapCol = cheapest.apiData?.colIndex || cheapest.colIndex || null;
+    const expCol = mostExp.apiData?.colIndex || mostExp.colIndex || null;
+    const cheapLoc = _colKpiCountry(cheapest);
+    const expLoc = _colKpiCountry(mostExp);
     div.innerHTML = `
         <div class="kpi-card"><div class="kpi-label">Home City (Baseline)</div>
-            <div class="kpi-value" style="font-size:1.2rem;">${homeName}</div>
-            <div class="kpi-sub">1.00x | ${formatMoney(homeRent)}/mo | ${homeColLabel}</div></div>
+            <div class="kpi-value" style="font-size:1.2rem;">${homeLabel}</div>
+            <div class="kpi-sub">${_colKpiSub('1.00x', homeCol, homeAvgSalary, homePPI)}</div></div>
         <div class="kpi-card"><div class="kpi-label">Cheapest City</div>
-            <div class="kpi-value positive" style="font-size:1.2rem;">${cheapest.metro}</div>
-            <div class="kpi-sub">${cheapest.overallFactor?.toFixed(2)}x | ${formatMoney(cheapest.equivalentSalary)}</div></div>
+            <div class="kpi-value positive" style="font-size:1.2rem;">${cheapest.metro}${cheapLoc ? ', ' + cheapLoc : ''}</div>
+            <div class="kpi-sub">${_colKpiSub(cheapest.overallFactor?.toFixed(2) + 'x', cheapCol, cheapest.avgNetSalary, cheapest.purchasingPower)}</div></div>
         <div class="kpi-card"><div class="kpi-label">Most Expensive</div>
-            <div class="kpi-value negative" style="font-size:1.2rem;">${mostExp.metro}</div>
-            <div class="kpi-sub">${mostExp.overallFactor?.toFixed(2)}x | ${formatMoney(mostExp.equivalentSalary)}</div></div>
+            <div class="kpi-value negative" style="font-size:1.2rem;">${mostExp.metro}${expLoc ? ', ' + expLoc : ''}</div>
+            <div class="kpi-sub">${_colKpiSub(mostExp.overallFactor?.toFixed(2) + 'x', expCol, mostExp.avgNetSalary, mostExp.purchasingPower)}</div></div>
         <div class="kpi-card"><div class="kpi-label">Avg. Factor</div>
             <div class="kpi-value">${avgFactor.toFixed(2)}x</div>
             <div class="kpi-sub">${allCOLData.length} cities tracked</div></div>`;
+    // Glossary — independent card below KPI grid, above Reference Inputs
+    let glossaryEl = document.getElementById('colGlossaryWrap');
+    if (!glossaryEl) {
+        glossaryEl = document.createElement('div');
+        glossaryEl.id = 'colGlossaryWrap';
+        div.after(glossaryEl);
+    }
+    glossaryEl.className = 'card';
+    glossaryEl.style.cssText = 'margin-bottom:16px; padding:12px 20px;';
+    glossaryEl.innerHTML = `
+        <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px 24px; font-size:0.75rem; color:var(--text-muted); line-height:1.5;">
+            <div><strong style="color:var(--text-secondary);">Factor</strong><br>Cost ratio vs your home city.<br>1.00x = same, &lt;1 cheaper, &gt;1 pricier.</div>
+            <div><strong style="color:#22d3ee;">COL</strong><br>Cost of Living index.<br>NYC = 100. Lower = cheaper city.</div>
+            <div><strong style="color:var(--text-secondary);">$/mo</strong><br>Avg net monthly salary<br>for the city or state.</div>
+            <div><strong style="color:#4ade80;">PPI</strong><br>Purchasing Power Index (NYC = 100).<br><span style="color:#4ade80;">≥100</span> salary stretches further than in NYC.<br><span style="color:#f59e0b;">&lt;100</span> salary covers less than in NYC.</div>
+        </div>`;
 }
 
 function renderCOLChart() {
@@ -704,8 +796,6 @@ function showManualFields(prefill) {
             <input type="number" id="addCityManualRent" class="form-input" placeholder="2500" style="font-size:0.82rem; width:90px;"></div>
         <div><label class="form-label">Costs/mo</label>
             <input type="number" id="addCityManualCosts" class="form-input" placeholder="1200" style="font-size:0.82rem; width:90px;"></div>
-        <div><label class="form-label">COL Index</label>
-            <input type="number" id="addCityManualCol" class="form-input" placeholder="e.g. 70" step="0.1" style="font-size:0.82rem; width:70px;"></div>
         <button class="btn-primary" onclick="submitManualCity()" style="font-size:0.82rem;">Add</button>
         <button class="btn-secondary" onclick="hideAddCityResults()" style="font-size:0.82rem;">Cancel</button>
     </div>`;
@@ -719,13 +809,12 @@ async function submitManualCity() {
     const br = parseInt(document.getElementById('addCityManualBedrooms')?.value) || 1;
     const rent = parseFloat(document.getElementById('addCityManualRent')?.value);
     const costs = parseFloat(document.getElementById('addCityManualCosts')?.value) || 0;
-    const colIdx = parseFloat(document.getElementById('addCityManualCol')?.value) || 0;
     if (!metro) { showAlert('Enter a city name', 'error'); return; }
     if (isNaN(rent) || rent <= 0) { showAlert('Enter valid rent', 'error'); return; }
     try {
         const resp = await fetch('/api/cost-of-living/add', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ metro, area, type, rent, monthlyCostsNoRent: costs, nonHousingMult: 1.0, pinned: false, bedrooms: br, colIndex: colIdx })
+            body: JSON.stringify({ metro, area, type, rent, monthlyCostsNoRent: costs, nonHousingMult: 1.0, pinned: false, bedrooms: br })
         });
         const result = await resp.json();
         if (resp.ok) {

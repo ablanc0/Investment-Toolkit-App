@@ -78,7 +78,7 @@ def _resolve_home_col(config, api_cities):
     return None, None
 
 
-def _compute_col_entry(entry, config):
+def _compute_col_entry(entry, config, api_cities=None):
     """Recompute all derived fields from rent, API data, and config."""
     hw = config.get("housingWeight", 0.30)
     ref_salary = config.get("referenceSalary", 140000)
@@ -107,6 +107,40 @@ def _compute_col_entry(entry, config):
 
     city_rent = float(entry.get("rent", 0))
     city_costs = float(entry.get("monthlyCostsNoRent", 0))
+
+    # Auto-compute COL index for non-API entries from costs
+    if entry.get("source") != "api" and city_costs > 0 and api_cities:
+        nyc = next((c for c in api_cities if c["name"].lower() == "new york"), None)
+        nyc_costs = float(nyc.get("monthlyCostsNoRent", 1728)) if nyc else 1728.0
+        if nyc_costs > 0:
+            entry["colIndex"] = round((city_costs / nyc_costs) * 100, 1)
+
+    # Auto-compute PPI for non-API entries
+    if entry.get("source") != "api" and api_cities:
+        col_idx = float(entry.get("colIndex", 0))
+        if col_idx > 0:
+            nyc = next((c for c in api_cities if c["name"].lower() == "new york"), None)
+            nyc_salary = float(nyc.get("avgNetSalary", 5159)) if nyc else 5159.0
+            # Use stored avgNetSalary if user explicitly set it, else compute
+            stored_salary = float(entry.get("avgNetSalary", 0))
+            if stored_salary > 0:
+                avg_salary = stored_salary
+            else:
+                # Prefer state average salary from API cities
+                entry_state = (entry.get("area") or "").lower()
+                entry_country = (entry.get("country") or "").lower()
+                state_cities = [c for c in api_cities
+                                if _state_match(c.get("state"), entry_state)
+                                and (not entry_country or (c.get("country") or "").lower() == entry_country)
+                                and c.get("avgNetSalary", 0) > 0]
+                if state_cities:
+                    avg_salary = sum(c["avgNetSalary"] for c in state_cities) / len(state_cities)
+                else:
+                    avg_salary = ref_salary / 12  # fallback: user reference salary (annual→monthly)
+                entry["avgNetSalary"] = round(avg_salary, 2)
+            # PPI = (salary / COL) / (NYC_salary / 100) × 100
+            if nyc_salary > 0:
+                entry["purchasingPower"] = round((avg_salary / col_idx) / (nyc_salary / 100) * 100, 1)
 
     # Housing multiplier for display
     entry["housingMult"] = round(city_rent / current_rent, 2) if current_rent > 0 else 1.0
@@ -178,6 +212,39 @@ def api_cost_of_living():
         from models.salary_calc import _get_salary_data
         salary = _get_salary_data(portfolio)
         salary_profiles = [{"id": pid, "name": p.get("name", pid)} for pid, p in salary.get("profiles", {}).items()]
+    # Compute home city PPI for KPI card
+    from services.col_api import get_col_cities
+    api_cities = get_col_cities()
+    home_col = float(config.get("homeColIndex") or 0)
+    home_ppi = None
+    if home_col > 0 and api_cities:
+        nyc = next((c for c in api_cities if c["name"].lower() == "new york"), None)
+        nyc_salary = float(nyc.get("avgNetSalary", 5159)) if nyc else 5159.0
+        # Check if home city is in DB (API or manual with stored data)
+        home_name = (config.get("homeCityName") or "").lower().strip()
+        home_match = next((c for c in api_cities if c["name"].lower() == home_name), None)
+        if home_match and home_match.get("purchasingPowerIndex"):
+            home_ppi = round(float(home_match["purchasingPowerIndex"]), 1)
+        elif nyc_salary > 0:
+            # Use stored avgNetSalary from manual DB entry if available
+            stored_salary = float(home_match.get("avgNetSalary", 0)) if home_match else 0
+            if stored_salary > 0:
+                avg_salary = stored_salary
+            else:
+                # Fallback: state avg salary, then user reference salary
+                home_state = (config.get("homeState") or "").lower()
+                home_country = (config.get("homeCountry") or "").lower()
+                state_cities = [c for c in api_cities
+                                if _state_match(c.get("state"), home_state)
+                                and (not home_country or (c.get("country") or "").lower() == home_country)
+                                and c.get("avgNetSalary", 0) > 0]
+                if state_cities:
+                    avg_salary = sum(c["avgNetSalary"] for c in state_cities) / len(state_cities)
+                else:
+                    avg_salary = config.get("referenceSalary", 140000) / 12
+            home_ppi = round((avg_salary / home_col) / (nyc_salary / 100) * 100, 1)
+    config["homePurchasingPower"] = home_ppi
+
     return jsonify({
         "costOfLiving": portfolio.get("costOfLiving", []),
         "colConfig": config,
@@ -224,7 +291,8 @@ def api_cost_of_living_add():
     if any(c.get("metro", "").lower().strip() == metro_lower for c in existing):
         return jsonify({"ok": False, "error": f"{item['metro']} already exists"}), 400
     config = portfolio.get("colConfig", _default_col_config())
-    _compute_col_entry(item, config)
+    from services.col_api import get_col_cities
+    _compute_col_entry(item, config, get_col_cities())
     existing.append(item)
     save_portfolio(portfolio)
     return jsonify({"ok": True, "item": item})
@@ -369,7 +437,7 @@ def api_col_config_update():
     # Recompute all cities
     cities = portfolio.get("costOfLiving", [])
     for city in cities:
-        _compute_col_entry(city, config)
+        _compute_col_entry(city, config, api_cities)
     portfolio["costOfLiving"] = cities
     save_portfolio(portfolio)
     return jsonify({"ok": True, "colConfig": config, "costOfLiving": cities})
@@ -379,9 +447,11 @@ def api_col_config_update():
 def api_col_recompute():
     portfolio = load_portfolio()
     config = portfolio.get("colConfig", _default_col_config())
+    from services.col_api import get_col_cities
+    api_cities = get_col_cities()
     cities = portfolio.get("costOfLiving", [])
     for city in cities:
-        _compute_col_entry(city, config)
+        _compute_col_entry(city, config, api_cities)
     portfolio["costOfLiving"] = cities
     save_portfolio(portfolio)
     return jsonify({"ok": True, "costOfLiving": cities, "colConfig": config})
@@ -426,12 +496,22 @@ def api_col_save_manual_city():
     }
     rent_key = rent_map.get((bedrooms, location), "rent1brCity")
 
+    # Auto-compute COL from costs if not provided
+    costs = float(b.get("monthlyCostsNoRent", 0))
+    col_index = float(b.get("colIndex", 0))
+    if col_index <= 0 and costs > 0:
+        api_cities = get_col_cities()
+        nyc = next((c for c in api_cities if c["name"].lower() == "new york"), None)
+        nyc_costs = float(nyc.get("monthlyCostsNoRent", 1728)) if nyc else 1728.0
+        if nyc_costs > 0:
+            col_index = round((costs / nyc_costs) * 100, 1)
+
     city_data = {
         "name": name,
         "country": b.get("country", ""),
         "state": b.get("state", ""),
         "source": "manual",
-        "colIndex": float(b.get("colIndex", 0)),
+        "colIndex": col_index,
         "monthlyCostsNoRent": float(b.get("monthlyCostsNoRent", 0)),
         rent_key: rent,
         # Default other rent slots to 0 unless provided
