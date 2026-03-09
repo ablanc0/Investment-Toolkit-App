@@ -149,11 +149,26 @@ function populateOverview() {
     if (allocations.sector) {
         createAllocationChart('sectorChart', allocations.sector, 'Sector Allocation');
     }
-    if (allocations.securityType) {
-        createAllocationChart('securityChart', allocations.securityType, 'Security Type');
-    }
+    switchDiversificationChart('securityType');
     // Day Movers — top 5 gainers/losers by day change
     renderDayMovers();
+}
+
+function switchDiversificationChart(key) {
+    const allocations = portfolioData?.allocations || {};
+    const map = {
+        securityType: { data: allocations.securityType, title: '\ud83d\udce6 Security Type', label: 'Security Type' },
+        country:      { data: allocations.country,      title: '\ud83c\udf0e By Country',    label: 'Country' },
+        currency:     { data: allocations.currency,     title: '\ud83d\udcb1 By Currency',    label: 'Currency' },
+    };
+    const cfg = map[key];
+    if (!cfg || !cfg.data) return;
+
+    createAllocationChart('diversificationToggleChart', cfg.data, cfg.label);
+
+    document.querySelectorAll('#diversificationToggles .add-row-btn').forEach(btn => btn.classList.remove('active-filter'));
+    const active = document.querySelector('#diversificationToggles [data-key="' + key + '"]');
+    if (active) active.classList.add('active-filter');
 }
 
 function renderHealthSummary() {
