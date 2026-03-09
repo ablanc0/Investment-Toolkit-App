@@ -17,9 +17,13 @@ def api_settings_get():
     settings = copy.deepcopy(get_settings())
     # Mask API keys before returning
     api_keys = settings.get("apiKeys", {})
-    if api_keys.get("fmp"):
-        key = api_keys["fmp"]
-        settings["apiKeys"] = {"fmp": "****" + key[-4:] if len(key) > 4 else "****"}
+    masked = {}
+    for provider in ("fmp", "rapidapi"):
+        if api_keys.get(provider):
+            key = api_keys[provider]
+            masked[provider] = "****" + key[-4:] if len(key) > 4 else "****"
+    if masked:
+        settings["apiKeys"] = masked
     return jsonify(settings)
 
 
@@ -32,9 +36,13 @@ def api_settings_post():
     result = copy.deepcopy(save_settings(updates))
     # Mask API keys in response
     api_keys = result.get("apiKeys", {})
-    if api_keys.get("fmp"):
-        key = api_keys["fmp"]
-        result["apiKeys"] = {"fmp": "****" + key[-4:] if len(key) > 4 else "****"}
+    masked = {}
+    for provider in ("fmp", "rapidapi"):
+        if api_keys.get(provider):
+            key = api_keys[provider]
+            masked[provider] = "****" + key[-4:] if len(key) > 4 else "****"
+    if masked:
+        result["apiKeys"] = masked
     return jsonify(result)
 
 

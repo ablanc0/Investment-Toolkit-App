@@ -13,6 +13,7 @@ _api_health = {
     "yfinance": dict(_DEFAULT_API),
     "fred": dict(_DEFAULT_API),
     "edgar": dict(_DEFAULT_API),
+    "rapidapi": dict(_DEFAULT_API),
 }
 
 _fmp_quota = {"date": None, "count": 0, "limit": 250}
@@ -30,9 +31,14 @@ def record_api_call(api_name, success, latency_ms=None, error_msg=None):
             h["status"] = "ok"
             h["lastSuccess"] = now
         else:
-            h["status"] = "error"
+            msg = error_msg or ""
+            # Detect quota exhaustion for RapidAPI (monthly message or 429 rate limit)
+            if api_name == "rapidapi" and ("MONTHLY" in msg.upper() or "429" in msg):
+                h["status"] = "exhausted"
+            else:
+                h["status"] = "error"
             h["lastError"] = now
-            h["lastErrorMsg"] = error_msg or ""
+            h["lastErrorMsg"] = msg
         # Track FMP quota
         if api_name == "fmp":
             _check_quota_reset()
@@ -125,6 +131,23 @@ def run_health_check():
                         error_msg=None if r.status_code == 200 else f"HTTP {r.status_code}")
     except Exception as e:
         record_api_call("edgar", success=False, latency_ms=int((time.time() - start) * 1000), error_msg=str(e)[:80])
+
+    # RapidAPI (Cost of Living)
+    from services.col_api import _get_rapidapi_key
+    from config import RAPIDAPI_COL_CITIES_URL, RAPIDAPI_COL_HOST
+    rapid_key = _get_rapidapi_key()
+    if rapid_key:
+        start = time.time()
+        try:
+            r = http_requests.get(RAPIDAPI_COL_CITIES_URL,
+                                  headers={"x-rapidapi-host": RAPIDAPI_COL_HOST, "x-rapidapi-key": rapid_key},
+                                  timeout=15)
+            latency = int((time.time() - start) * 1000)
+            ok = r.status_code == 200
+            record_api_call("rapidapi", success=ok, latency_ms=latency,
+                            error_msg=None if ok else f"HTTP {r.status_code}")
+        except Exception as e:
+            record_api_call("rapidapi", success=False, latency_ms=int((time.time() - start) * 1000), error_msg=str(e)[:80])
 
     return get_health_summary()
 

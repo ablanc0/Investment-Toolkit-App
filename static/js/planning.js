@@ -2,13 +2,22 @@
 let allCOLData = [];
 let colConfig = {};
 let colSalaryProfiles = [];
+let colApiCities = [];   // Stored API cities for autocomplete
+let colApiMeta = {};     // {cityCount, fetchedAt}
+let colGlobalCities = []; // Global cities (all countries)
 
 async function fetchCostOfLiving() {
     try {
-        const data = await fetch('/api/cost-of-living').then(r => r.json());
-        allCOLData = data.costOfLiving || [];
-        colConfig = data.colConfig || {};
-        colSalaryProfiles = data.salaryProfiles || [];
+        const [colResp, apiResp] = await Promise.all([
+            fetch('/api/cost-of-living').then(r => r.json()),
+            fetch('/api/cost-of-living/api-cities?include_global=1').then(r => r.json()).catch(() => ({ cities: [], meta: {} })),
+        ]);
+        allCOLData = colResp.costOfLiving || [];
+        colConfig = colResp.colConfig || {};
+        colSalaryProfiles = colResp.salaryProfiles || [];
+        colApiCities = apiResp.cities || [];
+        colApiMeta = apiResp.meta || {};
+        colGlobalCities = apiResp.globalCities || [];
         renderCOLConfig();
         renderCOLKpis();
         renderCOLChart();
@@ -19,6 +28,11 @@ async function fetchCostOfLiving() {
 function renderCOLConfig() {
     const div = document.getElementById('colConfigInputs');
     if (!div) return;
+
+    const homeName = colConfig.homeCityName || '';
+    const matchedCity = colApiCities.find(c => c.name.toLowerCase() === homeName.toLowerCase().trim());
+
+    // ── Salary section ──
     const source = colConfig.referenceSalarySource || 'manual';
     const isManual = source === 'manual';
     const sourceOpts = [
@@ -28,33 +42,77 @@ function renderCOLConfig() {
         ),
         `<option value="household" ${source === 'household' ? 'selected' : ''}>Household (all)</option>`,
     ].join('');
+
     div.innerHTML = `
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
-            <div><label class="form-label">Home City</label>
-                <input type="text" value="${colConfig.homeCityName || ''}" class="form-input"
-                    style="width:100%; font-size:0.82rem;"
-                    onchange="updateCOLConfig('homeCityName', this.value)"></div>
-            <div><label class="form-label">Reference Salary <span style="color:#4ade80;">(green)</span></label>
-                <input type="number" value="${colConfig.referenceSalary || 0}" class="form-input"
-                    style="width:100%; font-size:0.82rem; text-align:right;" ${!isManual ? 'disabled' : ''}
-                    onchange="updateCOLConfig('referenceSalary', parseFloat(this.value))">
-                <select style="font-size:0.72rem; margin-top:4px; background:var(--card); color:var(--text-dim); border:1px solid var(--border); border-radius:4px; padding:2px 4px;"
-                    onchange="updateCOLConfig('referenceSalarySource', this.value)">
-                    ${sourceOpts}
-                </select></div>
-            <div><label class="form-label">Comparison Salary <span style="color:#60a5fa;">(blue)</span></label>
-                <input type="number" value="${colConfig.comparisonSalary || 0}" class="form-input"
-                    style="width:100%; font-size:0.82rem; text-align:right;"
-                    onchange="updateCOLConfig('comparisonSalary', parseFloat(this.value))"></div>
-            <div><label class="form-label">Current Rent/mo</label>
-                <input type="number" value="${colConfig.currentRent || 0}" class="form-input"
-                    style="width:100%; font-size:0.82rem; text-align:right;"
-                    onchange="updateCOLConfig('currentRent', parseFloat(this.value))"></div>
-            <div><label class="form-label">Housing Weight</label>
-                <input type="range" min="0" max="100" value="${((colConfig.housingWeight || 0.3) * 100).toFixed(0)}"
-                    style="width:100%;" oninput="this.nextElementSibling.textContent = this.value + '%'"
-                    onchange="updateCOLConfig('housingWeight', this.value / 100)">
-                <span style="font-size:0.82rem; color:var(--text-dim);">${((colConfig.housingWeight || 0.3) * 100).toFixed(0)}%</span></div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <!-- Your City Section -->
+            <div style="padding:12px; background:var(--bg); border-radius:8px; border:1px solid var(--border);">
+                <div style="font-size:0.82rem; font-weight:600; color:var(--text); margin-bottom:10px;">📍 Your City</div>
+                <div style="display:grid; grid-template-columns:1fr auto auto; gap:8px; margin-bottom:8px;">
+                    <div style="position:relative;">
+                        <label class="form-label" style="font-size:0.72rem;">City</label>
+                        <input type="text" id="homeCityInput" value="${homeName}" class="form-input"
+                            style="width:100%; font-size:0.82rem;" placeholder="Search or type your city..."
+                            autocomplete="off"
+                            oninput="onHomeCityInput(this.value)"
+                            onblur="confirmHomeCityName(this.value)"
+                            onkeydown="if(event.key==='Enter'){event.preventDefault();confirmHomeCityName(this.value);}">
+                        <div id="homeCityResults" style="position:absolute; top:100%; left:0; width:100%; z-index:50; max-height:220px; overflow-y:auto; background:var(--card); border:1px solid var(--border); border-radius:6px; display:none; box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>
+                    </div>
+                    <div style="width:140px;">
+                        <label class="form-label" style="font-size:0.72rem;">Country</label>
+                        ${renderCountrySelector()}
+                    </div>
+                    <div style="width:100px;">
+                        <label class="form-label" style="font-size:0.72rem;">State/Region</label>
+                        ${renderStateSelector()}
+                    </div>
+                </div>
+                <div id="homeDataSourceLine">${renderDataSourceLine(matchedCity)}</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:10px;">
+                    <div><label class="form-label" style="font-size:0.72rem;">Your Rent/mo</label>
+                        <input type="number" value="${colConfig.currentRent || 0}" class="form-input"
+                            style="width:100%; font-size:0.82rem; text-align:right;"
+                            onchange="updateCOLConfig('currentRent', parseFloat(this.value))"></div>
+                    <div><label class="form-label" style="font-size:0.72rem;">Bedrooms</label>
+                        <select class="form-input" style="width:100%; font-size:0.82rem;"
+                            onchange="updateCOLConfig('bedroomCount', parseInt(this.value))">
+                            <option value="1" ${(colConfig.bedroomCount||1)===1?'selected':''}>1 BR</option>
+                            <option value="3" ${colConfig.bedroomCount===3?'selected':''}>3 BR</option>
+                        </select></div>
+                    <div><label class="form-label" style="font-size:0.72rem;">Location</label>
+                        <select class="form-input" style="width:100%; font-size:0.82rem;"
+                            onchange="updateCOLConfig('locationType', this.value)">
+                            <option value="city" ${(colConfig.locationType||'city')==='city'?'selected':''}>City Centre</option>
+                            <option value="suburb" ${colConfig.locationType==='suburb'?'selected':''}>Outside Centre</option>
+                        </select></div>
+                </div>
+            </div>
+            <!-- Salary Section -->
+            <div style="padding:12px; background:var(--bg); border-radius:8px; border:1px solid var(--border);">
+                <div style="font-size:0.82rem; font-weight:600; color:var(--text); margin-bottom:10px;">💰 Salary</div>
+                <div style="margin-bottom:10px;">
+                    <label class="form-label" style="font-size:0.72rem;">Reference Salary <span style="color:#4ade80;">(green)</span></label>
+                    <input type="number" value="${colConfig.referenceSalary || 0}" class="form-input"
+                        style="width:100%; font-size:0.82rem; text-align:right;" ${!isManual ? 'disabled' : ''}
+                        onchange="updateCOLConfig('referenceSalary', parseFloat(this.value))">
+                    <select style="font-size:0.72rem; margin-top:4px; width:100%; background:var(--card); color:var(--text-dim); border:1px solid var(--border); border-radius:4px; padding:2px 4px;"
+                        onchange="updateCOLConfig('referenceSalarySource', this.value)">
+                        ${sourceOpts}
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label" style="font-size:0.72rem;">Comparison Salary <span style="color:#60a5fa;">(blue)</span></label>
+                    <input type="number" value="${colConfig.comparisonSalary || 0}" class="form-input"
+                        style="width:100%; font-size:0.82rem; text-align:right;"
+                        onchange="updateCOLConfig('comparisonSalary', parseFloat(this.value))">
+                </div>
+            </div>
+        </div>
+        <div style="margin-top:8px; font-size:0.75rem; color:var(--text-dim);">
+            ${colApiMeta.fetchedAt
+                ? `<span style="color:#4ade80;">&#9679;</span> ${colApiMeta.cityCount} cities in database${colApiMeta.totalKnownCities ? ' / ' + colApiMeta.totalKnownCities + ' global' : ''} (updated ${new Date(colApiMeta.fetchedAt).toLocaleDateString()})`
+                : '<span style="color:#64748b;">&#9679;</span> No API data — click "Refresh API Data" to fetch'}
         </div>`;
 }
 
@@ -78,28 +136,473 @@ async function updateCOLConfig(key, value) {
     } catch(e) { console.error(e); }
 }
 
+// ── Home city search autocomplete ──
+function onHomeCityInput(query) {
+    const results = document.getElementById('homeCityResults');
+    if (!results) return;
+    // Hide the data-source status line while the user is editing
+    const dsLine = document.getElementById('homeDataSourceLine');
+    if (dsLine) dsLine.style.display = 'none';
+    const q = query.trim().toLowerCase();
+    if (q.length < 2) { results.style.display = 'none'; return; }
+    const matches = colApiCities
+        .filter(c => c.name.toLowerCase().includes(q) || (c.country || '').toLowerCase().includes(q)
+            || (c.state || '').toLowerCase().includes(q))
+        .slice(0, 10);
+    if (matches.length === 0) {
+        results.style.display = 'none';
+        return;
+    }
+    results.innerHTML = matches.map(c => {
+        const loc = c.state && c.state !== 'N/A' ? `${c.state}, ${c.country}` : c.country || '';
+        const srcTag = c.source === 'manual'
+            ? '<span style="color:#f59e0b; font-size:0.68rem; margin-left:4px;">(manual)</span>'
+            : '';
+        return `<div style="padding:6px 10px; cursor:pointer; font-size:0.78rem; border-bottom:1px solid var(--border);"
+            onmousedown="event.preventDefault(); selectHomeCity('${c.name.replace(/'/g, "\\'")}')"
+            onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+            <strong>${c.name}</strong>, ${loc}${srcTag} <span style="color:var(--text-dim);">— COL ${c.colIndex}, $${c.monthlyCostsNoRent?.toLocaleString()}/mo</span>
+        </div>`;
+    }).join('');
+    results.style.display = 'block';
+}
+
+let _homeCitySelecting = false;
+function selectHomeCity(name) {
+    _homeCitySelecting = true;
+    const results = document.getElementById('homeCityResults');
+    if (results) results.style.display = 'none';
+    const city = colApiCities.find(c => c.name === name);
+    // Set city name + infer country and state from city data
+    const updates = { homeCityName: name };
+    if (city) {
+        if (city.country) updates.homeCountry = city.country;
+        if (city.state && city.state !== 'N/A') updates.homeState = city.state;
+    }
+    fetch('/api/cost-of-living/config/update', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(updates)
+    }).then(r => r.json()).then(data => {
+        if (data.ok) {
+            colConfig = data.colConfig;
+            allCOLData = data.costOfLiving;
+            renderCOLConfig();
+            renderCOLKpis();
+            renderCOLChart();
+            const activeType = document.querySelector('#colFilters .filter-btn.active');
+            filterCOL(activeType?.dataset?.type || 'all');
+        }
+    }).catch(e => console.error(e));
+}
+
+function confirmHomeCityName(value) {
+    // Skip if a city was just selected via autocomplete (it handles its own update)
+    if (_homeCitySelecting) { _homeCitySelecting = false; return; }
+    const results = document.getElementById('homeCityResults');
+    if (results) results.style.display = 'none';
+    const trimmed = value.trim();
+    // Re-show status line if name unchanged (user just blurred without editing)
+    if (!trimmed || trimmed.toLowerCase() === (colConfig.homeCityName || '').toLowerCase()) {
+        const dsLine = document.getElementById('homeDataSourceLine');
+        if (dsLine) dsLine.style.display = '';
+        return;
+    }
+    updateCOLConfig('homeCityName', trimmed);
+}
+
+function renderCountrySelector() {
+    const homeCountry = colConfig.homeCountry || '';
+    const countries = [...new Set(colApiCities.map(c => c.country).filter(Boolean))].sort();
+    if (countries.length === 0) {
+        return `<input type="text" value="${homeCountry}" class="form-input"
+            style="width:100%; font-size:0.82rem;" placeholder="Country"
+            onchange="updateCOLConfig('homeCountry', this.value)">`;
+    }
+    const opts = countries.map(c => {
+        const sel = c === homeCountry ? 'selected' : '';
+        return `<option value="${c}" ${sel}>${c}</option>`;
+    }).join('');
+    return `<select class="form-input" style="width:100%; font-size:0.82rem;"
+        onchange="updateCOLConfig('homeCountry', this.value)">
+        <option value="">--</option>
+        ${opts}
+    </select>`;
+}
+
+function renderStateSelector() {
+    const homeState = colConfig.homeState || '';
+    const homeCountry = colConfig.homeCountry || '';
+    // Only show states for the selected country
+    const countryCities = homeCountry
+        ? colApiCities.filter(c => (c.country || '').toLowerCase() === homeCountry.toLowerCase())
+        : colApiCities;
+    const states = [...new Set(countryCities.map(c => c.state).filter(s => s && s !== 'N/A'))].sort();
+    if (states.length === 0) {
+        // No states for this country — free text input
+        return `<input type="text" value="${homeState}" class="form-input"
+            style="width:100%; font-size:0.82rem;" placeholder="Region"
+            onchange="updateCOLConfig('homeState', this.value)">`;
+    }
+    const opts = states.map(s => {
+        const sel = s === homeState ? 'selected' : '';
+        return `<option value="${s}" ${sel}>${s}</option>`;
+    }).join('');
+    return `<select class="form-input" style="width:100%; font-size:0.82rem;"
+        onchange="updateCOLConfig('homeState', this.value)">
+        <option value="">--</option>
+        ${opts}
+    </select>`;
+}
+
+// ── Data source line + selector ──
+function renderDataSourceLine(matchedCity) {
+    const resolvedCosts = colConfig.homeMonthlyCosts;
+    const resolvedCol = colConfig.homeColIndex;
+    const colSource = colConfig.homeColSource || 'manual';
+
+    // City found in DB — green status
+    if (matchedCity) {
+        const loc = matchedCity.state && matchedCity.state !== 'N/A'
+            ? `${matchedCity.state}, ${matchedCity.country}` : matchedCity.country || '';
+        const srcTag = matchedCity.source === 'manual'
+            ? ' <span style="color:#f59e0b;">(manual)</span>' : '';
+        const editLabel = matchedCity.source === 'manual' ? 'edit' : 'edit (creates manual entry)';
+        let html = `<div style="padding:6px 8px; background:#22c55e10; border:1px solid #22c55e30; border-radius:6px; font-size:0.75rem;">
+            <span style="color:#4ade80; font-weight:600;">✓ ${matchedCity.name}, ${loc}</span>${srcTag}
+            <span style="color:var(--text-dim);"> — COL ${matchedCity.colIndex} · $${matchedCity.monthlyCostsNoRent?.toLocaleString()}/mo · Salary $${(matchedCity.avgNetSalary || 0).toLocaleString()}/mo</span>
+            <a href="#" onclick="toggleEditManualCity(); return false;" style="color:var(--accent); font-size:0.7rem; margin-left:6px;">${editLabel}</a>
+        </div>`;
+        // Compute state avg salary for the selector
+        const homeState = (colConfig.homeState || '').toLowerCase();
+        const homeCountry = (colConfig.homeCountry || '').toLowerCase();
+        const stateSalaryCities = colApiCities.filter(c =>
+            c.source !== 'manual'
+            && (c.state || '').toLowerCase() === homeState
+            && (!homeCountry || (c.country || '').toLowerCase() === homeCountry)
+            && c.avgNetSalary > 0);
+        const stateAvgSalary = stateSalaryCities.length
+            ? Math.round(stateSalaryCities.reduce((s, c) => s + c.avgNetSalary, 0) / stateSalaryCities.length)
+            : 0;
+        const userMonthlySalary = Math.round((colConfig.referenceSalary || 0) / 12);
+        const currentSalary = matchedCity.avgNetSalary || stateAvgSalary || userMonthlySalary || 0;
+        html += `<div id="editManualCityFields" style="display:none; margin-top:6px; padding:8px; background:var(--card-hover); border-radius:6px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                <div><label class="form-label" style="font-size:0.68rem;">Costs/mo (no rent)</label>
+                    <input type="number" id="editManualCosts" value="${matchedCity.monthlyCostsNoRent || ''}" class="form-input"
+                        style="width:100%; font-size:0.78rem; padding:4px 8px;" oninput="updateEditPreview()"></div>
+                <div><label class="form-label" style="font-size:0.68rem;">Avg Net Salary/mo (for PPI)</label>
+                    <select id="editManualSalarySource" class="form-input" style="width:100%; font-size:0.72rem; padding:4px 8px; margin-bottom:4px;"
+                        onchange="onEditSalarySourceChange(this.value)">
+                        ${stateAvgSalary ? `<option value="stateAvg" ${currentSalary === stateAvgSalary ? 'selected' : ''}>State avg ($${stateAvgSalary.toLocaleString()}/mo from ${stateSalaryCities.length} cities)</option>` : ''}
+                        <option value="user" ${currentSalary === userMonthlySalary ? 'selected' : ''}>Your salary ($${userMonthlySalary.toLocaleString()}/mo)</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                    <input type="number" id="editManualSalary" value="${currentSalary}" class="form-input"
+                        style="width:100%; font-size:0.78rem; padding:4px 8px;" oninput="updateEditPreview()"></div>
+            </div>
+            <div id="editPreviewLine" style="margin-top:6px; font-size:0.75rem; color:var(--text-dim);"></div>
+            <div style="margin-top:6px; text-align:right;">
+                <button class="btn-secondary" style="font-size:0.72rem; padding:3px 10px;" onclick="toggleEditManualCity()">Cancel</button>
+                <button class="btn-primary" style="font-size:0.72rem; padding:3px 10px; margin-left:4px;" onclick="saveEditManualCity()">Save</button>
+            </div>
+        </div>`;
+        return html;
+    }
+
+    // City NOT in DB — show data source selector
+    const homeState = (colConfig.homeState || '').toLowerCase();
+    const homeCountry = (colConfig.homeCountry || '').toLowerCase();
+    // Filter by country first, then exact state match
+    const countryCities = homeCountry
+        ? colApiCities.filter(c => (c.country || '').toLowerCase() === homeCountry)
+        : colApiCities;
+    const stateCities = homeState
+        ? countryCities.filter(c => (c.state || '').toLowerCase() === homeState).sort((a, b) => a.name.localeCompare(b.name))
+        : [];
+    // If no state match but we have country cities, offer all country cities as proxies
+    const proxyCities = stateCities.length > 0 ? stateCities : countryCities.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Build <select> options: proxy cities + average + manual
+    let opts = '';
+    const proxyCity = (colConfig.homeProxyCity || '').toLowerCase();
+
+    // Proxy city options
+    proxyCities.forEach(c => {
+        const sel = colSource === 'proxy' && c.name.toLowerCase() === proxyCity ? 'selected' : '';
+        opts += `<option value="proxy:${c.name}" ${sel}>${c.name} — COL ${c.colIndex}, $${c.monthlyCostsNoRent?.toLocaleString()}/mo</option>`;
+    });
+
+    // Average option (only if multiple proxy cities)
+    if (proxyCities.length > 1) {
+        const avgCol = (proxyCities.reduce((s, c) => s + (c.colIndex || 0), 0) / proxyCities.length).toFixed(1);
+        const avgCosts = Math.round(proxyCities.reduce((s, c) => s + (c.monthlyCostsNoRent || 0), 0) / proxyCities.length);
+        const sel = colSource === 'stateAvg' ? 'selected' : '';
+        const label = stateCities.length > 0 ? `Average (${proxyCities.length} cities)` : `Country average (${proxyCities.length} cities)`;
+        opts += `<option value="stateAvg" ${sel}>${label} — COL ${avgCol}, $${avgCosts.toLocaleString()}/mo</option>`;
+    }
+
+    // Manual option
+    const manualSel = colSource === 'manual' ? 'selected' : '';
+    opts += `<option value="manual" ${manualSel}>Enter manually</option>`;
+
+    let html = `<div style="margin-bottom:4px;">
+        <label class="form-label" style="font-size:0.72rem;">Data Source</label>
+        <select class="form-input" style="width:100%; font-size:0.78rem;" onchange="onDataSourceChange(this.value)">
+            ${opts}
+        </select>
+    </div>`;
+
+    // Manual inputs (shown only when manual is selected)
+    if (colSource === 'manual') {
+        html += `<div>
+            <label class="form-label" style="font-size:0.68rem;">Monthly Costs (no rent)</label>
+            <input type="number" id="manualCosts" value="${resolvedCosts || ''}" class="form-input"
+                placeholder="e.g. 1100" style="width:100%; font-size:0.78rem; padding:4px 8px;"
+                onchange="updateCOLConfig('homeMonthlyCosts', this.value ? parseFloat(this.value) : null)">
+        </div>
+        <div style="margin-top:6px; text-align:right;">
+            <button class="add-row-btn" style="font-size:0.72rem;" onclick="saveManualCityToDb()">Save to Database</button>
+        </div>`;
+    }
+
+    // Resolved footer
+    if (resolvedCosts != null) {
+        html += `<div style="margin-top:4px; font-size:0.72rem; color:var(--text-dim);">
+            Resolved: <strong style="color:#4ade80;">$${resolvedCosts.toLocaleString()}/mo</strong>
+            ${resolvedCol != null ? ` · COL <strong style="color:#4ade80;">${resolvedCol}</strong>` : ''}
+        </div>`;
+    }
+
+    return html;
+}
+
+async function saveManualCityToDb() {
+    const name = (colConfig.homeCityName || '').trim();
+    if (!name) { showAlert('Enter a city name first', 'error'); return; }
+    const costs = parseFloat(document.getElementById('manualCosts')?.value) || 0;
+    if (!costs) { showAlert('Enter monthly costs to save', 'error'); return; }
+    const rent = colConfig.currentRent || 0;
+    const bedrooms = colConfig.bedroomCount || 1;
+    const location = colConfig.locationType || 'city';
+    try {
+        const resp = await fetch('/api/cost-of-living/save-manual-city', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                name, country: colConfig.homeCountry || '', state: colConfig.homeState || '',
+                monthlyCostsNoRent: costs, rent, bedroomCount: bedrooms, locationType: location
+            })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            showSaveToast(`${name} saved to database (manual)`);
+            // Refresh city list to include the new entry
+            const apiResp = await fetch('/api/cost-of-living/api-cities?include_global=1').then(r => r.json()).catch(() => ({ cities: [] }));
+            colApiCities = apiResp.cities || [];
+            colApiMeta = apiResp.meta || {};
+            fetchCostOfLiving();  // refresh KPI cards + colConfig with updated PPI
+        } else {
+            showAlert(data.error || 'Save failed', 'error');
+        }
+    } catch(e) { showAlert('Save failed: ' + e.message, 'error'); }
+}
+
+function toggleEditManualCity() {
+    const el = document.getElementById('editManualCityFields');
+    if (el) {
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        if (el.style.display === 'block') updateEditPreview();
+    }
+}
+
+function updateEditPreview() {
+    const line = document.getElementById('editPreviewLine');
+    if (!line) return;
+    const costs = parseFloat(document.getElementById('editManualCosts')?.value) || 0;
+    const salary = parseFloat(document.getElementById('editManualSalary')?.value) || 0;
+    const nyc = colApiCities.find(c => c.name.toLowerCase() === 'new york');
+    const nycCosts = nyc?.monthlyCostsNoRent || 1728;
+    const nycSalary = nyc?.avgNetSalary || 5159;
+    const br = colConfig.bedroomCount || 1;
+    const loc = colConfig.locationType || 'city';
+    const rentKey = `rent${br}br${loc === 'city' ? 'City' : 'Suburb'}`;
+    const nycRent = nyc?.[rentKey] || 2697;
+    const homeRent = colConfig.currentRent || 0;
+    if (costs <= 0) { line.innerHTML = ''; return; }
+    const col = (costs / nycCosts * 100).toFixed(1);
+    const rentIdx = nycRent > 0 && homeRent > 0 ? (homeRent / nycRent * 100) : 0;
+    const cpr = rentIdx > 0 ? ((parseFloat(col) + rentIdx) / 2).toFixed(1) : col;
+    let ppiHtml = '';
+    if (salary > 0 && cpr > 0) {
+        const ppi = ((salary / cpr) / (nycSalary / 100) * 100).toFixed(1);
+        const color = ppi >= 100 ? '#4ade80' : '#f59e0b';
+        ppiHtml = ` · PPI <strong style="color:${color};">${ppi}</strong>`;
+    }
+    line.innerHTML = `COL <strong style="color:#22d3ee;">${col}</strong>${ppiHtml} <span style="font-size:0.68rem; color:var(--text-muted);">(NYC = 100)</span>`;
+}
+
+function onEditSalarySourceChange(value) {
+    const input = document.getElementById('editManualSalary');
+    if (!input) return;
+    if (value === 'stateAvg') {
+        const homeState = (colConfig.homeState || '').toLowerCase();
+        const homeCountry = (colConfig.homeCountry || '').toLowerCase();
+        const sc = colApiCities.filter(c =>
+            c.source !== 'manual'
+            && (c.state || '').toLowerCase() === homeState
+            && (!homeCountry || (c.country || '').toLowerCase() === homeCountry)
+            && c.avgNetSalary > 0);
+        input.value = sc.length ? Math.round(sc.reduce((s, c) => s + c.avgNetSalary, 0) / sc.length) : 0;
+        input.readOnly = true;
+    } else if (value === 'user') {
+        input.value = Math.round((colConfig.referenceSalary || 0) / 12);
+        input.readOnly = true;
+    } else {
+        input.readOnly = false;
+        input.focus();
+    }
+    updateEditPreview();
+}
+
+async function saveEditManualCity() {
+    const name = (colConfig.homeCityName || '').trim();
+    if (!name) return;
+    const costs = parseFloat(document.getElementById('editManualCosts')?.value) || 0;
+    const salary = parseFloat(document.getElementById('editManualSalary')?.value) || 0;
+    if (!costs) { showAlert('Enter monthly costs', 'error'); return; }
+    const rent = colConfig.currentRent || 0;
+    const bedrooms = colConfig.bedroomCount || 1;
+    const location = colConfig.locationType || 'city';
+    try {
+        const resp = await fetch('/api/cost-of-living/save-manual-city', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                name, country: colConfig.homeCountry || '', state: colConfig.homeState || '',
+                monthlyCostsNoRent: costs, avgNetSalary: salary, rent, bedroomCount: bedrooms, locationType: location
+            })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            showSaveToast(`${name} saved to database (manual)`);
+            const apiResp = await fetch('/api/cost-of-living/api-cities?include_global=1').then(r => r.json()).catch(() => ({ cities: [] }));
+            colApiCities = apiResp.cities || [];
+            colApiMeta = apiResp.meta || {};
+            fetchCostOfLiving();  // refresh KPI cards + colConfig with updated PPI
+        } else {
+            showAlert(data.error || 'Save failed', 'error');
+        }
+    } catch(e) { showAlert('Save failed: ' + e.message, 'error'); }
+}
+
+function onDataSourceChange(value) {
+    if (value === 'manual') {
+        updateCOLConfig('homeColSource', 'manual');
+    } else if (value === 'stateAvg') {
+        updateCOLConfig('homeColSource', 'stateAvg');
+    } else if (value.startsWith('proxy:')) {
+        const cityName = value.substring(6);
+        fetch('/api/cost-of-living/config/update', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ homeProxyCity: cityName, homeColSource: 'proxy' })
+        }).then(r => r.json()).then(data => {
+            if (data.ok) {
+                colConfig = data.colConfig;
+                allCOLData = data.costOfLiving;
+                renderCOLConfig();
+                renderCOLKpis();
+                renderCOLChart();
+                const activeType = document.querySelector('#colFilters .filter-btn.active');
+                filterCOL(activeType?.dataset?.type || 'all');
+                showSaveToast('Data source: ' + cityName);
+            }
+        }).catch(e => console.error(e));
+    }
+}
+
+async function dedupCOLCities() {
+    const btn = document.getElementById('colDedupBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Deduping...'; }
+    try {
+        const resp = await fetch('/api/cost-of-living/dedup', { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            showSaveToast(`Removed ${data.removed} duplicates (${data.remaining} remaining)`);
+            allCOLData = data.costOfLiving || [];
+            renderCOLKpis();
+            renderCOLChart();
+            const activeType = document.querySelector('#colFilters .filter-btn.active');
+            filterCOL(activeType?.dataset?.type || 'all');
+        } else {
+            showAlert(data.error || 'Dedup failed', 'error');
+        }
+    } catch(e) { showAlert('Dedup failed: ' + e.message, 'error'); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = 'Dedup'; } }
+}
+
+function _colKpiSub(factor, colIdx, avgSalary, ppi) {
+    const colTag = colIdx ? `COL <strong style="color:#22d3ee;">${colIdx}</strong>` : '';
+    const salTag = avgSalary ? `$${Math.round(avgSalary).toLocaleString()}/mo` : '';
+    const ppiTag = ppi ? `PPI <strong style="color:${ppi >= 100 ? '#4ade80' : '#f59e0b'};">${ppi}</strong>` : '';
+    return [factor, colTag, salTag, ppiTag].filter(Boolean).join(' · ');
+}
+
+function _colKpiCountry(city) {
+    const country = city?.apiData?.country || '';
+    if (!country || country === 'United States') return city?.area || '';
+    return country;
+}
+
 function renderCOLKpis() {
     const div = document.getElementById('colKpis');
     if (!div || !allCOLData.length) return;
+    div.style.gridTemplateColumns = 'repeat(4, 1fr)';
     const homeName = colConfig.homeCityName || 'My City';
-    const homeRent = colConfig.currentRent || 0;
+    const homeCountry = colConfig.homeCountry || '';
+    const homeLabel = homeCountry && homeCountry !== 'United States'
+        ? `${homeName}, ${homeCountry}` : `${homeName}, ${colConfig.homeState || 'US'}`;
     const sorted = [...allCOLData].sort((a, b) => a.overallFactor - b.overallFactor);
     const cheapest = sorted[0];
     const mostExp = sorted[sorted.length - 1];
     const avgFactor = allCOLData.reduce((s, c) => s + (c.overallFactor || 0), 0) / allCOLData.length;
+    // Home city data
+    const homeCol = colConfig.homeColIndex ? Math.round(colConfig.homeColIndex * 10) / 10 : null;
+    const homePPI = colConfig.homePurchasingPower;
+    // Find home avgNetSalary from matched DB city
+    const homeMatch = colApiCities.find(c => c.name.toLowerCase() === (colConfig.homeCityName || '').toLowerCase());
+    const homeAvgSalary = homeMatch?.avgNetSalary || 0;
+    // Cheapest/Most Expensive data
+    const cheapCol = cheapest.apiData?.colIndex || cheapest.colIndex || null;
+    const expCol = mostExp.apiData?.colIndex || mostExp.colIndex || null;
+    const cheapLoc = _colKpiCountry(cheapest);
+    const expLoc = _colKpiCountry(mostExp);
     div.innerHTML = `
         <div class="kpi-card"><div class="kpi-label">Home City (Baseline)</div>
-            <div class="kpi-value" style="font-size:1.2rem;">${homeName}</div>
-            <div class="kpi-sub">1.00x | ${formatMoney(homeRent)}/mo</div></div>
+            <div class="kpi-value" style="font-size:1.2rem;">${homeLabel}</div>
+            <div class="kpi-sub">${_colKpiSub('1.00x', homeCol, homeAvgSalary, homePPI)}</div></div>
         <div class="kpi-card"><div class="kpi-label">Cheapest City</div>
-            <div class="kpi-value positive" style="font-size:1.2rem;">${cheapest.metro}</div>
-            <div class="kpi-sub">${cheapest.overallFactor?.toFixed(2)}x | ${formatMoney(cheapest.equivalentSalary)}</div></div>
+            <div class="kpi-value positive" style="font-size:1.2rem;">${cheapest.metro}${cheapLoc ? ', ' + cheapLoc : ''}</div>
+            <div class="kpi-sub">${_colKpiSub(cheapest.overallFactor?.toFixed(2) + 'x', cheapCol, cheapest.avgNetSalary, cheapest.purchasingPower)}</div></div>
         <div class="kpi-card"><div class="kpi-label">Most Expensive</div>
-            <div class="kpi-value negative" style="font-size:1.2rem;">${mostExp.metro}</div>
-            <div class="kpi-sub">${mostExp.overallFactor?.toFixed(2)}x | ${formatMoney(mostExp.equivalentSalary)}</div></div>
+            <div class="kpi-value negative" style="font-size:1.2rem;">${mostExp.metro}${expLoc ? ', ' + expLoc : ''}</div>
+            <div class="kpi-sub">${_colKpiSub(mostExp.overallFactor?.toFixed(2) + 'x', expCol, mostExp.avgNetSalary, mostExp.purchasingPower)}</div></div>
         <div class="kpi-card"><div class="kpi-label">Avg. Factor</div>
             <div class="kpi-value">${avgFactor.toFixed(2)}x</div>
             <div class="kpi-sub">${allCOLData.length} cities tracked</div></div>`;
+    // Glossary — independent card below KPI grid, above Reference Inputs
+    let glossaryEl = document.getElementById('colGlossaryWrap');
+    if (!glossaryEl) {
+        glossaryEl = document.createElement('div');
+        glossaryEl.id = 'colGlossaryWrap';
+        div.after(glossaryEl);
+    }
+    glossaryEl.className = 'card';
+    glossaryEl.style.cssText = 'margin-bottom:16px; padding:12px 20px;';
+    glossaryEl.innerHTML = `
+        <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px 24px; font-size:0.75rem; color:var(--text-muted); line-height:1.5;">
+            <div><strong style="color:var(--text-secondary);">Factor</strong><br>Cost ratio vs your home city.<br>1.00x = same, &lt;1 cheaper, &gt;1 pricier.</div>
+            <div><strong style="color:#22d3ee;">COL</strong><br>Cost of Living index.<br>NYC = 100. Lower = cheaper city.</div>
+            <div><strong style="color:var(--text-secondary);">$/mo</strong><br>Avg net monthly salary<br>for the city or state.</div>
+            <div><strong style="color:#4ade80;">PPI</strong><br>Purchasing Power Index (NYC = 100).<br><span style="color:#4ade80;">≥100</span> salary stretches further than in NYC.<br><span style="color:#f59e0b;">&lt;100</span> salary covers less than in NYC.</div>
+        </div>`;
 }
 
 function renderCOLChart() {
@@ -136,34 +639,118 @@ function renderCOLChart() {
     });
 }
 
+let colSortCol = 'rent';
+let colSortAsc = true;
+
+const _colSortKeys = {
+    metro:   c => (c.metro || '').toLowerCase(),
+    area:    c => (c.area || '').toLowerCase(),
+    rent:    c => c.rent || 0,
+    costs:   c => c.monthlyCostsNoRent || 0,
+    total:   c => c.totalMonthlyCost || 0,
+    factor:  c => c.overallFactor || 0,
+    col:     c => c.colIndex || 0,
+    equiv:   c => c.equivalentSalary || 0,
+    elEquiv: c => c.elEquivalent || 0,
+    ppi:     c => c.purchasingPower || 0,
+};
+
+function sortCOLTable(col) {
+    if (colSortCol === col) { colSortAsc = !colSortAsc; }
+    else { colSortCol = col; colSortAsc = true; }
+    // Update header indicators
+    const table = document.getElementById('colBody')?.closest('table');
+    if (table) {
+        table.querySelectorAll('th.sortable').forEach(th => {
+            th.textContent = th.textContent.replace(/ [▲▼]$/, '');
+            const match = th.getAttribute('onclick')?.match(/sortCOLTable\('(\w+)'\)/);
+            if (match && match[1] === col) {
+                th.textContent += colSortAsc ? ' ▲' : ' ▼';
+            }
+        });
+    }
+    filterCOL(_colActiveFilter());
+}
+
+function _colActiveFilter() {
+    const activeBtn = document.querySelector('#colFilters .filter-btn.active');
+    if (!activeBtn) return 'all';
+    return activeBtn.textContent.trim() === 'Downtown' ? 'Downtown' : 'Suburban';
+}
+
 function filterCOL(type, btn) {
     const tbody = document.getElementById('colBody');
     if (!tbody) return;
-    const filtered = type === 'all' ? allCOLData : allCOLData.filter(c => c.type === type);
-    if (btn) {
+    // Toggle: clicking active filter deselects it (shows all)
+    if (btn && btn.classList.contains('active')) {
+        btn.classList.remove('active');
+        type = 'all';
+    } else if (btn) {
         document.querySelectorAll('#colFilters .filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
-    tbody.innerHTML = filtered.sort((a, b) => a.rent - b.rent).map(c => {
-        const realIdx = allCOLData.indexOf(c);
-        return `<tr>
-            <td><strong>${c.metro}</strong></td>
+    const keyFn = _colSortKeys[colSortCol] || (c => c.rent || 0);
+    const dir = colSortAsc ? 1 : -1;
+    const filtered = type === 'all' ? allCOLData : allCOLData.filter(c => c.type === type);
+    // Inject home city row
+    const homeName = (colConfig.homeCityName || '').toLowerCase();
+    if (homeName && !filtered.some(c => c.metro.toLowerCase() === homeName)) {
+        const homeMatch = colApiCities.find(c => c.name.toLowerCase() === homeName);
+        const homeCosts = homeMatch?.monthlyCostsNoRent || colConfig.homeMonthlyCosts || 0;
+        const homeRent = colConfig.currentRent || 0;
+        const homeSalary = homeMatch?.avgNetSalary || 0;
+        const userMonthly = Math.round((colConfig.referenceSalary || 0) / 12);
+        const salSrc = homeSalary === userMonthly ? 'you' : homeSalary > 0 ? 'avg' : 'you';
+        filtered.push({
+            metro: colConfig.homeCityName, area: colConfig.homeState || '',
+            type: (colConfig.locationType === 'city') ? 'Downtown' : 'Suburban',
+            source: 'home', rent: homeRent, monthlyCostsNoRent: homeCosts,
+            totalMonthlyCost: homeRent + homeCosts, overallFactor: 1.0,
+            colIndex: colConfig.homeColIndex || homeMatch?.colIndex || 0,
+            avgNetSalary: homeSalary || userMonthly,
+            equivalentSalary: colConfig.referenceSalary || 0,
+            elEquivalent: colConfig.comparisonSalary || 0,
+            purchasingPower: colConfig.homePurchasingPower || 0,
+            pinned: true, _isHome: true, _salarySource: salSrc,
+        });
+    }
+    tbody.innerHTML = filtered.sort((a, b) => {
+        const va = keyFn(a), vb = keyFn(b);
+        if (typeof va === 'string') return dir * va.localeCompare(vb);
+        return dir * (va - vb);
+    }).map(c => {
+        const metroEsc = c.metro.replace(/'/g, "\\'");
+        const isApi = c.source === 'api';
+        const apiBadge = isApi ? ' <span style="font-size:0.65rem; padding:1px 4px; border-radius:3px; background:#6366f120; color:#6366f1; vertical-align:middle;">API</span>' : '';
+        const costs = c.monthlyCostsNoRent ? formatMoney(c.monthlyCostsNoRent) : '—';
+        const totalCost = c.totalMonthlyCost ? formatMoney(c.totalMonthlyCost) : '—';
+        const colIdx = c.colIndex ? c.colIndex.toFixed(0) : '—';
+        const pp = c.purchasingPower ? c.purchasingPower.toFixed(0) : '—';
+        const salSrc = c._isHome ? (c._salarySource === 'avg' ? 'State avg' : 'Your salary') : c.source === 'api' ? 'City avg' : 'Estimated';
+        const isPinned = c.pinned !== false;
+        const isHome = c._isHome;
+        const rowStyle = isHome ? 'background:#4ade8012; border-left:3px solid #4ade80;'
+            : isPinned ? '' : 'opacity:0.7; border-left:3px solid #f59e0b;';
+        const homeBadge = isHome ? ' <span style="font-size:0.6rem; padding:1px 4px; border-radius:3px; background:#4ade8020; color:#4ade80; vertical-align:middle;">HOME</span>' : '';
+        return `<tr style="${rowStyle}">
+            <td style="text-align:center;">${isHome ? '' : `<input type="checkbox" ${isPinned ? 'checked' : ''} onchange="toggleCOLCity('${metroEsc}', this.checked)" title="${isPinned ? 'Uncheck to remove' : 'Check to pin'}">`}</td>
+            <td><strong>${c.metro}</strong>${apiBadge}${homeBadge}${!isPinned && !isHome ? ' <span style="font-size:0.6rem; color:#f59e0b;">TEMP</span>' : ''}</td>
             <td>${c.area}</td>
             <td><span style="padding:2px 6px; border-radius:4px; font-size:0.75rem; background:${c.type==='Downtown'?'#f59e0b20':'#22c55e20'}; color:${c.type==='Downtown'?'#f59e0b':'#22c55e'};">${c.type}</span></td>
-            <td class="editable" style="text-align:right; cursor:pointer;"
-                onclick="editCOLCell(this, ${realIdx}, 'rent', ${c.rent})">${formatMoney(c.rent)}</td>
-            <td style="text-align:right;">${(c.housingMult || 0).toFixed(2)}x</td>
-            <td class="editable" style="text-align:right; cursor:pointer;"
-                onclick="editCOLCell(this, ${realIdx}, 'nonHousingMult', ${c.nonHousingMult})">${(c.nonHousingMult || 0).toFixed(2)}x</td>
-            <td style="text-align:right;">${(c.overallFactor || 0).toFixed(2)}x</td>
+            <td style="text-align:right; cursor:pointer;" class="editable"
+                onclick="editCOLCell(this, '${metroEsc}', 'rent', ${c.rent})">${formatMoney(c.rent)}</td>
+            <td style="text-align:right; color:var(--text-dim);">${costs}</td>
+            <td style="text-align:right; font-weight:500;">${totalCost}</td>
+            <td style="text-align:right; font-weight:600;">${(c.overallFactor || 0).toFixed(2)}x</td>
+            <td style="text-align:right; color:#22d3ee;">${colIdx}</td>
             <td style="text-align:right; font-weight:600; color:#4ade80;">${formatMoney(c.equivalentSalary)}</td>
             <td style="text-align:right; color:#60a5fa;">${formatMoney(c.elEquivalent)}</td>
-            <td><button class="delete-row-btn" onclick="deleteCOLCity(${realIdx})" title="Remove">&#10005;</button></td>
+            <td style="text-align:right; color:${parseFloat(pp) >= 100 ? '#4ade80' : parseFloat(pp) > 0 ? '#f59e0b' : 'var(--text-dim)'};" title="Salary basis: ${salSrc} (${formatMoney(c.avgNetSalary || 0)}/mo)">${pp}${c._isHome ? ` <span style="font-size:0.55rem; color:var(--text-dim); vertical-align:middle;">${c._salarySource === 'avg' ? 'AVG' : 'YOU'}</span>` : ''}</td>
         </tr>`;
     }).join('');
 }
 
-function editCOLCell(td, index, field, currentValue) {
+function editCOLCell(td, metro, field, currentValue) {
     if (td.querySelector('input')) return;
     const originalHTML = td.innerHTML;
     const input = document.createElement('input');
@@ -186,10 +773,10 @@ function editCOLCell(td, index, field, currentValue) {
         try {
             await fetch('/api/cost-of-living/update', {
                 method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ index, updates: { [field]: newValue } })
+                body: JSON.stringify({ metro, updates: { [field]: newValue } })
             });
             await fetch('/api/cost-of-living/recompute', { method: 'POST' });
-            showSaveToast(`${allCOLData[index].metro} updated`);
+            showSaveToast(`${metro} updated`);
             fetchCostOfLiving();
         } catch(e) {
             td.innerHTML = originalHTML;
@@ -207,56 +794,241 @@ function editCOLCell(td, index, field, currentValue) {
     });
 }
 
-function showAddCOLForm() {
-    document.getElementById('addCOLBtn').style.display = 'none';
-    document.getElementById('addCOLForm').style.display = 'block';
-    document.getElementById('newCOLMetro').focus();
+function hideAddCityResults() {
+    const results = document.getElementById('addCityResults');
+    const manual = document.getElementById('addCityManualFields');
+    const input = document.getElementById('addCityInput');
+    if (results) results.style.display = 'none';
+    if (manual) manual.style.display = 'none';
+    if (input) input.value = '';
 }
 
-function hideAddCOLForm() {
-    document.getElementById('addCOLBtn').style.display = 'inline-flex';
-    document.getElementById('addCOLForm').style.display = 'none';
+function onCityInputSearch(query) {
+    const results = document.getElementById('addCityResults');
+    if (!results) return;
+    const q = query.trim().toLowerCase();
+    if (q.length < 2) { results.style.display = 'none'; return; }
+    const existing = new Set(allCOLData.map(c => c.metro.toLowerCase()));
+    const br = colConfig.bedroomCount || 1;
+    const loc = colConfig.locationType || 'city';
+    const rentKey = `rent${br}br${loc === 'city' ? 'City' : 'Suburb'}`;
+    const matches = colApiCities
+        .filter(c => c.name.toLowerCase().includes(q) && !existing.has(c.name.toLowerCase()))
+        .slice(0, 8);
+    if (matches.length === 0) {
+        results.innerHTML = `<div style="padding:10px; font-size:0.82rem; color:var(--text-muted);">No match found — <a href="#" onclick="showManualFields('${q}'); return false;" style="color:var(--accent);">add manually</a></div>`;
+        results.style.display = 'block';
+        return;
+    }
+    results.innerHTML = matches.map(c => {
+        const rent = c[rentKey] || 0;
+        const nameEsc = c.name.replace(/'/g, "\\'");
+        const srcTag = c.source === 'manual' ? ' <span style="color:#f59e0b; font-size:0.72rem;">(manual)</span>' : '';
+        const loc2 = c.state && c.state !== 'N/A' ? c.state : c.country;
+        return `<div style="padding:8px 12px; cursor:pointer; font-size:0.82rem; border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''" onclick="selectCityResult('${nameEsc}')">
+            <strong>${c.name}</strong>, ${loc2}${srcTag} <span style="color:var(--text-muted); margin-left:8px;">$${rent.toLocaleString()}/mo · COL ${c.colIndex}</span></div>`;
+    }).join('');
+    if (matches.length > 0) {
+        results.innerHTML += `<div style="padding:8px 12px; cursor:pointer; font-size:0.82rem; color:var(--text-muted);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''" onclick="showManualFields('${q}')">Enter manually...</div>`;
+    }
+    results.style.display = 'block';
 }
 
-async function addCOLCity() {
-    const metro = document.getElementById('newCOLMetro').value.trim();
-    const area = document.getElementById('newCOLArea').value.trim();
-    const type = document.getElementById('newCOLType').value;
-    const rent = parseFloat(document.getElementById('newCOLRent').value);
-    const nonHousingMult = parseFloat(document.getElementById('newCOLNonHousingMult').value) || 1.0;
-    if (!metro) { showAlert('Enter a metro name', 'error'); return; }
+function selectCityResult(name) {
+    const city = colApiCities.find(c => c.name === name);
+    if (!city) return;
+    const br = colConfig.bedroomCount || 1;
+    const loc = colConfig.locationType || 'city';
+    const rentKey = `rent${br}br${loc === 'city' ? 'City' : 'Suburb'}`;
+    const rent = city[rentKey] || 0;
+    const type = loc === 'city' ? 'Downtown' : 'Suburban';
+    hideAddCityResults();
+    addCOLApiCity(city.name, city.state || '', type, rent, 1.0, city);
+}
+
+function showManualFields(prefill) {
+    const results = document.getElementById('addCityResults');
+    const input = document.getElementById('addCityInput');
+    if (results) results.style.display = 'none';
+    if (input) input.value = '';
+    const container = document.getElementById('addCityManualFields');
+    if (!container) return;
+    const cityName = prefill ? prefill.charAt(0).toUpperCase() + prefill.slice(1) : '';
+    const br = colConfig.bedroomCount || 1;
+    const loc = colConfig.locationType || 'city';
+    container.innerHTML = `<div style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
+        <div><label class="form-label">City</label>
+            <input type="text" id="addCityManualName" class="form-input" value="${cityName}" style="font-size:0.82rem; width:150px;"></div>
+        <div><label class="form-label">Area</label>
+            <input type="text" id="addCityManualArea" class="form-input" placeholder="e.g. IL" style="font-size:0.82rem; width:60px;"></div>
+        <div><label class="form-label">Type</label>
+            <select id="addCityManualType" class="form-input" style="font-size:0.82rem;">
+                <option value="Downtown" ${loc === 'city' ? 'selected' : ''}>Downtown</option>
+                <option value="Suburban" ${loc === 'suburb' ? 'selected' : ''}>Suburban</option></select></div>
+        <div><label class="form-label">Bedrooms</label>
+            <select id="addCityManualBedrooms" class="form-input" style="font-size:0.82rem;">
+                <option value="1" ${br === 1 ? 'selected' : ''}>1 BR</option>
+                <option value="3" ${br === 3 ? 'selected' : ''}>3 BR</option></select></div>
+        <div><label class="form-label">Rent/mo</label>
+            <input type="number" id="addCityManualRent" class="form-input" placeholder="2500" style="font-size:0.82rem; width:90px;"></div>
+        <div><label class="form-label">Costs/mo</label>
+            <input type="number" id="addCityManualCosts" class="form-input" placeholder="1200" style="font-size:0.82rem; width:90px;"></div>
+        <button class="btn-primary" onclick="submitManualCity()" style="font-size:0.82rem;">Add</button>
+        <button class="btn-secondary" onclick="hideAddCityResults()" style="font-size:0.82rem;">Cancel</button>
+    </div>`;
+    container.style.display = 'block';
+}
+
+async function submitManualCity() {
+    const metro = document.getElementById('addCityManualName')?.value.trim();
+    const area = document.getElementById('addCityManualArea')?.value.trim();
+    const type = document.getElementById('addCityManualType')?.value || 'Downtown';
+    const br = parseInt(document.getElementById('addCityManualBedrooms')?.value) || 1;
+    const rent = parseFloat(document.getElementById('addCityManualRent')?.value);
+    const costs = parseFloat(document.getElementById('addCityManualCosts')?.value) || 0;
+    if (!metro) { showAlert('Enter a city name', 'error'); return; }
     if (isNaN(rent) || rent <= 0) { showAlert('Enter valid rent', 'error'); return; }
     try {
         const resp = await fetch('/api/cost-of-living/add', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ metro, area, type, rent, nonHousingMult })
+            body: JSON.stringify({ metro, area, type, rent, monthlyCostsNoRent: costs, nonHousingMult: 1.0, pinned: false, bedrooms: br })
         });
+        const result = await resp.json();
         if (resp.ok) {
-            showSaveToast(`${metro} added`);
-            hideAddCOLForm();
-            // Clear form
-            document.getElementById('newCOLMetro').value = '';
-            document.getElementById('newCOLArea').value = '';
-            document.getElementById('newCOLRent').value = '';
-            document.getElementById('newCOLNonHousingMult').value = '1.0';
+            showSaveToast(`${metro} added (check to keep)`);
+            hideAddCityResults();
             fetchCostOfLiving();
+        } else {
+            showAlert(result.error || 'Failed to add city', 'error');
         }
     } catch(e) { showAlert('Failed to add city', 'error'); }
 }
 
-async function deleteCOLCity(index) {
-    const city = allCOLData[index];
-    if (!confirm(`Remove ${city.metro} — ${city.area}?`)) return;
+async function toggleCOLCity(metro, checked) {
+    if (checked) {
+        // Pin the city (keep in comparison)
+        try {
+            const resp = await fetch('/api/cost-of-living/pin', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ metro, pinned: true })
+            });
+            if (resp.ok) {
+                showSaveToast(`${metro} pinned`);
+                fetchCostOfLiving();
+            }
+        } catch(e) { showAlert('Failed to pin', 'error'); }
+    } else {
+        // Uncheck = remove from comparison
+        try {
+            const resp = await fetch('/api/cost-of-living/delete', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ metro })
+            });
+            if (resp.ok) {
+                showSaveToast(`${metro} removed`);
+                fetchCostOfLiving();
+            }
+        } catch(e) { showAlert('Failed to remove', 'error'); }
+    }
+}
+
+async function toggleAllCOLCities(checked) {
+    if (checked) return; // can't re-add all at once, only uncheck makes sense
+    // Uncheck all = remove all cities (dangerous, re-check the header instead)
+    const headerCb = document.querySelector('#colBody')?.closest('table')?.querySelector('thead input[type="checkbox"]');
+    if (headerCb) headerCb.checked = true;
+    showAlert('Uncheck individual cities to remove them from comparison.', 'info');
+}
+
+async function upgradeCOLFromApi() {
+    const btn = document.getElementById('colUpgradeBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Upgrading...'; }
     try {
-        const resp = await fetch('/api/cost-of-living/delete', {
+        const resp = await fetch('/api/cost-of-living/upgrade', { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            showSaveToast(`Upgraded ${data.upgraded} cities with API data`);
+            allCOLData = data.costOfLiving || [];
+            renderCOLKpis();
+            renderCOLChart();
+            const activeType = document.querySelector('#colFilters .filter-btn.active');
+            filterCOL(activeType?.dataset?.type || 'all');
+        } else {
+            showAlert(data.error || 'Upgrade failed', 'error');
+        }
+    } catch(e) { showAlert('Upgrade failed: ' + e.message, 'error'); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = 'Upgrade from API'; } }
+}
+
+// ── Cost of Living API Integration ──────────────────
+async function refreshCOLData() {
+    const btn = document.getElementById('colRefreshBtn');
+    if (!btn) return;
+    btn.disabled = true;
+
+    try {
+        // Phase 1: check for new cities (1 API call)
+        btn.textContent = 'Checking cities...';
+        const checkResp = await fetch('/api/cost-of-living/check-cities', { method: 'POST' });
+        const checkData = await checkResp.json();
+        if (!checkData.ok) {
+            showAlert(checkData.error || 'Failed to check cities', 'error');
+            return;
+        }
+
+        const { totalAll, totalUS, totalCountries, newCount, newCities } = checkData;
+        if (newCount > 0) {
+            showSaveToast(`${newCount} new US cities detected: ${newCities.join(', ')}`);
+        } else {
+            showSaveToast(`City list checked (${totalUS} US / ${totalAll} global across ${totalCountries} countries). Updating data...`);
+        }
+
+        // Phase 2: always fetch details (data may have changed) — wait 60s for rate limit
+        btn.textContent = 'Waiting (rate limit)...';
+        let seconds = 62;
+        await new Promise(resolve => {
+            const timer = setInterval(() => {
+                seconds--;
+                btn.textContent = `Fetching in ${seconds}s...`;
+                if (seconds <= 0) { clearInterval(timer); resolve(); }
+            }, 1000);
+        });
+
+        btn.textContent = 'Fetching details...';
+        const fetchResp = await fetch('/api/cost-of-living/fetch-details', { method: 'POST' });
+        const fetchData = await fetchResp.json();
+        if (fetchData.ok) {
+            const newMsg = fetchData.newCitiesAdded > 0 ? ` (${fetchData.newCitiesAdded} new!)` : '';
+            showSaveToast(`Updated ${fetchData.cityCount} cities${newMsg}`);
+            await fetch('/api/cost-of-living/recompute', { method: 'POST' });
+            fetchCostOfLiving();
+        } else {
+            showAlert(fetchData.error || 'Failed to fetch details', 'error');
+        }
+    } catch(e) {
+        showAlert('Refresh failed: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Refresh API Data';
+    }
+}
+
+// Legacy aliases
+function showAddCOLForm() {}
+function showAddCOLApiForm() {}
+
+async function addCOLApiCity(metro, area, type, rent, nonHousingMult, apiData) {
+    try {
+        const resp = await fetch('/api/cost-of-living/add', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ index })
+            body: JSON.stringify({ metro, area, type, rent, nonHousingMult, source: 'api', apiData, pinned: false })
         });
         if (resp.ok) {
-            showSaveToast(`${city.metro} removed`);
+            showSaveToast(`${metro} added (check to keep)`);
+            hideAddCityResults();
             fetchCostOfLiving();
         }
-    } catch(e) { showAlert('Failed to delete', 'error'); }
+    } catch(e) { showAlert('Failed to add city', 'error'); }
 }
 
 // ── Passive Income ──────────────────────────────────

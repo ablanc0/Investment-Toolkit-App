@@ -15,6 +15,7 @@ independently of the source code.
    :maxdepth: 2
    :caption: Contents
 
+   user/index
    formulas/index
    configuration/index
    data-management/index

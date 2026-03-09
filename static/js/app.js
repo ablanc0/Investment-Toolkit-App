@@ -80,14 +80,19 @@ function updateHealthBadge(data) {
     if (!dot || !text) return;
     const statuses = Object.values(data.apis || {}).map(a => a.status);
     const okCount = statuses.filter(s => s === 'ok').length;
+    const exhaustedCount = statuses.filter(s => s === 'exhausted').length;
+    const healthyCount = okCount + exhaustedCount;
     if (statuses.every(s => s === 'ok')) {
         dot.style.background = '#22c55e';
         text.textContent = 'APIS OK';
         text.style.color = '#22c55e';
-    } else if (statuses.some(s => s === 'error')) {
-        const errCount = statuses.filter(s => s === 'error').length;
-        dot.style.background = '#ef4444';
+    } else if (statuses.every(s => s === 'ok' || s === 'exhausted')) {
+        dot.style.background = '#f59e0b';
         text.textContent = `APIS ${okCount}/${statuses.length}`;
+        text.style.color = '#f59e0b';
+    } else if (statuses.some(s => s === 'error')) {
+        dot.style.background = '#ef4444';
+        text.textContent = `APIS ${healthyCount}/${statuses.length}`;
         text.style.color = '#ef4444';
     } else {
         dot.style.background = '#6b7280';

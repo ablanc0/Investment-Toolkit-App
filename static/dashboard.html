@@ -796,7 +796,12 @@
 
             <!-- Config Inputs -->
             <div class="card" style="margin-bottom: 16px;">
-                <div class="card-title">Reference Inputs</div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div class="card-title" style="margin-bottom: 0;">Reference Inputs</div>
+                    <div style="display: flex; gap: 6px;">
+                        <button id="colRefreshBtn" class="add-row-btn" onclick="refreshCOLData()" style="font-size: 0.78rem;">Refresh API Data</button>
+                    </div>
+                </div>
                 <div id="colConfigInputs"></div>
             </div>
 
@@ -811,48 +816,38 @@
             <!-- Table -->
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-                    <div class="card-title" style="margin-bottom: 0;">Cost of Living Comparison</div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div class="card-title" style="margin-bottom: 0;">Cost of Living Comparison</div>
+                        <button id="colDedupBtn" class="add-row-btn" onclick="dedupCOLCities()" style="font-size: 0.72rem;">Remove Duplicates</button>
+                        <button id="colUpgradeBtn" class="add-row-btn" onclick="upgradeCOLFromApi()" style="font-size: 0.72rem;">Upgrade from API</button>
+                    </div>
                     <div style="display: flex; gap: 8px; align-items: center;">
+                        <div style="position:relative; flex:1; max-width:280px;">
+                            <input type="text" id="addCityInput" class="form-input" style="font-size:0.82rem; width:100%; padding:5px 10px;" placeholder="Search city..." autocomplete="off" oninput="onCityInputSearch(this.value)">
+                            <div id="addCityResults" style="position:absolute; top:100%; left:0; width:360px; z-index:50; max-height:260px; overflow-y:auto; background:var(--card); border:1px solid var(--border); border-radius:6px; display:none; box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>
+                        </div>
                         <div id="colFilters" style="display: flex; gap: 8px;">
-                            <button class="filter-btn active" data-type="all" onclick="filterCOL('all', this)">All</button>
                             <button class="filter-btn" data-type="Downtown" onclick="filterCOL('Downtown', this)">Downtown</button>
                             <button class="filter-btn" data-type="Suburban" onclick="filterCOL('Suburban', this)">Suburban</button>
                         </div>
-                        <button class="btn-primary" id="addCOLBtn" onclick="showAddCOLForm()" style="font-size: 0.82rem; padding: 6px 12px;">+ Add City</button>
                     </div>
                 </div>
-                <!-- Add City Form (hidden) -->
-                <div id="addCOLForm" style="display:none; padding: 12px; background: var(--card-hover); border-radius: 8px; margin-bottom: 12px;">
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; align-items: end;">
-                        <div><label class="form-label">Metro</label>
-                            <input type="text" id="newCOLMetro" class="form-input" placeholder="e.g. Chicago" style="font-size:0.82rem;"></div>
-                        <div><label class="form-label">Area</label>
-                            <input type="text" id="newCOLArea" class="form-input" placeholder="e.g. Loop" style="font-size:0.82rem;"></div>
-                        <div><label class="form-label">Type</label>
-                            <select id="newCOLType" class="form-input" style="font-size:0.82rem;">
-                                <option value="Downtown">Downtown</option>
-                                <option value="Suburban">Suburban</option>
-                            </select></div>
-                        <div><label class="form-label">Rent/mo</label>
-                            <input type="number" id="newCOLRent" class="form-input" placeholder="2500" style="font-size:0.82rem;"></div>
-                        <div><label class="form-label">Non-Hsg Mult</label>
-                            <input type="number" id="newCOLNonHousingMult" class="form-input" value="1.0" step="0.01" style="font-size:0.82rem;"></div>
-                        <div style="display: flex; gap: 6px;">
-                            <button class="btn-primary" onclick="addCOLCity()" style="font-size:0.82rem;">Add</button>
-                            <button class="btn-secondary" onclick="hideAddCOLForm()" style="font-size:0.82rem;">Cancel</button>
-                        </div>
-                    </div>
-                </div>
+                <!-- Manual entry fields (shown when no API match) -->
+                <div id="addCityManualFields" style="display:none; padding:12px; background:var(--card-hover); border-radius:8px; margin-bottom:12px;"></div>
                 <div class="table-wrapper"><table style="font-size: 0.82rem;">
                     <thead><tr>
-                        <th>Metro</th><th>Area</th><th>Type</th>
-                        <th style="text-align:right;">Rent/mo</th>
-                        <th style="text-align:right;">Housing Mult</th>
-                        <th style="text-align:right;">Non-Hsg Mult</th>
-                        <th style="text-align:right;">Overall Factor</th>
-                        <th style="text-align:right; color:#4ade80;">Equiv. Salary</th>
-                        <th style="text-align:right; color:#60a5fa;">EL Equivalent</th>
-                        <th style="width: 40px;"></th>
+                        <th style="width:36px; text-align:center;" title="Compare"><input type="checkbox" checked onchange="toggleAllCOLCities(this.checked)" title="Toggle all"></th>
+                        <th class="sortable" onclick="sortCOLTable('metro')">Metro</th>
+                        <th class="sortable" onclick="sortCOLTable('area')">Area</th>
+                        <th>Type</th>
+                        <th class="sortable" style="text-align:right;" onclick="sortCOLTable('rent')">Rent/mo</th>
+                        <th class="sortable" style="text-align:right;" onclick="sortCOLTable('costs')">Costs/mo</th>
+                        <th class="sortable" style="text-align:right;" onclick="sortCOLTable('total')">Total/mo</th>
+                        <th class="sortable" style="text-align:right;" onclick="sortCOLTable('factor')">Factor</th>
+                        <th class="sortable" style="text-align:right; color:#22d3ee;" onclick="sortCOLTable('col')">COL</th>
+                        <th class="sortable" style="text-align:right; color:#4ade80;" onclick="sortCOLTable('equiv')">Equiv. Salary</th>
+                        <th class="sortable" style="text-align:right; color:#60a5fa;" onclick="sortCOLTable('elEquiv')">Home Equiv.</th>
+                        <th class="sortable" style="text-align:right;" onclick="sortCOLTable('ppi')">Purch. Power</th>
                     </tr></thead><tbody id="colBody"></tbody>
                 </table></div>
             </div>
@@ -1110,6 +1105,13 @@
                     <span id="apiKeyFmpStatus" style="font-size: 13px;"></span>
                 </div>
                 <div id="apiKeyFmpCurrent" style="margin-top: 8px; font-size: 12px; color: var(--text-dim);"></div>
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);">
+                    <span style="font-size: 13px; color: var(--text-dim); min-width: 200px;">RapidAPI (Cost of Living):</span>
+                    <input type="password" id="apiKeyRapidapi" placeholder="Enter RapidAPI key..."
+                           style="flex: 1; max-width: 350px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px;">
+                    <span id="apiKeyRapidapiStatus" style="font-size: 13px;"></span>
+                </div>
+                <div id="apiKeyRapidapiCurrent" style="margin-top: 8px; font-size: 12px; color: var(--text-dim);"></div>
                 <div style="margin-top: 12px;">
                     <button class="add-row-btn" onclick="saveApiKeys()" style="border-color: var(--green); color: var(--green);">💾 Save Keys</button>
                 </div>
