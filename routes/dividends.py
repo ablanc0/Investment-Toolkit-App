@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request
 
 from services.data_store import load_portfolio, save_portfolio, crud_list, crud_add, crud_update, crud_delete
-from services.yfinance_svc import fetch_sp500_annual_returns, fetch_dividends, fetch_ticker_data
+from services.yfinance_svc import fetch_sp500_annual_returns, fetch_dividends
 
 bp = Blueprint('dividends', __name__)
 
@@ -473,13 +473,7 @@ def api_dividend_calendar():
         if not ticker or shares <= 0:
             continue
 
-        # Check if position pays dividends
-        quote = fetch_ticker_data(ticker)
-        div_rate = quote.get("divRate", 0) or 0
-        if div_rate <= 0:
-            continue
-
-        # Fetch historical dividends
+        # Fetch historical dividends (skip tickers with no history)
         div_history = fetch_dividends(ticker)
         if not div_history:
             continue
