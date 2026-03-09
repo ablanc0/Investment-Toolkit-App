@@ -1386,9 +1386,9 @@
             <!-- Month Navigator + View Toggle -->
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                 <div style="display: flex; align-items: center; gap: 12px;">
-                    <button class="add-row-btn" onclick="navigateMonth(-1)" title="Previous month">&lt;</button>
+                    <button id="calPrevBtn" class="add-row-btn" onclick="navigateMonth(-1)" title="Previous month">&lt;</button>
                     <span id="calMonthLabel" style="font-weight: 700; font-size: 1.1rem; min-width: 160px; text-align: center;"></span>
-                    <button class="add-row-btn" onclick="navigateMonth(1)" title="Next month">&gt;</button>
+                    <button id="calNextBtn" class="add-row-btn" onclick="navigateMonth(1)" title="Next month">&gt;</button>
                 </div>
                 <div style="display: flex; gap: 6px;">
                     <button class="add-row-btn active-filter" onclick="toggleCalendarView('grid', this)">Grid</button>

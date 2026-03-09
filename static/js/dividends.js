@@ -758,12 +758,25 @@ let _calendarData = { events: [], summary: {} };
 let _calMonth = new Date().getMonth();    // 0-based
 let _calYear = new Date().getFullYear();
 let _calView = 'grid';
+let _calMinDate = null; // {year, month} earliest event
+let _calMaxDate = null; // {year, month} latest event
 
 async function fetchDividendCalendar() {
     try {
         const resp = await fetch('/api/dividend-calendar?months=12');
         if (!resp.ok) return;
         _calendarData = await resp.json();
+
+        // Compute min/max months from events
+        const events = _calendarData.events || [];
+        if (events.length > 0) {
+            const dates = events.map(e => e.date.substring(0, 7)).sort();
+            const [minY, minM] = dates[0].split('-').map(Number);
+            const [maxY, maxM] = dates[dates.length - 1].split('-').map(Number);
+            _calMinDate = { year: minY, month: minM - 1 };
+            _calMaxDate = { year: maxY, month: maxM - 1 };
+        }
+
         renderDividendCalendar();
     } catch (e) {
         console.error('[div-calendar]', e);
@@ -774,10 +787,22 @@ function renderDividendCalendar() {
     const events = _calendarData.events || [];
     const summary = _calendarData.summary || {};
 
-    // Month label
+    // Month label + nav button state
     const label = document.getElementById('calMonthLabel');
     if (label) {
         label.textContent = new Date(_calYear, _calMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    }
+    const prevBtn = document.getElementById('calPrevBtn');
+    const nextBtn = document.getElementById('calNextBtn');
+    if (prevBtn) {
+        const atMin = _calMinDate && (_calYear === _calMinDate.year && _calMonth === _calMinDate.month);
+        prevBtn.disabled = !!atMin;
+        prevBtn.style.opacity = atMin ? '0.3' : '1';
+    }
+    if (nextBtn) {
+        const atMax = _calMaxDate && (_calYear === _calMaxDate.year && _calMonth === _calMaxDate.month);
+        nextBtn.disabled = !!atMax;
+        nextBtn.style.opacity = atMax ? '0.3' : '1';
     }
 
     // KPIs
@@ -936,9 +961,17 @@ function renderCalendarList(allEvents) {
 }
 
 function navigateMonth(delta) {
-    _calMonth += delta;
-    if (_calMonth > 11) { _calMonth = 0; _calYear++; }
-    if (_calMonth < 0) { _calMonth = 11; _calYear--; }
+    let newMonth = _calMonth + delta;
+    let newYear = _calYear;
+    if (newMonth > 11) { newMonth = 0; newYear++; }
+    if (newMonth < 0) { newMonth = 11; newYear--; }
+
+    // Clamp to data range
+    if (_calMinDate && (newYear < _calMinDate.year || (newYear === _calMinDate.year && newMonth < _calMinDate.month))) return;
+    if (_calMaxDate && (newYear > _calMaxDate.year || (newYear === _calMaxDate.year && newMonth > _calMaxDate.month))) return;
+
+    _calMonth = newMonth;
+    _calYear = newYear;
     renderDividendCalendar();
 }
 
