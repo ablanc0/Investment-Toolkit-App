@@ -455,7 +455,11 @@
             </div>
 
             <div class="card">
-                <div class="card-title">⚖️ Category Allocation vs Target</div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div class="card-title" style="margin-bottom: 0;">⚖️ Category Allocation vs Target</div>
+                    <button class="add-row-btn" onclick="toggleCategoryTargetEdit()" id="editTargetsBtn">✏️ Edit Targets</button>
+                </div>
+                <div id="categoryTargetEditor" style="display: none; margin-bottom: 16px; padding: 12px; background: var(--card-hover); border-radius: 8px;"></div>
                 <div id="rebalancingComparators"></div>
             </div>
         </div>
