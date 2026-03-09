@@ -266,10 +266,34 @@ function renderDataSourceLine(matchedCity) {
             ? `${matchedCity.state}, ${matchedCity.country}` : matchedCity.country || '';
         const srcTag = matchedCity.source === 'manual'
             ? ' <span style="color:#f59e0b;">(manual)</span>' : '';
-        return `<div style="padding:6px 8px; background:#22c55e10; border:1px solid #22c55e30; border-radius:6px; font-size:0.75rem;">
+        const editLabel = matchedCity.source === 'manual' ? 'edit' : 'edit (creates manual entry)';
+        let html = `<div style="padding:6px 8px; background:#22c55e10; border:1px solid #22c55e30; border-radius:6px; font-size:0.75rem;">
             <span style="color:#4ade80; font-weight:600;">✓ ${matchedCity.name}, ${loc}</span>${srcTag}
             <span style="color:var(--text-dim);"> — COL ${matchedCity.colIndex} · $${matchedCity.monthlyCostsNoRent?.toLocaleString()}/mo</span>
+            <a href="#" onclick="toggleEditManualCity(); return false;" style="color:var(--accent); font-size:0.7rem; margin-left:6px;">${editLabel}</a>
         </div>`;
+        const br = colConfig.bedroomCount || 1;
+        const locType = colConfig.locationType || 'city';
+        const rentKey = `rent${br}br${locType === 'city' ? 'City' : 'Suburb'}`;
+        const cityRent = matchedCity[rentKey] || 0;
+        html += `<div id="editManualCityFields" style="display:none; margin-top:6px; padding:8px; background:var(--card-hover); border-radius:6px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;">
+                <div><label class="form-label" style="font-size:0.68rem;">COL Index</label>
+                    <input type="number" id="editManualCol" value="${matchedCity.colIndex || ''}" class="form-input"
+                        step="0.1" style="width:100%; font-size:0.78rem; padding:4px 8px;"></div>
+                <div><label class="form-label" style="font-size:0.68rem;">Costs/mo (no rent)</label>
+                    <input type="number" id="editManualCosts" value="${matchedCity.monthlyCostsNoRent || ''}" class="form-input"
+                        style="width:100%; font-size:0.78rem; padding:4px 8px;"></div>
+                <div><label class="form-label" style="font-size:0.68rem;">Rent (${br}BR ${locType === 'city' ? 'City' : 'Suburb'})</label>
+                    <input type="number" id="editManualRent" value="${cityRent || ''}" class="form-input"
+                        style="width:100%; font-size:0.78rem; padding:4px 8px;"></div>
+            </div>
+            <div style="margin-top:6px; text-align:right;">
+                <button class="btn-secondary" style="font-size:0.72rem; padding:3px 10px;" onclick="toggleEditManualCity()">Cancel</button>
+                <button class="btn-primary" style="font-size:0.72rem; padding:3px 10px; margin-left:4px;" onclick="saveEditManualCity()">Save</button>
+            </div>
+        </div>`;
+        return html;
     }
 
     // City NOT in DB — show data source selector
@@ -364,6 +388,41 @@ async function saveManualCityToDb() {
         if (data.ok) {
             showSaveToast(`${name} saved to database (manual)`);
             // Refresh city list to include the new entry
+            const apiResp = await fetch('/api/cost-of-living/api-cities?include_global=1').then(r => r.json()).catch(() => ({ cities: [] }));
+            colApiCities = apiResp.cities || [];
+            colApiMeta = apiResp.meta || {};
+            renderCOLConfig();
+        } else {
+            showAlert(data.error || 'Save failed', 'error');
+        }
+    } catch(e) { showAlert('Save failed: ' + e.message, 'error'); }
+}
+
+function toggleEditManualCity() {
+    const el = document.getElementById('editManualCityFields');
+    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function saveEditManualCity() {
+    const name = (colConfig.homeCityName || '').trim();
+    if (!name) return;
+    const col = parseFloat(document.getElementById('editManualCol')?.value) || 0;
+    const costs = parseFloat(document.getElementById('editManualCosts')?.value) || 0;
+    const rent = parseFloat(document.getElementById('editManualRent')?.value) || 0;
+    if (!costs && !col) { showAlert('Enter at least costs or COL index', 'error'); return; }
+    const bedrooms = colConfig.bedroomCount || 1;
+    const location = colConfig.locationType || 'city';
+    try {
+        const resp = await fetch('/api/cost-of-living/save-manual-city', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                name, country: colConfig.homeCountry || '', state: colConfig.homeState || '',
+                monthlyCostsNoRent: costs, colIndex: col, rent, bedroomCount: bedrooms, locationType: location
+            })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            showSaveToast(`${name} saved to database (manual)`);
             const apiResp = await fetch('/api/cost-of-living/api-cities?include_global=1').then(r => r.json()).catch(() => ({ cities: [] }));
             colApiCities = apiResp.cities || [];
             colApiMeta = apiResp.meta || {};
