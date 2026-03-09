@@ -163,6 +163,8 @@ def api_portfolio():
             "distFromAvgCost": round(dist_from_avg * 100, 2),
             "avgCostSignal": avg_cost_signal,
             "pe": q.get("pe", 0),
+            "country": q.get("country") or p.get("country", "Unknown"),
+            "currency": q.get("currency") or p.get("currency", "USD"),
             "marketCap": q.get("marketCap", 0),
             "beta": q.get("beta", 0),
             "fiftyTwoWeekHigh": q.get("fiftyTwoWeekHigh", 0),
@@ -198,6 +200,18 @@ def api_portfolio():
     for pos in enriched:
         st = pos["secType"]
         type_alloc[st] = round(type_alloc.get(st, 0) + pos["allocation"], 2)
+
+    # Country allocation
+    country_alloc = {}
+    for pos in enriched:
+        c = pos["country"] or "Unknown"
+        country_alloc[c] = round(country_alloc.get(c, 0) + pos["allocation"], 2)
+
+    # Currency allocation
+    currency_alloc = {}
+    for pos in enriched:
+        cur = pos["currency"] or "USD"
+        currency_alloc[cur] = round(currency_alloc.get(cur, 0) + pos["allocation"], 2)
 
     # Signals based on valuation
     for pos in enriched:
@@ -287,6 +301,8 @@ def api_portfolio():
             "category": cat_alloc,
             "sector": sec_alloc,
             "securityType": type_alloc,
+            "country": country_alloc,
+            "currency": currency_alloc,
         },
         "targets": portfolio.get("targets", {}),
         "goals": goals_array,

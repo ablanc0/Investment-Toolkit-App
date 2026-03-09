@@ -152,6 +152,12 @@ function populateOverview() {
     if (allocations.securityType) {
         createAllocationChart('securityChart', allocations.securityType, 'Security Type');
     }
+    if (allocations.country) {
+        createAllocationChart('countryChart', allocations.country, 'Country Allocation');
+    }
+    if (allocations.currency) {
+        createAllocationChart('currencyChart', allocations.currency, 'Currency Allocation');
+    }
     // Day Movers — top 5 gainers/losers by day change
     renderDayMovers();
 }
