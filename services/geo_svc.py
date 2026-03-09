@@ -1,6 +1,7 @@
 """
 InvToolkit — Geographic data resolution service.
-Cascade: FMP profile → yfinance (+ ETF category heuristic).
+Stocks: yfinance info.country (company HQ).
+ETFs: yfinance category heuristic (investment region, not domicile).
 Results persisted to geo_data.json (no TTL — fetch once, store forever).
 """
 
@@ -30,10 +31,7 @@ def resolve_geo(ticker, sec_type="Stocks"):
     if ticker in store and store[ticker].get("country"):
         return store[ticker]
 
-    # Cascade: FMP profile → yfinance (with ETF category heuristic)
-    result = _try_fmp_profile(ticker)
-    if not result or not result.get("country"):
-        result = _try_yfinance(ticker, is_etf=(sec_type == "ETFs"))
+    result = _resolve_yfinance(ticker, is_etf=(sec_type == "ETFs"))
     if not result:
         result = {"country": "Unknown", "currency": "USD", "source": "none"}
 
@@ -42,26 +40,8 @@ def resolve_geo(ticker, sec_type="Stocks"):
     return result
 
 
-def _try_fmp_profile(ticker):
-    """Company profile from FMP (has country field). Requires FMP API key."""
-    try:
-        from services.fmp import _fmp_get, _get_fmp_key
-        if not _get_fmp_key():
-            return None
-        data = _fmp_get("profile", symbol=ticker)
-        if data and isinstance(data, list) and len(data) > 0:
-            p = data[0]
-            country = p.get("country", "")
-            currency = p.get("currency", "USD")
-            if country:
-                return {"country": country, "currency": currency, "source": "FMP"}
-    except Exception as e:
-        print(f"[geo] FMP profile failed for {ticker}: {e}")
-    return None
-
-
-def _try_yfinance(ticker, is_etf=False):
-    """Fallback: yfinance info.country for stocks, category heuristic for ETFs."""
+def _resolve_yfinance(ticker, is_etf=False):
+    """Stocks: info.country. ETFs: category heuristic for investment region."""
     from services.cache import cache_get
     cached = cache_get(f"yf_{ticker}")
     if cached and cached.get("country"):
@@ -83,7 +63,6 @@ def _try_yfinance(ticker, is_etf=False):
             category = (info.get("category") or "").lower()
             if any(kw in category for kw in ("foreign", "international", "global", "world", "emerging")):
                 return {"country": "International", "currency": currency, "source": "yfinance-category"}
-            # US-listed ETF with no foreign keywords → United States
             if category:
                 return {"country": "United States", "currency": currency, "source": "yfinance-category"}
     except Exception as e:
