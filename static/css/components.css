@@ -132,20 +132,34 @@
             white-space: nowrap;
         }
 
-        /* Sticky ticker column */
-        #positionsTable th:first-child,
-        #positionsTable td:first-child {
+        /* Sticky first column for horizontally scrollable tables */
+        .table-wrapper table th:first-child,
+        .table-wrapper table td:first-child {
             position: sticky;
             left: 0;
             z-index: 1;
-            background: var(--card-bg);
+            background: var(--card);
+            box-shadow: 2px 0 4px rgba(0, 0, 0, 0.15);
         }
-        #positionsTable tr:hover td:first-child {
+        .table-wrapper table tr:hover td:first-child {
             background: var(--card-hover);
         }
 
         tr:hover {
             background: var(--card-hover);
+        }
+
+        /* Summary / totals rows */
+        tr.summary-row {
+            border-top: 2px solid var(--border);
+            font-weight: 600;
+            background: rgba(99, 102, 241, 0.06);
+        }
+        tr.summary-row td {
+            padding-top: 14px;
+        }
+        tr.summary-row td:first-child {
+            background: color-mix(in srgb, var(--accent) 6%, var(--card));
         }
 
         .positive {
