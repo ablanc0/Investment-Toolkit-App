@@ -125,10 +125,19 @@ function renderLabAllocChart(holdings) {
     });
 }
 
+function showLabPortfolios() {
+    const grid = document.getElementById('labGrid');
+    const resDiv = document.getElementById('labResearchResults');
+    if (grid) grid.style.display = '';
+    if (resDiv) resDiv.style.display = 'none';
+}
+
 async function runLabResearch() {
+    const grid = document.getElementById('labGrid');
     const resDiv = document.getElementById('labResearchResults');
     const content = document.getElementById('labResearchContent');
     if (!resDiv || !content) return;
+    if (grid) grid.style.display = 'none';
     content.innerHTML = '<p style="color: var(--text-dim);">Analyzing all portfolios...</p>';
     resDiv.style.display = 'block';
     try {
