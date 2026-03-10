@@ -767,13 +767,13 @@ async function fetchDividendCalendar() {
         if (!resp.ok) return;
         _calendarData = await resp.json();
 
-        // Compute min/max months from events
+        // Min = current month (forward-looking only), max = last event month
+        const now = new Date();
+        _calMinDate = { year: now.getFullYear(), month: now.getMonth() };
         const events = _calendarData.events || [];
         if (events.length > 0) {
             const dates = events.map(e => e.date.substring(0, 7)).sort();
-            const [minY, minM] = dates[0].split('-').map(Number);
             const [maxY, maxM] = dates[dates.length - 1].split('-').map(Number);
-            _calMinDate = { year: minY, month: minM - 1 };
             _calMaxDate = { year: maxY, month: maxM - 1 };
         }
 
@@ -853,12 +853,22 @@ function renderCalendarGrid(year, month, allEvents) {
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-    // Group events by day
+    // Group events by day — show ex-date and payment date separately for declared
     const byDay = {};
     events.forEach(ev => {
-        const day = parseInt(ev.date.split('-')[2], 10);
-        if (!byDay[day]) byDay[day] = [];
-        byDay[day].push(ev);
+        // Payment date entry (main event)
+        const payDay = parseInt(ev.date.split('-')[2], 10);
+        if (!byDay[payDay]) byDay[payDay] = [];
+        byDay[payDay].push({ ...ev, _type: 'payment' });
+
+        // Ex-date entry (if different from payment date and in this month)
+        if (ev.paymentDate && ev.exDate !== ev.paymentDate && ev.exDate.startsWith(monthKey)) {
+            const exDay = parseInt(ev.exDate.split('-')[2], 10);
+            if (exDay !== payDay) {
+                if (!byDay[exDay]) byDay[exDay] = [];
+                byDay[exDay].push({ ...ev, _type: 'ex-date' });
+            }
+        }
     });
 
     let html = '<div class="calendar-grid">';
@@ -883,12 +893,20 @@ function renderCalendarGrid(year, month, allEvents) {
         html += `<div class="calendar-day-num">${d}</div>`;
 
         for (const ev of dayEvents.slice(0, 3)) {
-            const statusClass = `div-${ev.status}`;
-            const payInfo = ev.paymentDate ? ` | Pay: ${ev.paymentDate}` : '';
-            html += `<div class="calendar-event ${statusClass}" title="${escapeHtml(ev.ticker)}: $${ev.income.toFixed(2)} (${ev.status})${payInfo}">
-                <span class="calendar-event-ticker">${escapeHtml(ev.ticker)}</span>
-                <span class="calendar-event-amount">$${ev.income.toFixed(2)}</span>
-            </div>`;
+            if (ev._type === 'ex-date') {
+                // Ex-dividend date marker
+                html += `<div class="calendar-event div-ex" title="${escapeHtml(ev.ticker)} Ex-Dividend — must own before this date. Payment: ${ev.paymentDate}">
+                    <span class="calendar-event-ticker">EX ${escapeHtml(ev.ticker)}</span>
+                </div>`;
+            } else {
+                // Payment event
+                const statusClass = `div-${ev.status}`;
+                const payInfo = ev.paymentDate ? ` (pay date)` : '';
+                html += `<div class="calendar-event ${statusClass}" title="${escapeHtml(ev.ticker)}: $${ev.income.toFixed(2)} (${ev.status})${payInfo}">
+                    <span class="calendar-event-ticker">${escapeHtml(ev.ticker)}</span>
+                    <span class="calendar-event-amount">$${ev.income.toFixed(2)}</span>
+                </div>`;
+            }
         }
         if (dayEvents.length > 3) {
             html += `<div style="font-size: 10px; color: var(--text-dim); text-align: center;">+${dayEvents.length - 3} more</div>`;

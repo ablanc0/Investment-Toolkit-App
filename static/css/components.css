@@ -346,10 +346,6 @@
         }
         .calendar-event-ticker { font-weight: 700; }
         .calendar-event-amount { font-weight: 600; }
-        .calendar-event.div-paid {
-            background: rgba(34,197,94,0.15);
-            color: #22c55e;
-        }
         .calendar-event.div-declared {
             background: rgba(59,130,246,0.15);
             color: #3b82f6;
@@ -357,6 +353,11 @@
         .calendar-event.div-estimated {
             background: rgba(148,163,184,0.1);
             color: var(--text-dim);
+        }
+        .calendar-event.div-ex {
+            background: rgba(251,191,36,0.15);
+            color: #fbbf24;
+            border-left: 2px solid #fbbf24;
         }
 
         /* Editable KPI */
