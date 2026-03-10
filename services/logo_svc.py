@@ -6,7 +6,7 @@ Downloads logos from Elbstream API, caches as files on disk.
 from pathlib import Path
 import requests as http_requests
 
-LOGO_DIR = Path(__file__).resolve().parent.parent / "logos"
+LOGO_DIR = Path(__file__).resolve().parent.parent / "data" / "logos"
 ELBSTREAM_URL = "https://api.elbstream.com/logos/symbol"
 
 

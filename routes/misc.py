@@ -166,7 +166,9 @@ def api_logo(ticker):
     from services.logo_svc import get_logo_path
     path, mimetype = get_logo_path(ticker.upper())
     if not path:
-        return "", 404
+        resp = make_response("", 404)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
     resp = make_response(send_file(path, mimetype=mimetype))
     resp.headers["Cache-Control"] = "public, max-age=86400"
     return resp

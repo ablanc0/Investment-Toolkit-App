@@ -17,7 +17,7 @@ from pathlib import Path
 from urllib.request import urlopen, Request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-LOGO_DIR = Path(__file__).resolve().parent.parent / "logos"
+LOGO_DIR = Path(__file__).resolve().parent.parent / "data" / "logos"
 API = "https://api.elbstream.com/logos/symbol"
 BATCH_SIZE = 50
 DELAY_BETWEEN_BATCHES = 2  # seconds
