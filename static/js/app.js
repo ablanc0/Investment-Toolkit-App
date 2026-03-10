@@ -239,6 +239,17 @@ function loadTabData(tabId) {
     if (loaders[tabId]) loaders[tabId]();
 }
 
+// Open Analyzer from other tabs (e.g. watchlist ticker click)
+function openAnalyzer(ticker) {
+    if (!ticker) return;
+    switchTab('analyzer');
+    const input = document.getElementById('analyzerTicker');
+    if (input) {
+        input.value = ticker.toUpperCase();
+        analyzeStock(true);
+    }
+}
+
 // Refresh Button
 function setupRefreshButton() {
     document.getElementById('refreshBtn').addEventListener('click', () => {

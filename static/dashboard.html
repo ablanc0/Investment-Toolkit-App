@@ -364,10 +364,12 @@
 
         <!-- Watchlist Tab -->
         <div class="tab-content" id="watchlist">
+            <div id="watchlistKpis" class="kpi-grid"></div>
             <div class="wl-add-form">
                 <input type="text" id="wlNewTicker" placeholder="TICKER" style="width: 100px; text-transform: uppercase;">
                 <select id="wlNewPriority">
                     <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
                     <option value="High">High</option>
                 </select>
                 <button class="wl-add-btn" onclick="addToWatchlist()">➕ Add to Watchlist</button>
@@ -394,7 +396,8 @@
                             <th onclick="sortTable(this)">Income (100 Sh)</th>
                             <th onclick="sortTable(this)">Cost (100 Sh)</th>
                             <th onclick="sortTable(this)">Sector</th>
-                            <th>Priority</th>
+                            <th onclick="sortTable(this)">Priority</th>
+                            <th onclick="sortTable(this)">Notes</th>
                             <th></th>
                         </tr>
                     </thead>
