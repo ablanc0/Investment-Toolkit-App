@@ -218,7 +218,6 @@ When working on complex tasks, dispatch specialized sub-agents for parallel work
 - Frontend implementation → invt-frontend
 - Code review before PR → invt-reviewer
 - Browser testing → invt-browser-tester
-- Changelog update after merge → invt-changelog
 
 ### Independent domains (safe to parallelize)
 
@@ -266,7 +265,5 @@ These domains have no shared files — agents can work simultaneously without co
 4. Push and create PR targeting main
 5. Include `Closes #<issue-number>` in PR body
 
-#### Phase 4 — Changelog (after merge)
-1. After PR is merged, dispatch invt-changelog agent on main
-2. Agent runs `git-cliff -o CHANGELOG.md` to regenerate from tags + commits
-3. Agent commits the updated CHANGELOG.md
+#### Phase 4 — Changelog (automatic)
+After PR is merged, a GitHub Action runs `git-cliff` to regenerate `CHANGELOG.md` automatically.
