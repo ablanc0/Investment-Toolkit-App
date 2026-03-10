@@ -4,6 +4,10 @@ All notable changes to InvToolkit will be documented in this file.
 
 ## [Unreleased]
 
+### 📖 Documentation
+
+- standardize changelog to 5 clean labels
+
 ### 🚀 Feature
 
 - automated changelog with git-cliff and Sphinx integration
