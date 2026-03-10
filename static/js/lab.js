@@ -52,7 +52,7 @@ function renderLabPortfolio() {
         const alloc = l.portfolioAllocation ? (l.portfolioAllocation * 100).toFixed(1) + '%' : '—';
         const yld = l.dividendYield ? (l.dividendYield * 100).toFixed(2) + '%' : '—';
         return `<tr>
-            <td><strong>${escapeHtml(l.ticker)}</strong></td>
+            <td>${tickerLogo(l.ticker)}<strong>${escapeHtml(l.ticker)}</strong></td>
             <td style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(l.companyName || '')}</td>
             <td style="text-align:right;">${l.shares || '—'}</td>
             <td style="text-align:right;">${l.sharePrice ? formatMoney(l.sharePrice) : '—'}</td>
@@ -140,7 +140,7 @@ async function runLabResearch() {
                 <th>Ticker</th><th>Company</th><th style="text-align:center;">Found In</th><th style="text-align:center;">% of Portfolios</th><th>Portfolios</th>
             </tr></thead><tbody>
             ${items.filter(i => i.count >= 2).map(i => `<tr>
-                <td><strong>${escapeHtml(i.ticker)}</strong></td><td>${escapeHtml(i.companyName || '')}</td>
+                <td>${tickerLogo(i.ticker)}<strong>${escapeHtml(i.ticker)}</strong></td><td>${escapeHtml(i.companyName || '')}</td>
                 <td style="text-align:center;"><span style="background:${i.count >= 5 ? '#4ade8030' : i.count >= 3 ? '#6366f130' : '#f59e0b30'}; color:${i.count >= 5 ? '#4ade80' : i.count >= 3 ? '#6366f1' : '#f59e0b'}; padding:2px 10px; border-radius:12px; font-weight:700;">${i.count}</span></td>
                 <td style="text-align:center;">${((i.count/total)*100).toFixed(0)}%</td>
                 <td style="font-size:0.78rem; color:var(--text-dim);">${i.portfolios.map(p => escapeHtml(p)).join(', ')}</td>

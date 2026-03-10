@@ -562,6 +562,7 @@ function renderApiHealthTable(data) {
         { key: 'fred', name: 'FRED (AAA Bond Yield) — no limit', icon: '🏛' },
         { key: 'edgar', name: 'SEC EDGAR — no limit', icon: '📋' },
         { key: 'rapidapi', name: 'RapidAPI (Cost of Living) — 5 calls/month', icon: '🏙' },
+        { key: 'elbstream', name: 'Elbstream (Logos) — no limit', icon: '🖼' },
     ];
 
     const dotColor = (status) => {

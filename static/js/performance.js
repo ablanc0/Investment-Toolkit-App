@@ -10,7 +10,7 @@ function populatePerformance() {
     document.getElementById('topPerformers').innerHTML = topPerformers.map((p, i) => `
         <div class="performer-card">
             <div class="performer-rank">#${i + 1}</div>
-            <div class="performer-ticker">${p.ticker}</div>
+            <div class="performer-ticker">${tickerLogo(p.ticker)}${escapeHtml(p.ticker)}</div>
             <div class="performer-value positive">${formatPercent(p.returnPercent)}</div>
         </div>
     `).join('');
@@ -19,7 +19,7 @@ function populatePerformance() {
     document.getElementById('bottomPerformers').innerHTML = bottomPerformers.map((p, i) => `
         <div class="performer-card">
             <div class="performer-rank">#${i + 1}</div>
-            <div class="performer-ticker">${p.ticker}</div>
+            <div class="performer-ticker">${tickerLogo(p.ticker)}${escapeHtml(p.ticker)}</div>
             <div class="performer-value negative">${formatPercent(p.returnPercent)}</div>
         </div>
     `).join('');
@@ -30,7 +30,7 @@ function populatePerformance() {
 
     document.getElementById('bestDayChange').innerHTML = `
         <div class="performer-card">
-            <div class="performer-ticker">${bestDay.ticker}</div>
+            <div class="performer-ticker">${tickerLogo(bestDay.ticker)}${escapeHtml(bestDay.ticker)}</div>
             <div class="performer-value positive">${formatMoney(bestDay.dayChange)}</div>
             <div style="font-size: 12px; color: var(--text-dim);">${formatPercent(bestDay.dayChangePercent)}</div>
         </div>
@@ -38,7 +38,7 @@ function populatePerformance() {
 
     document.getElementById('worstDayChange').innerHTML = `
         <div class="performer-card">
-            <div class="performer-ticker">${worstDay.ticker}</div>
+            <div class="performer-ticker">${tickerLogo(worstDay.ticker)}${escapeHtml(worstDay.ticker)}</div>
             <div class="performer-value negative">${formatMoney(worstDay.dayChange)}</div>
             <div style="font-size: 12px; color: var(--text-dim);">${formatPercent(worstDay.dayChangePercent)}</div>
         </div>
@@ -64,7 +64,7 @@ function renderHoldingsRanking(sorted) {
         const color = isPositive ? '#22c55e' : '#ef4444';
         return `
             <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--border);">
-                <span style="width: 55px; font-weight: 600; font-size: 13px; color: var(--text);">${escapeHtml(p.ticker)}</span>
+                <span style="width: 75px; font-weight: 600; font-size: 13px; color: var(--text);">${tickerLogo(p.ticker)}${escapeHtml(p.ticker)}</span>
                 <div style="flex: 1; display: flex; align-items: center;">
                     <div style="width: ${barWidth}%; height: 8px; background: ${color}; border-radius: 4px; transition: width 0.4s;"></div>
                 </div>

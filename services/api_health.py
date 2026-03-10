@@ -14,6 +14,7 @@ _api_health = {
     "fred": dict(_DEFAULT_API),
     "edgar": dict(_DEFAULT_API),
     "rapidapi": dict(_DEFAULT_API),
+    "elbstream": dict(_DEFAULT_API),
 }
 
 _fmp_quota = {"date": None, "count": 0, "limit": 250}
@@ -148,6 +149,18 @@ def run_health_check():
                             error_msg=None if ok else f"HTTP {r.status_code}")
         except Exception as e:
             record_api_call("rapidapi", success=False, latency_ms=int((time.time() - start) * 1000), error_msg=str(e)[:80])
+
+    # Elbstream (Logos)
+    from services.logo_svc import ELBSTREAM_URL
+    start = time.time()
+    try:
+        r = http_requests.get(f"{ELBSTREAM_URL}/AAPL", params={"format": "png", "size": 250}, timeout=10)
+        latency = int((time.time() - start) * 1000)
+        ok = r.status_code == 200 and len(r.content) > 100
+        record_api_call("elbstream", success=ok, latency_ms=latency,
+                        error_msg=None if ok else f"HTTP {r.status_code}")
+    except Exception as e:
+        record_api_call("elbstream", success=False, latency_ms=int((time.time() - start) * 1000), error_msg=str(e)[:80])
 
     return get_health_summary()
 

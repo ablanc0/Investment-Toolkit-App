@@ -1,7 +1,7 @@
 """Misc Blueprint — intrinsic values, super investor buys, and status routes."""
 
 from datetime import datetime
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file, make_response
 
 from services.data_store import load_portfolio, save_portfolio, crud_list, crud_add, crud_update, crud_delete
 from services.cache import _cache
@@ -158,6 +158,20 @@ def api_status():
         "portfolioFile": PORTFOLIO_FILE.exists(),
         "timestamp": datetime.now().isoformat(),
     })
+
+
+@bp.route("/api/logo/<ticker>")
+def api_logo(ticker):
+    """Serve cached ticker logo image."""
+    from services.logo_svc import get_logo_path
+    path, mimetype = get_logo_path(ticker.upper())
+    if not path:
+        resp = make_response("", 404)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+    resp = make_response(send_file(path, mimetype=mimetype))
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
 
 
 @bp.route("/api/health")

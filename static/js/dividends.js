@@ -66,7 +66,7 @@ function renderIncomeRank(positions, totalReceived) {
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border);">
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span style="color: var(--text-dim); font-size: 12px; width: 24px;">${i + 1}${i === 0 ? 'st' : i === 1 ? 'nd' : i === 2 ? 'rd' : 'th'}</span>
-                        <strong>${escapeHtml(p.ticker)}</strong>
+                        ${tickerLogo(p.ticker)}<strong>${escapeHtml(p.ticker)}</strong>
                     </div>
                     <span style="font-weight: 600;">${formatMoney(p.totalDivsReceived)}</span>
                 </div>
@@ -282,7 +282,7 @@ function renderDividendSafety(data) {
         const color = ratingColors[h.label] || 'var(--text-dim)';
         const fmtVal = (v) => v !== null && v !== undefined ? v.toFixed(1) : '—';
         return `<tr>
-            <td><strong>${escapeHtml(h.ticker)}</strong></td>
+            <td>${tickerLogo(h.ticker)}<strong>${escapeHtml(h.ticker)}</strong></td>
             <td><span style="color: ${color}; font-weight: 600; padding: 2px 8px; background: ${color}22; border-radius: 4px; font-size: 12px;">${h.label}</span></td>
             <td style="font-weight: 600; color: ${color};">${h.score}</td>
             <td style="text-align:right;">${fmtVal(h.payoutRatio)}</td>
@@ -369,7 +369,7 @@ function renderDividendLog(data) {
                 <div class="table-wrapper"><table style="font-size: 0.82rem;">
                     <thead><tr>
                         <th style="min-width:80px;">Month</th>
-                        ${logTickers.map(t => `<th style="min-width:60px; text-align:right;">${t === 'cashInterest' ? 'Cash Int.' : escapeHtml(t)}</th>`).join('')}
+                        ${logTickers.map(t => `<th style="min-width:70px; text-align:center; white-space:nowrap; padding:12px 8px 8px;">${t === 'cashInterest' ? 'Cash Int.' : tickerLogo(t) + '<div style="margin-top:4px;">' + escapeHtml(t) + '</div>'}</th>`).join('')}
                         <th style="min-width:70px; text-align:right; font-weight:700;">Total</th>
                     </tr></thead>
                     <tbody>`;
@@ -816,7 +816,7 @@ function renderDividendCalendar() {
         const kpis = [
             { label: '💰 This Month', value: formatMoney(monthTotal), sub: `${monthEvents.length} events` },
             { label: '📅 Annual Estimate', value: formatMoney(summary.annualEstimate || 0), sub: 'Next 12 months' },
-            { label: '⏭️ Next Payout', value: np ? `${escapeHtml(np.ticker)} ${formatMoney(np.income)}` : '—', sub: np ? np.date : 'None scheduled' },
+            { label: '⏭️ Next Payout', value: np ? `${tickerLogo(np.ticker, 28)}${escapeHtml(np.ticker)} ${formatMoney(np.income)}` : '—', sub: np ? np.date : 'None scheduled' },
             { label: '📊 Total Events', value: summary.totalEvents || 0, sub: 'Declared + Estimated' },
         ];
         kpiGrid.innerHTML = kpis.map(kpi => `
@@ -896,14 +896,14 @@ function renderCalendarGrid(year, month, allEvents) {
             if (ev._type === 'ex-date') {
                 // Ex-dividend date marker
                 html += `<div class="calendar-event div-ex" title="${escapeHtml(ev.ticker)} Ex-Dividend — must own before this date. Payment: ${ev.paymentDate}">
-                    <span class="calendar-event-ticker">EX ${escapeHtml(ev.ticker)}</span>
+                    <span class="calendar-event-ticker">${tickerLogo(ev.ticker, 24)}EX ${escapeHtml(ev.ticker)}</span>
                 </div>`;
             } else {
                 // Payment event
                 const statusClass = `div-${ev.status}`;
                 const payInfo = ev.paymentDate ? ` (pay date)` : '';
                 html += `<div class="calendar-event ${statusClass}" title="${escapeHtml(ev.ticker)}: $${ev.income.toFixed(2)} (${ev.status})${payInfo}">
-                    <span class="calendar-event-ticker">${escapeHtml(ev.ticker)}</span>
+                    <span class="calendar-event-ticker">${tickerLogo(ev.ticker, 24)}${escapeHtml(ev.ticker)}</span>
                     <span class="calendar-event-amount">$${ev.income.toFixed(2)}</span>
                 </div>`;
             }
@@ -960,7 +960,7 @@ function renderCalendarList(allEvents) {
         html += `<tr>
             <td>${ev.exDate}</td>
             <td>${payDate}</td>
-            <td><strong>${escapeHtml(ev.ticker)}</strong></td>
+            <td>${tickerLogo(ev.ticker, 24)}<strong>${escapeHtml(ev.ticker)}</strong></td>
             <td style="text-align:right;">$${ev.amount.toFixed(4)}</td>
             <td style="text-align:right;">${ev.shares}</td>
             <td style="text-align:right; font-weight:600; color: #4ade80;">${formatMoney(ev.income)}</td>

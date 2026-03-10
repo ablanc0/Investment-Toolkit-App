@@ -83,7 +83,7 @@ function populateRebalancing() {
         const signal = useIV ? (p.ivSignal || p.avgCostSignal) : p.avgCostSignal;
 
         return `<tr>
-            <td><strong>${p.ticker}</strong></td>
+            <td>${tickerLogo(p.ticker)}<strong>${escapeHtml(p.ticker)}</strong></td>
             <td>${formatMoney(p.price)}</td>
             <td>${parseFloat(p.shares).toFixed(3)}</td>
             <td>${formatMoney(p.marketValue)}</td>

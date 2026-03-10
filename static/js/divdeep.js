@@ -37,7 +37,7 @@ function renderDivDeepTable(positions) {
             statusBadge = '<span style="color:var(--text-dim);">-</span>';
         }
         return `<tr>
-            <td><strong>${p.ticker}</strong></td>
+            <td>${tickerLogo(p.ticker)}<strong>${escapeHtml(p.ticker)}</strong></td>
             <td style="max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${p.company}</td>
             <td style="text-align:right;">$${p.divPerShare.toFixed(2)}</td>
             <td style="text-align:right;">${formatPercent(p.currentYield)}</td>
