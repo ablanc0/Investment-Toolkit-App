@@ -369,7 +369,7 @@ function renderDividendLog(data) {
                 <div class="table-wrapper"><table style="font-size: 0.82rem;">
                     <thead><tr>
                         <th style="min-width:80px;">Month</th>
-                        ${logTickers.map(t => `<th style="min-width:60px; text-align:right;">${t === 'cashInterest' ? 'Cash Int.' : escapeHtml(t)}</th>`).join('')}
+                        ${logTickers.map(t => `<th style="min-width:70px; text-align:center; white-space:nowrap; padding:12px 8px 8px;">${t === 'cashInterest' ? 'Cash Int.' : tickerLogo(t) + '<div style="margin-top:4px;">' + escapeHtml(t) + '</div>'}</th>`).join('')}
                         <th style="min-width:70px; text-align:right; font-weight:700;">Total</th>
                     </tr></thead>
                     <tbody>`;
