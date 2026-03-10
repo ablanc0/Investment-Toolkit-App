@@ -27,6 +27,9 @@ desktop.ini
 # Sphinx docs build output
 docs/_build/
 
+# Cached logos (downloaded on demand)
+logos/
+
 # Uploads / temp
 *.xlsx
 *.csv

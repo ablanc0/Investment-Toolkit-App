@@ -36,7 +36,7 @@ function renderTaxHarvestTable(positions) {
         else if (p.action.includes('trimming')) actionColor = '#f59e0b';
         const daysLabel = p.daysHeld > 0 ? ' (' + p.daysHeld + 'd)' : '';
         return `<tr>
-            <td><strong>${p.ticker}</strong></td>
+            <td>${tickerLogo(p.ticker)}<strong>${escapeHtml(p.ticker)}</strong></td>
             <td style="text-align:right;">${formatMoney(p.costBasis)}</td>
             <td style="text-align:right;">${formatMoney(p.marketValue)}</td>
             <td style="text-align:right; color:${glColor}; font-weight:600;">${formatMoney(p.unrealizedGL)}</td>

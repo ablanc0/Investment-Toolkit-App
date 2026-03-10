@@ -33,7 +33,7 @@ function renderIntrinsicValues(items) {
         const pe = iv.peRatio ? iv.peRatio.toFixed(1) : '—';
         const updated = iv.updated ? iv.updated.split(' ')[0] : '—';
         return `<tr>
-            <td><strong>${escapeHtml(iv.ticker)}</strong></td>
+            <td>${tickerLogo(iv.ticker)}<strong>${escapeHtml(iv.ticker)}</strong></td>
             <td style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(iv.companyName || '')}</td>
             <td style="text-align:right;">${formatMoney(iv.currentPrice)}</td>
             <td style="text-align:right; font-weight:600;">${iv.intrinsicValue ? formatMoney(iv.intrinsicValue) : '—'}</td>

@@ -39,7 +39,7 @@ function populateScreening() {
     document.getElementById('portfolioSignalsBody').innerHTML = filtered.length > 0 ?
         filtered.map(p => `
             <tr>
-                <td><strong>${escapeHtml(p.ticker)}</strong></td>
+                <td>${tickerLogo(p.ticker)}<strong>${escapeHtml(p.ticker)}</strong></td>
                 <td>${formatMoney(p.price)}</td>
                 <td>${formatMoney(p.avgCost)}</td>
                 <td class="${(p.returnPercent || 0) >= 0 ? 'positive' : 'negative'}">${formatPercent(p.returnPercent)}</td>
@@ -83,7 +83,7 @@ function populateScreening() {
     document.getElementById('watchlistSignalsBody').innerHTML = wlSignaled.length > 0 ?
         wlSignaled.map(item => `
             <tr>
-                <td><strong>${escapeHtml(item.ticker)}</strong></td>
+                <td>${tickerLogo(item.ticker)}<strong>${escapeHtml(item.ticker)}</strong></td>
                 <td>${formatMoney(item.price)}</td>
                 <td>${item.hasIV ? getSignalBadge(item.signal) : '<span style="color: var(--text-dim);">—</span>'}</td>
                 <td>${item.invtScore ? '<span style="color:' + _invtScoreColor(item.invtScore) + ';font-weight:600">' + Number(item.invtScore).toFixed(1) + '</span>' : '—'}</td>
@@ -429,7 +429,7 @@ function populateDivLog() {
         </tr></thead><tbody>
         ${dividendData.log.map(item => `<tr>
             <td style="padding: 12px; border-bottom: 1px solid var(--border);">${escapeHtml(item.date)}</td>
-            <td style="padding: 12px; border-bottom: 1px solid var(--border);">${escapeHtml(item.ticker)}</td>
+            <td style="padding: 12px; border-bottom: 1px solid var(--border);">${tickerLogo(item.ticker, 16)}${escapeHtml(item.ticker)}</td>
             <td style="padding: 12px; border-bottom: 1px solid var(--border);">${formatMoney(item.amount)}</td>
         </tr>`).join('')}
         </tbody></table></div>`;
@@ -464,7 +464,7 @@ function populateIVList() {
         ${watchlistData.watchlist.map(item => {
             const discount = ((item.intrinsicValue - item.price) / item.intrinsicValue * 100);
             return `<tr>
-                <td style="padding: 12px; border-bottom: 1px solid var(--border);"><strong>${escapeHtml(item.ticker)}</strong></td>
+                <td style="padding: 12px; border-bottom: 1px solid var(--border);">${tickerLogo(item.ticker)}<strong>${escapeHtml(item.ticker)}</strong></td>
                 <td style="padding: 12px; border-bottom: 1px solid var(--border);">${formatMoney(item.price)}</td>
                 <td style="padding: 12px; border-bottom: 1px solid var(--border);">${formatMoney(item.intrinsicValue)}</td>
                 <td style="padding: 12px; border-bottom: 1px solid var(--border);" class="${discount > 0 ? 'positive' : 'negative'}">${formatPercent(discount)}</td>
@@ -523,7 +523,7 @@ function renderFindTheDip() {
             return `<td style="text-align:right; color: ${color}; font-weight: 600;">${v > 0 ? '+' : ''}${v.toFixed(1)}%</td>`;
         };
         return `<tr>
-            <td><strong>${escapeHtml(h.ticker)}</strong></td>
+            <td>${tickerLogo(h.ticker)}<strong>${escapeHtml(h.ticker)}</strong></td>
             <td>${formatMoney(h.price)}</td>
             ${distCell('dist10')}
             ${distCell('dist50')}

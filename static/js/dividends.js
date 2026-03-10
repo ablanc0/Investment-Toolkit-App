@@ -66,7 +66,7 @@ function renderIncomeRank(positions, totalReceived) {
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border);">
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span style="color: var(--text-dim); font-size: 12px; width: 24px;">${i + 1}${i === 0 ? 'st' : i === 1 ? 'nd' : i === 2 ? 'rd' : 'th'}</span>
-                        <strong>${escapeHtml(p.ticker)}</strong>
+                        ${tickerLogo(p.ticker, 16)}<strong>${escapeHtml(p.ticker)}</strong>
                     </div>
                     <span style="font-weight: 600;">${formatMoney(p.totalDivsReceived)}</span>
                 </div>
@@ -282,7 +282,7 @@ function renderDividendSafety(data) {
         const color = ratingColors[h.label] || 'var(--text-dim)';
         const fmtVal = (v) => v !== null && v !== undefined ? v.toFixed(1) : '—';
         return `<tr>
-            <td><strong>${escapeHtml(h.ticker)}</strong></td>
+            <td>${tickerLogo(h.ticker)}<strong>${escapeHtml(h.ticker)}</strong></td>
             <td><span style="color: ${color}; font-weight: 600; padding: 2px 8px; background: ${color}22; border-radius: 4px; font-size: 12px;">${h.label}</span></td>
             <td style="font-weight: 600; color: ${color};">${h.score}</td>
             <td style="text-align:right;">${fmtVal(h.payoutRatio)}</td>

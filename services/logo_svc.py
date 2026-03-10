@@ -3,10 +3,10 @@ InvToolkit — Ticker logo cache service.
 Downloads logos from Elbstream API, caches as files on disk.
 """
 
+from pathlib import Path
 import requests as http_requests
-from config import DATA_DIR
 
-LOGO_DIR = DATA_DIR / "logos"
+LOGO_DIR = Path(__file__).resolve().parent.parent / "logos"
 ELBSTREAM_URL = "https://api.elbstream.com/logos/symbol"
 
 

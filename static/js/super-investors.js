@@ -183,7 +183,7 @@ function render13FHoldings(data) {
         const histBtn = h.ticker ? ` <span class="si-history-btn" onclick="toggleHoldingHistory(this, '${escapeHtml(investorKey)}', '${escapeHtml(h.ticker)}')" title="View history" style="cursor:pointer; opacity:0.5; font-size:0.75rem;">📊</span>` : '';
         return `<tr data-ticker="${escapeHtml(ticker)}">
             <td style="text-align:center; color:var(--text-dim);">${i+1}</td>
-            <td><strong>${escapeHtml(ticker)}</strong>${putCallTag}${histBtn}</td>
+            <td>${tickerLogo(ticker)}<strong>${escapeHtml(ticker)}</strong>${putCallTag}${histBtn}</td>
             <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(h.name || '')}</td>
             <td style="text-align:right; font-family:monospace;">$${Number(valM).toLocaleString()}</td>
             <td style="text-align:right; font-family:monospace;">${sharesStr}</td>
@@ -397,7 +397,7 @@ async function fetchMostPopular() {
             const countColor = s.investorCount >= 4 ? '#4ade80' : s.investorCount >= 3 ? '#22d3ee' : 'var(--text)';
             return `<tr>
                 <td style="text-align:center; color:var(--text-dim);">${i+1}</td>
-                <td><strong>${escapeHtml(s.ticker)}</strong></td>
+                <td>${tickerLogo(s.ticker)}<strong>${escapeHtml(s.ticker)}</strong></td>
                 <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(s.name || '')}</td>
                 <td style="text-align:right; font-weight:700; color:${countColor};">${s.investorCount}</td>
                 <td style="font-size:0.78rem; color:var(--text-dim);">${s.investors.map(inv => escapeHtml(inv)).join(', ')}</td>

@@ -488,7 +488,7 @@ function renderAnalyzerHeader(d) {
     const s = v.summary;
     return `
         <div class="analyzer-header">
-            <span class="ticker-badge">${escapeHtml(d.ticker)}</span>
+            <span class="ticker-badge">${tickerLogo(d.ticker, 24)}${escapeHtml(d.ticker)}</span>
             <div>
                 <h2>${escapeHtml(d.name)}</h2>
                 <span style="color: var(--text-dim); font-size: 0.85rem;">${escapeHtml(d.sector || '')} ${d.industry ? '· ' + escapeHtml(d.industry) : ''}</span>
@@ -1247,7 +1247,7 @@ function renderAnalyzerRelative(d) {
                 <tbody>
                     ${pc.peers.map((p, i) => `<tr>
                         <td><input type="checkbox" class="rel-peer-cb" data-idx="${i}" checked onchange="relUpdatePeerAvg()"></td>
-                        <td style="font-weight:600; color:var(--accent);">${escapeHtml(p.ticker)}</td>
+                        <td style="font-weight:600; color:var(--accent);">${tickerLogo(p.ticker, 16)}${escapeHtml(p.ticker)}</td>
                         <td style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(p.name || '')}</td>
                         <td style="text-align:right;">${fmt(p.pe)}</td>
                         <td style="text-align:right;">${fmt(p.evEbitda)}</td>

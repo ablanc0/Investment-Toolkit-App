@@ -218,7 +218,7 @@ function renderDayMovers() {
         const color = isGainer ? '#22c55e' : '#ef4444';
         return `
             <div style="display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border);">
-                <span style="width: 60px; font-weight: 600; font-size: 13px;">${escapeHtml(p.ticker)}</span>
+                <span style="width: 80px; font-weight: 600; font-size: 13px;">${tickerLogo(p.ticker, 16)}${escapeHtml(p.ticker)}</span>
                 <div style="flex: 1; display: flex; align-items: center; ${isGainer ? '' : 'flex-direction: row-reverse;'}">
                     <div style="width: ${barWidth}%; height: 6px; background: ${color}; border-radius: 3px;"></div>
                 </div>
