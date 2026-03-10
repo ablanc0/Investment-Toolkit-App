@@ -15,6 +15,7 @@ independently of the source code.
    :maxdepth: 2
    :caption: Contents
 
+   changelog
    user/index
    formulas/index
    configuration/index

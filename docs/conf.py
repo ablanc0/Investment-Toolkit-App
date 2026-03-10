@@ -4,7 +4,7 @@ project = "InvToolkit"
 copyright = "2024, Alejandro Blanco"
 author = "Alejandro Blanco"
 
-extensions = ["sphinx.ext.mathjax"]
+extensions = ["sphinx.ext.mathjax", "myst_parser"]
 
 html_theme = "sphinx_rtd_theme"
 html_theme_options = {
