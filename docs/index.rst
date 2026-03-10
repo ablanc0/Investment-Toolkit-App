@@ -12,6 +12,12 @@ so that calculations can be audited, reproduced, and maintained
 independently of the source code.
 
 .. toctree::
+   :maxdepth: 1
+   :caption: Project
+
+   changelog
+
+.. toctree::
    :maxdepth: 2
    :caption: Contents
 

@@ -1,0 +1,63 @@
+# git-cliff configuration for InvToolkit
+# https://git-cliff.org/docs/configuration
+
+[changelog]
+header = """# Changelog\n
+All notable changes to InvToolkit will be documented in this file.
+
+**Labels:** 🟩 Feature · 🟦 Enhancement · 🟧 Fix · 🟥 Security · ⬜ Documentation\n
+"""
+body = """
+{%- set_global current_date = "" -%}
+{% for commit in commits -%}
+{%- set commit_date = commit.author.timestamp | date(format="%Y-%m-%d") -%}
+{%- if commit_date != current_date -%}
+{%- set_global current_date = commit_date %}
+
+## {{ commit_date }}
+{% endif -%}
+{%- if commit.scope -%}
+- {{ commit.group }} **{{ commit.scope }}:** {{ commit.message }}
+{% else -%}
+- {{ commit.group }} {{ commit.message }}
+{% endif -%}
+{%- endfor %}
+"""
+footer = ""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+commit_parsers = [
+  # Skip rules first (evaluated top-to-bottom, first match wins)
+  { message = "^Merge", skip = true },
+  { message = "^first commit", skip = true },
+  { message = "expand logo database", skip = true },
+  { message = "bulk-download.*logos", skip = true },
+  { message = "commit logo database", skip = true },
+  { message = "upgrade all logos to 128px", skip = true },
+  { message = "standardize all logos to 128px", skip = true },
+  # Security fixes (before generic fix rule)
+  { message = "^fix.*(?i)(xss|security|secret|env var|validation|header)", group = "🟥 Security" },
+  # 5 clean labels
+  { message = "^feat", group = "🟩 Feature" },
+  { message = "^fix", group = "🟧 Fix" },
+  { message = "^ui", group = "🟦 Enhancement" },
+  { message = "^refactor", group = "🟦 Enhancement" },
+  { message = "^style", group = "🟦 Enhancement" },
+  { message = "^docs", group = "⬜ Documentation" },
+  # Internal — skip from changelog
+  { message = "^chore", skip = true },
+  { message = "^test", skip = true },
+  { message = "^experiment", skip = true },
+]
+commit_preprocessors = [
+  # Strip all issue/PR references like (#123), (#68, #70) from messages
+  { pattern = '\s*\(#\d+(?:,\s*#\d+)*\)', replace = '' },
+]
+filter_commits = false
+# Never match tags — all commits in one flat group, sorted by date
+tag_pattern = "NONE"
+sort_commits = "newest"
