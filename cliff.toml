@@ -45,16 +45,19 @@ commit_parsers = [
   { message = "commit logo database", skip = true },
   { message = "upgrade all logos to 128px", skip = true },
   { message = "standardize all logos to 128px", skip = true },
-  # Group rules
-  { message = "^feat", group = "Added" },
-  { message = "^fix", group = "Fixed" },
-  { message = "^ui", group = "Changed" },
-  { message = "^refactor", group = "Changed" },
-  { message = "^docs", group = "Documentation" },
-  { message = "^chore", group = "Maintenance" },
-  { message = "^test", group = "Testing" },
-  { message = "^style", group = "Changed" },
-  { message = "^experiment", group = "Experimental" },
+  # Security fixes (before generic fix rule)
+  { message = "^fix.*(?i)(xss|security|secret|env var|validation|header)", group = "🔒 Security" },
+  # 5 clean labels
+  { message = "^feat", group = "🚀 Feature" },
+  { message = "^fix", group = "🐛 Fix" },
+  { message = "^ui", group = "✨ Enhancement" },
+  { message = "^refactor", group = "✨ Enhancement" },
+  { message = "^style", group = "✨ Enhancement" },
+  { message = "^docs", group = "📖 Documentation" },
+  # Internal — skip from changelog
+  { message = "^chore", skip = true },
+  { message = "^test", skip = true },
+  { message = "^experiment", skip = true },
 ]
 filter_commits = false
 tag_pattern = "v[0-9].*"
