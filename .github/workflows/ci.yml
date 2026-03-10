@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Python syntax check
+        run: |
+          python -m py_compile server.py config.py
+          for f in services/*.py models/*.py routes/*.py; do
+            python -m py_compile "$f"
+          done
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: JS syntax check
+        run: |
+          for f in static/js/*.js; do
+            node -c "$f"
+          done
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Sphinx dependencies
+        run: pip install sphinx sphinx-rtd-theme myst-parser
+
+      - name: Build Sphinx docs
+        run: cd docs && make html
