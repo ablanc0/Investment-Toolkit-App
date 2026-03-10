@@ -7,6 +7,7 @@ All notable changes to InvToolkit will be documented in this file.
 
 
 ## 2026-03-10
+- 📖 Documentation switch changelog to date-based grouping (AFFDO style)
 - 📖 Documentation update changelog
 - 📖 Documentation standardize changelog to 5 clean labels
 - 🚀 Feature automated changelog with git-cliff and Sphinx integration
