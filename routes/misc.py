@@ -164,10 +164,10 @@ def api_status():
 def api_logo(ticker):
     """Serve cached ticker logo image."""
     from services.logo_svc import get_logo_path
-    path = get_logo_path(ticker.upper())
+    path, mimetype = get_logo_path(ticker.upper())
     if not path:
         return "", 404
-    resp = make_response(send_file(path, mimetype="image/png"))
+    resp = make_response(send_file(path, mimetype=mimetype))
     resp.headers["Cache-Control"] = "public, max-age=86400"
     return resp
 
