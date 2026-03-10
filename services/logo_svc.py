@@ -1,6 +1,7 @@
 """
 InvToolkit — Ticker logo cache service.
 Downloads logos from Elbstream API, caches as files on disk.
+Always requests PNG at 128px for consistent retina-quality rendering.
 """
 
 from pathlib import Path
@@ -14,24 +15,25 @@ def get_logo_path(ticker):
     """Return (Path, mimetype) to cached logo file, fetching from Elbstream if needed.
     Returns (None, None) if logo unavailable.
     """
-    LOGO_DIR.mkdir(exist_ok=True)
+    LOGO_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Check for existing cached file (svg or png)
-    for ext in ("svg", "png"):
+    # Check for existing cached file (png first, then legacy svg)
+    for ext in ("png", "svg"):
         path = LOGO_DIR / f"{ticker}.{ext}"
         if path.exists():
-            mime = "image/svg+xml" if ext == "svg" else "image/png"
+            mime = "image/png" if ext == "png" else "image/svg+xml"
             return path, mime
 
     try:
-        resp = http_requests.get(f"{ELBSTREAM_URL}/{ticker}", timeout=10)
+        resp = http_requests.get(
+            f"{ELBSTREAM_URL}/{ticker}",
+            params={"format": "png", "size": 128},
+            timeout=10,
+        )
         if resp.status_code == 200 and len(resp.content) > 100:
-            ct = resp.headers.get("Content-Type", "")
-            ext = "svg" if "svg" in ct else "png"
-            mime = "image/svg+xml" if ext == "svg" else "image/png"
-            path = LOGO_DIR / f"{ticker}.{ext}"
+            path = LOGO_DIR / f"{ticker}.png"
             path.write_bytes(resp.content)
-            return path, mime
+            return path, "image/png"
     except Exception:
         pass
     return None, None

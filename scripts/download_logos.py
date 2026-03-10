@@ -471,18 +471,15 @@ ADDITIONAL = [
 
 
 def download_logo(ticker):
-    """Download a single logo. Returns (ticker, status, bytes)."""
-    for ext in ("svg", "png"):
-        if (LOGO_DIR / f"{ticker}.{ext}").exists():
-            return ticker, "cached", 0
+    """Download a single logo as 128px PNG. Returns (ticker, status, bytes)."""
+    if (LOGO_DIR / f"{ticker}.png").exists():
+        return ticker, "cached", 0
 
     try:
         import requests
-        resp = requests.get(f"{API}/{ticker}", timeout=10)
+        resp = requests.get(f"{API}/{ticker}", params={"format": "png", "size": 128}, timeout=10)
         if resp.status_code == 200 and len(resp.content) > 100:
-            ct = resp.headers.get("Content-Type", "")
-            ext = "svg" if "svg" in ct else "png"
-            path = LOGO_DIR / f"{ticker}.{ext}"
+            path = LOGO_DIR / f"{ticker}.png"
             path.write_bytes(resp.content)
             return ticker, "downloaded", len(resp.content)
         return ticker, f"not_found({resp.status_code})", 0
