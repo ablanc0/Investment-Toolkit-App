@@ -477,7 +477,7 @@ def download_logo(ticker):
 
     try:
         import requests
-        resp = requests.get(f"{API}/{ticker}", params={"format": "png", "size": 128}, timeout=10)
+        resp = requests.get(f"{API}/{ticker}", params={"format": "png", "size": 250}, timeout=10)
         if resp.status_code == 200 and len(resp.content) > 100:
             path = LOGO_DIR / f"{ticker}.png"
             path.write_bytes(resp.content)

@@ -1247,7 +1247,7 @@ function renderAnalyzerRelative(d) {
                 <tbody>
                     ${pc.peers.map((p, i) => `<tr>
                         <td><input type="checkbox" class="rel-peer-cb" data-idx="${i}" checked onchange="relUpdatePeerAvg()"></td>
-                        <td style="font-weight:600; color:var(--accent);">${tickerLogo(p.ticker, 16)}${escapeHtml(p.ticker)}</td>
+                        <td style="font-weight:600; color:var(--accent);">${tickerLogo(p.ticker)}${escapeHtml(p.ticker)}</td>
                         <td style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(p.name || '')}</td>
                         <td style="text-align:right;">${fmt(p.pe)}</td>
                         <td style="text-align:right;">${fmt(p.evEbitda)}</td>

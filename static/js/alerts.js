@@ -429,7 +429,7 @@ function populateDivLog() {
         </tr></thead><tbody>
         ${dividendData.log.map(item => `<tr>
             <td style="padding: 12px; border-bottom: 1px solid var(--border);">${escapeHtml(item.date)}</td>
-            <td style="padding: 12px; border-bottom: 1px solid var(--border);">${tickerLogo(item.ticker, 16)}${escapeHtml(item.ticker)}</td>
+            <td style="padding: 12px; border-bottom: 1px solid var(--border);">${tickerLogo(item.ticker)}${escapeHtml(item.ticker)}</td>
             <td style="padding: 12px; border-bottom: 1px solid var(--border);">${formatMoney(item.amount)}</td>
         </tr>`).join('')}
         </tbody></table></div>`;
