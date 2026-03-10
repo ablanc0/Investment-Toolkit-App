@@ -125,26 +125,39 @@ function renderLabAllocChart(holdings) {
     });
 }
 
+function showLabPortfolios() {
+    const grid = document.getElementById('labGrid');
+    const resDiv = document.getElementById('labResearchResults');
+    if (grid) grid.style.display = '';
+    if (resDiv) resDiv.style.display = 'none';
+}
+
 async function runLabResearch() {
+    const grid = document.getElementById('labGrid');
     const resDiv = document.getElementById('labResearchResults');
     const content = document.getElementById('labResearchContent');
     if (!resDiv || !content) return;
+    if (grid) grid.style.display = 'none';
     content.innerHTML = '<p style="color: var(--text-dim);">Analyzing all portfolios...</p>';
     resDiv.style.display = 'block';
     try {
         const data = await fetch('/api/my-lab/research', { method: 'POST' }).then(r => r.json());
         const items = data.research || [];
         const total = data.totalPortfolios || 0;
+        const ownedTickers = new Set((portfolioData?.positions || []).map(p => p.ticker.toUpperCase()));
         content.innerHTML = `<p style="color: var(--text-dim); margin-bottom: 12px;">Analyzed <strong>${total}</strong> portfolios. Tickers held by multiple investors:</p>
             <div class="table-wrapper"><table style="font-size: 0.82rem;"><thead><tr>
-                <th>Ticker</th><th>Company</th><th style="text-align:center;">Found In</th><th style="text-align:center;">% of Portfolios</th><th>Portfolios</th>
+                <th>Ticker</th><th>Company</th><th style="text-align:center;">Found In</th><th style="text-align:center;">% of Portfolios</th><th style="text-align:center;">In Portfolio</th><th>Portfolios</th>
             </tr></thead><tbody>
-            ${items.filter(i => i.count >= 2).map(i => `<tr>
+            ${items.filter(i => i.count >= 2).map(i => {
+                const owned = ownedTickers.has(i.ticker.toUpperCase());
+                return `<tr>
                 <td>${tickerLogo(i.ticker)}<strong>${escapeHtml(i.ticker)}</strong></td><td>${escapeHtml(i.companyName || '')}</td>
                 <td style="text-align:center;"><span style="background:${i.count >= 5 ? '#4ade8030' : i.count >= 3 ? '#6366f130' : '#f59e0b30'}; color:${i.count >= 5 ? '#4ade80' : i.count >= 3 ? '#6366f1' : '#f59e0b'}; padding:2px 10px; border-radius:12px; font-weight:700;">${i.count}</span></td>
                 <td style="text-align:center;">${((i.count/total)*100).toFixed(0)}%</td>
+                <td style="text-align:center;">${owned ? '<span style="color:#4ade80;" title="In your portfolio">✓</span>' : '<span style="color:var(--text-dim);">—</span>'}</td>
                 <td style="font-size:0.78rem; color:var(--text-dim);">${i.portfolios.map(p => escapeHtml(p)).join(', ')}</td>
-            </tr>`).join('')}
+            </tr>`}).join('')}
             </tbody></table></div>`;
     } catch(e) { content.innerHTML = '<p style="color: #f87171;">Error running research.</p>'; }
 }

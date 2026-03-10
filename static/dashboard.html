@@ -656,8 +656,11 @@
                     </div>
                 </div>
             </div>
-            <div class="card" id="labResearchResults" style="margin-top: 16px; display: none;">
-                <div class="card-title">🔬 Most Held Tickers Across All Portfolios</div>
+            <div class="card" id="labResearchResults" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div class="card-title" style="margin-bottom: 0;">🔬 Most Held Tickers Across All Portfolios</div>
+                    <button onclick="showLabPortfolios()" style="padding: 6px 14px; background: transparent; border: 1px solid var(--border); border-radius: 8px; color: var(--text); cursor: pointer; font-size: 0.82rem;">← Portfolios</button>
+                </div>
                 <div id="labResearchContent"></div>
             </div>
         </div>
