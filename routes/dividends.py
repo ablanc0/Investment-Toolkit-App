@@ -367,8 +367,9 @@ _FREQ_DAYS = {
 }
 
 
-def _project_dividends(ticker, div_history, frequency, shares, months_ahead, declared_dates=None):
+def _project_dividends(ticker, div_history, frequency, shares, months_ahead, declared_info=None):
     """Project future dividend events based on history and frequency.
+    Forward-looking only — past dividends live in the dividend log.
     Returns list of event dicts.
     """
     events = []
@@ -383,38 +384,26 @@ def _project_dividends(ticker, div_history, frequency, shares, months_ahead, dec
     last_amount = last_div["dividend"]
     last_date = datetime.strptime(last_div["date"], "%Y-%m-%d").date()
 
-    # Add historical events within the window (past 12 months to match forward horizon)
-    lookback = today - timedelta(days=months_ahead * 31)
-    for d in sorted_divs:
-        ddate = datetime.strptime(d["date"], "%Y-%m-%d").date()
-        if lookback <= ddate <= today:
-            events.append({
-                "ticker": ticker,
-                "date": d["date"],
-                "exDate": d["date"],
-                "amount": round(d["dividend"], 4),
-                "shares": shares,
-                "income": round(d["dividend"] * shares, 2),
-                "status": "paid",
-                "frequency": frequency,
-            })
-
     # Declared dates from yfinance calendar override projections
     declared_set = set()
-    if declared_dates:
-        for dd in declared_dates:
-            if today < dd <= horizon:
-                events.append({
-                    "ticker": ticker,
-                    "date": dd.isoformat(),
-                    "exDate": dd.isoformat(),
-                    "amount": round(last_amount, 4),
-                    "shares": shares,
-                    "income": round(last_amount * shares, 2),
-                    "status": "declared",
-                    "frequency": frequency,
-                })
-                declared_set.add(dd)
+    if declared_info:
+        ex_date = declared_info.get("exDate")
+        pay_date = declared_info.get("paymentDate")
+        # Show if either payment date or ex-date is still in the future
+        latest_date = pay_date or ex_date
+        if ex_date and latest_date and today < latest_date <= horizon:
+            events.append({
+                "ticker": ticker,
+                "date": (pay_date or ex_date).isoformat(),
+                "exDate": ex_date.isoformat(),
+                "paymentDate": pay_date.isoformat() if pay_date else None,
+                "amount": round(last_amount, 4),
+                "shares": shares,
+                "income": round(last_amount * shares, 2),
+                "status": "declared",
+                "frequency": frequency,
+            })
+            declared_set.add(ex_date)
 
     # Project forward at detected frequency
     interval = _FREQ_DAYS.get(frequency)
@@ -428,6 +417,7 @@ def _project_dividends(ticker, div_history, frequency, shares, months_ahead, dec
                 "ticker": ticker,
                 "date": next_date.isoformat(),
                 "exDate": next_date.isoformat(),
+                "paymentDate": None,
                 "amount": round(last_amount, 4),
                 "shares": shares,
                 "income": round(last_amount * shares, 2),
@@ -439,24 +429,36 @@ def _project_dividends(ticker, div_history, frequency, shares, months_ahead, dec
     return events
 
 
-def _get_declared_dates(ticker):
-    """Fetch next ex-dividend/payment dates from yfinance calendar."""
+def _get_declared_info(ticker):
+    """Fetch next ex-dividend and payment dates from yfinance calendar.
+    Returns dict with exDate and paymentDate, or None.
+    """
     try:
         import yfinance as yf
         t = yf.Ticker(ticker)
         cal = t.calendar
-        dates = []
-        if isinstance(cal, dict):
-            for key in ("Ex-Dividend Date", "Dividend Date"):
-                val = cal.get(key)
-                if val:
-                    if hasattr(val, "date"):
-                        dates.append(val.date() if callable(val.date) else val)
-                    elif isinstance(val, str):
-                        dates.append(datetime.strptime(val, "%Y-%m-%d").date())
-        return dates
+        if not isinstance(cal, dict):
+            return None
+
+        def _parse_date(val):
+            if val is None:
+                return None
+            from datetime import date as _date
+            if isinstance(val, _date):
+                return val
+            if hasattr(val, "date"):
+                return val.date() if callable(val.date) else val
+            if isinstance(val, str):
+                return datetime.strptime(val, "%Y-%m-%d").date()
+            return None
+
+        ex_date = _parse_date(cal.get("Ex-Dividend Date"))
+        pay_date = _parse_date(cal.get("Dividend Date"))
+        if not ex_date:
+            return None
+        return {"exDate": ex_date, "paymentDate": pay_date}
     except Exception:
-        return []
+        return None
 
 
 @bp.route("/api/dividend-calendar")
@@ -479,7 +481,7 @@ def api_dividend_calendar():
             continue
 
         frequency = _detect_frequency(div_history)
-        declared = _get_declared_dates(ticker)
+        declared = _get_declared_info(ticker)
         events = _project_dividends(ticker, div_history, frequency, shares, months, declared)
         all_events.extend(events)
 
@@ -492,19 +494,17 @@ def api_dividend_calendar():
         month_key = ev["date"][:7]  # "2026-03"
         monthly_totals[month_key] = round(monthly_totals.get(month_key, 0) + ev["income"], 2)
 
-    # Annual estimate (next 12 months of future events only)
-    today = datetime.now().date().isoformat()
-    future_income = sum(ev["income"] for ev in all_events if ev["date"] > today)
+    # Annual estimate (all events are future)
+    annual_estimate = sum(ev["income"] for ev in all_events)
 
     # Next payout
-    future_events = [ev for ev in all_events if ev["date"] > today]
-    next_payout = future_events[0] if future_events else None
+    next_payout = all_events[0] if all_events else None
 
     return jsonify({
         "events": all_events,
         "summary": {
             "monthlyTotals": monthly_totals,
-            "annualEstimate": round(future_income, 2),
+            "annualEstimate": round(annual_estimate, 2),
             "nextPayout": next_payout,
             "totalEvents": len(all_events),
         },

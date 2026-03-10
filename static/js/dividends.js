@@ -817,7 +817,7 @@ function renderDividendCalendar() {
             { label: '💰 This Month', value: formatMoney(monthTotal), sub: `${monthEvents.length} events` },
             { label: '📅 Annual Estimate', value: formatMoney(summary.annualEstimate || 0), sub: 'Next 12 months' },
             { label: '⏭️ Next Payout', value: np ? `${escapeHtml(np.ticker)} ${formatMoney(np.income)}` : '—', sub: np ? np.date : 'None scheduled' },
-            { label: '📊 Total Events', value: summary.totalEvents || 0, sub: 'Paid + Declared + Estimated' },
+            { label: '📊 Total Events', value: summary.totalEvents || 0, sub: 'Declared + Estimated' },
         ];
         kpiGrid.innerHTML = kpis.map(kpi => `
             <div class="kpi-card">
@@ -884,7 +884,8 @@ function renderCalendarGrid(year, month, allEvents) {
 
         for (const ev of dayEvents.slice(0, 3)) {
             const statusClass = `div-${ev.status}`;
-            html += `<div class="calendar-event ${statusClass}" title="${escapeHtml(ev.ticker)}: $${ev.income.toFixed(2)} (${ev.status})">
+            const payInfo = ev.paymentDate ? ` | Pay: ${ev.paymentDate}` : '';
+            html += `<div class="calendar-event ${statusClass}" title="${escapeHtml(ev.ticker)}: $${ev.income.toFixed(2)} (${ev.status})${payInfo}">
                 <span class="calendar-event-ticker">${escapeHtml(ev.ticker)}</span>
                 <span class="calendar-event-amount">$${ev.income.toFixed(2)}</span>
             </div>`;
@@ -908,7 +909,6 @@ function renderCalendarGrid(year, month, allEvents) {
     const monthTotal = events.reduce((s, e) => s + e.income, 0);
     if (events.length > 0) {
         html += `<div style="margin-top: 12px; display: flex; gap: 16px; font-size: 13px; color: var(--text-dim);">
-            <span>Paid: <strong style="color: #22c55e;">${events.filter(e => e.status === 'paid').length}</strong></span>
             <span>Declared: <strong style="color: #3b82f6;">${events.filter(e => e.status === 'declared').length}</strong></span>
             <span>Estimated: <strong style="color: var(--text-dim);">${events.filter(e => e.status === 'estimated').length}</strong></span>
             <span style="margin-left: auto;">Month Total: <strong style="color: var(--accent);">${formatMoney(monthTotal)}</strong></span>
@@ -930,16 +930,18 @@ function renderCalendarList(allEvents) {
         return;
     }
 
-    const statusColors = { paid: '#22c55e', declared: '#3b82f6', estimated: 'var(--text-dim)' };
+    const statusColors = { declared: '#3b82f6', estimated: 'var(--text-dim)' };
 
     let html = '<div class="card"><div class="table-wrapper"><table style="font-size: 0.85rem;"><thead><tr>';
-    html += '<th>Date</th><th>Ticker</th><th style="text-align:right;">$/Share</th><th style="text-align:right;">Shares</th><th style="text-align:right;">Income</th><th>Status</th><th>Frequency</th>';
+    html += '<th>Ex-Date</th><th>Payment Date</th><th>Ticker</th><th style="text-align:right;">$/Share</th><th style="text-align:right;">Shares</th><th style="text-align:right;">Income</th><th>Status</th><th>Frequency</th>';
     html += '</tr></thead><tbody>';
 
     for (const ev of events) {
         const color = statusColors[ev.status] || 'var(--text-dim)';
+        const payDate = ev.paymentDate || '—';
         html += `<tr>
-            <td>${ev.date}</td>
+            <td>${ev.exDate}</td>
+            <td>${payDate}</td>
             <td><strong>${escapeHtml(ev.ticker)}</strong></td>
             <td style="text-align:right;">$${ev.amount.toFixed(4)}</td>
             <td style="text-align:right;">${ev.shares}</td>
@@ -951,7 +953,7 @@ function renderCalendarList(allEvents) {
 
     const total = events.reduce((s, e) => s + e.income, 0);
     html += `<tr style="border-top: 2px solid var(--border); font-weight: 700;">
-        <td colspan="4">Total</td>
+        <td colspan="5">Total</td>
         <td style="text-align:right; color: var(--accent);">${formatMoney(total)}</td>
         <td colspan="2"></td>
     </tr>`;
@@ -1007,8 +1009,8 @@ function renderCalendarBarChart(monthlyTotals) {
             datasets: [{
                 label: 'Monthly Dividends',
                 data: values,
-                backgroundColor: months.map(m => m <= currentMonth ? '#22c55e99' : '#3b82f666'),
-                borderColor: months.map(m => m <= currentMonth ? '#22c55e' : '#3b82f6'),
+                backgroundColor: months.map(m => m <= currentMonth ? '#3b82f699' : '#3b82f644'),
+                borderColor: months.map(m => m <= currentMonth ? '#3b82f6' : '#3b82f688'),
                 borderWidth: 1,
                 borderRadius: 4,
             }]
