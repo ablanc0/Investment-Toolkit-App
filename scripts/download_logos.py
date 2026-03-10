@@ -373,6 +373,100 @@ ADDITIONAL = [
     # SPACs / de-SPACs popular
     "DNA", "HYLN", "JOBY", "LILM", "LFLY", "LUCID", "MVST",
     "ORGN", "OWL", "QS", "RDW", "SHPW", "SNAX", "STEM",
+    # Dow Jones Industrial Average (ensure coverage)
+    "AAPL", "AMGN", "AXP", "BA", "CAT", "CRM", "CSCO", "CVX", "DIS", "DOW",
+    "GS", "HD", "HON", "IBM", "INTC", "JNJ", "JPM", "KO", "MCD", "MMM",
+    "MRK", "MSFT", "NKE", "PG", "TRV", "UNH", "V", "VZ", "WBA", "WMT",
+    # FTSE 100 (London ADRs / tickers)
+    "AAL", "ABDN", "ANTO", "AUTO", "AV", "AVST", "AZN", "BA", "BARC",
+    "BATS", "BHP", "BP", "BRBY", "BT", "CCL", "CPG", "CRDA", "DGE",
+    "EXPN", "FERG", "FRES", "GLEN", "GSK", "HLMA", "HSBA", "HWDN",
+    "IAG", "IHG", "IMB", "INF", "ITRK", "ITV", "JD", "KGF", "LAND",
+    "LGEN", "LLOY", "LSEG", "MNG", "MNDI", "MRO", "NG", "NXT", "OCDO",
+    "PHNX", "PRU", "PSN", "PSON", "RKT", "RMV", "RR", "RTO", "SBRY",
+    "SDR", "SGE", "SGRO", "SHEL", "SKG", "SMDS", "SMIN", "SMT", "SN",
+    "SPX", "SSE", "STAN", "SVT", "TSCO", "TW", "ULVR", "UTG", "UU",
+    "VOD", "WPP", "WTB",
+    # DAX 40 (Frankfurt / Germany)
+    "ADS", "AIR", "ALV", "BAS", "BAYN", "BEI", "BMW", "BNR", "CON",
+    "DBK", "DB1", "DHL", "DTE", "DTG", "ENR", "FME", "FRE", "HEI",
+    "HEN3", "IFX", "LHA", "LIN", "MBG", "MRK", "MTX", "MUV2", "P911",
+    "PAH3", "RWE", "SAP", "SHL", "SIE", "SRT3", "SY1", "VNA", "VOW3", "ZAL",
+    # CAC 40 (Paris / France)
+    "AI", "BN", "BNP", "CA", "CAP", "CS", "DG", "DSY", "EL", "EN",
+    "ENGI", "ERF", "FP", "HO", "KER", "LR", "MC", "ML", "OR", "ORA",
+    "PUB", "RI", "RMS", "RNO", "SAF", "SAN", "SGO", "STLA", "STM",
+    "SU", "TEP", "TTE", "URW", "VIE", "VIV", "WLN",
+    # Nikkei 225 popular (Japan ADRs)
+    "FANUY", "FUJIY", "HMC", "MSBHF", "NMR", "NTDOY", "SMFG", "SNE",
+    "SONY", "TM", "TOELY",
+    # Hang Seng / China popular (ADRs)
+    "BABA", "BIDU", "BILI", "CHA", "CHU", "CQQQ", "DIDI", "EDU",
+    "GOTU", "GDS", "HTHT", "IQ", "JD", "LFC", "LI", "LKNCY",
+    "MNSO", "NIO", "NTES", "PDD", "QFIN", "RVPH", "SE", "TCEHY",
+    "TME", "TUYA", "VNET", "WB", "XPEV", "YMM", "ZTO",
+    # TSX (Canada) popular
+    "ABX", "AEM", "AGI", "AQN", "ATD", "BAM", "BEP", "BIP", "BN",
+    "BMO", "BNS", "CAR-UN", "CCO", "CM", "CNQ", "CP", "CTC-A", "CVE",
+    "DOL", "EMA", "ENB", "FM", "FNV", "FTS", "GIB-A", "GWO", "H",
+    "IFC", "IMO", "K", "L", "MFC", "MG", "MRU", "NA", "NTR", "OTEX",
+    "POW", "QSR", "RCI-B", "RY", "SAP", "SLF", "SNC", "SU", "T",
+    "TD", "TOU", "TRI", "TRP", "WCN", "WFG", "WN", "WSP",
+    # ASX (Australia) popular ADRs
+    "BHP", "CBA", "CSL", "FMG", "JHX", "MQG", "NAB", "RIO", "TLS",
+    "WDS", "WES", "WBC", "WOW", "XRO",
+    # India popular ADRs
+    "HDB", "IBN", "INFY", "IT", "MMYT", "RDY", "SIFY", "TTM", "WIT",
+    "WNS", "YTRA",
+    # Miscellaneous well-known brands / companies
+    "ABNB", "CHGG", "DOCU", "FVRR", "GLBE", "GDRX", "HIMS", "HNST",
+    "LMND", "OPEN", "OSCR", "PRCH", "PUBM", "RVLV", "SMAR", "SONO",
+    "SPOT", "TTCF", "UPWK", "VROOM", "ZM",
+    # Private equity / alt asset managers
+    "ARES", "APO", "BAM", "BN", "BX", "CG", "EQT", "KKR", "OWL", "TPG",
+    # Insurance (more)
+    "ACGL", "AFG", "AIG", "AIZ", "AJG", "ALL", "BRO", "CB", "CINF",
+    "CNA", "EG", "ERIE", "FAF", "FNF", "GL", "HBAN", "HIG", "KNSL",
+    "L", "MET", "PGR", "PRU", "RGA", "RLI", "RNR", "SIGI", "TRV",
+    "WRB", "WTW",
+    # Mortgage / specialty finance
+    "AGNC", "AI", "BXMT", "COOP", "DX", "EFC", "GHLD", "LADR", "MFA",
+    "NLY", "NYCB", "PFSI", "PMT", "RITM", "STWD", "TWO", "UWMC", "VNO",
+    # Agriculture / ag-tech
+    "ADM", "ANDE", "CALM", "CF", "CTVA", "DE", "FMC", "IPI", "MOS",
+    "NTR", "SMG",
+    # Shipping / marine
+    "DAC", "EGLE", "GOGL", "GNK", "GSL", "INSW", "KEX", "LPG", "MATX",
+    "NMM", "SBLK", "SB", "STNG", "TNK", "ZIM",
+    # Packaging / containers
+    "AMCR", "ATR", "AVY", "BALL", "BLL", "CCK", "GPK", "GEF", "IP",
+    "OI", "PKG", "SEE", "SON", "TRS", "WRK",
+    # Specialty chemicals
+    "ALB", "APD", "ASH", "AXTA", "CBT", "CC", "CE", "CTVA", "DD",
+    "DOW", "EMN", "FF", "FUL", "GRA", "HUN", "IOSP", "KRA", "KWR",
+    "LYB", "MTX", "NEU", "OLN", "PPG", "RPM", "SCL", "SHW", "TROX",
+    "TSE", "UNI", "VAL", "WDFC",
+    # Telecom / tower / 5G
+    "AMT", "CCI", "CLFD", "CMCSA", "DISH", "GSAT", "IRDM", "LBRDK",
+    "LBTYA", "LILA", "LSXMA", "SBAC", "T", "TMUS", "USM", "VZ",
+    # Education / ed-tech
+    "ATGE", "CHGG", "COUR", "DUOL", "EDU", "GOTU", "GHC", "LRN",
+    "LOPE", "STRA", "TAL", "TWOU", "UDMY",
+    # Travel / hospitality (more)
+    "ABNB", "BKNG", "CCL", "CUK", "EXPE", "H", "HLT", "HTHT",
+    "MAR", "NCLH", "OEH", "RCL", "TCOM", "TRIP", "VAC",
+    "WYNN",
+    # Luxury goods / fashion
+    "CPRI", "EL", "FOSL", "GOOS", "LULU", "LVMUY", "PVH", "RL",
+    "RH", "RVLV", "SKX", "TIF", "TPR", "VFC", "XPOF",
+    # Pet / animal health
+    "CHWY", "IDXX", "PETS", "TRUP", "ZTS",
+    # Sports / fitness
+    "PTON", "PLNT", "NKE", "LULU", "UA", "UAA", "YETI",
+    # Payments / financial infrastructure (more)
+    "ADS", "AFRM", "BILL", "COIN", "DFS", "FI", "FIS", "FISV", "FOUR",
+    "GPN", "HOOD", "HUBS", "LMND", "LPRO", "MA", "MKTX", "NUVEI",
+    "PAYO", "PYPL", "RPAY", "SQ", "TOST", "V", "WEX", "WU",
 ]
 
 
