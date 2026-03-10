@@ -104,7 +104,7 @@ function populateRebalancing() {
         </tr>`;
     }).join('');
 
-    tfoot.innerHTML = `<tr style="font-weight: 600; border-top: 2px solid var(--border);">
+    tfoot.innerHTML = `<tr class="summary-row">
         <td colspan="10" style="text-align: right;">Totals:</td>
         <td id="rebalTotalCost">$0.00</td>
         <td id="rebalTotalNewMV">${formatMoney(totalMV)}</td>

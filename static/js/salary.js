@@ -129,7 +129,7 @@ function renderTaxTable(breakdown) {
 
     rows.forEach((r, i) => {
         const isTax = !r.isIncome && !r.isSummary && !r.isRate && i > 1;
-        const bg = r.isSummary ? 'background:rgba(99,102,241,0.08);' : '';
+        const summaryClass = r.isSummary ? 'summary-row' : '';
         const fw = r.isSummary ? 'font-weight:700;' : '';
         const clr = r.isPositive ? 'color:#4ade80;' : isTax ? 'color:#f87171;' : '';
         const sign = isTax ? '-' : '';
@@ -160,7 +160,7 @@ function renderTaxTable(breakdown) {
         }
         labelCell += '</td>';
 
-        html += `<tr style="border-bottom:1px solid var(--border); ${bg}">
+        html += `<tr class="${summaryClass}" style="border-bottom:1px solid var(--border);">
             ${labelCell}
             <td style="text-align:right; padding:6px; ${fw} ${clr}">${fmtVal(r.total, false)}</td>
             <td style="text-align:right; padding:6px; ${fw} ${clr}">${fmtVal(r.totalMo, true)}</td>
@@ -192,9 +192,9 @@ function renderEmployerCost(employer) {
     employer.rows.forEach(r => {
         html += `<tr><td>${r.label}</td><td style="text-align:right;">${formatMoney(r.annual)}</td><td style="text-align:right;">${formatMoney(r.monthly)}</td></tr>`;
     });
-    html += `<tr style="border-top:2px solid var(--border); font-weight:700;">
+    html += `<tr class="summary-row">
         <td>Total Employer Cost</td><td style="text-align:right; color:#f87171;">${formatMoney(employer.total)}</td><td style="text-align:right; color:#f87171;">${formatMoney(employer.totalMonthly)}</td></tr>`;
-    html += `<tr style="font-weight:700;">
+    html += `<tr class="summary-row" style="border-top:none;">
         <td>Total Cost to Company</td><td style="text-align:right; color:#6366f1;">${formatMoney(employer.costToCompany)}</td><td style="text-align:right; color:#6366f1;">${formatMoney(employer.costToCompanyMonthly)}</td></tr>`;
     html += '</tbody></table></div>';
     div.innerHTML = html;

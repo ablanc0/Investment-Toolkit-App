@@ -81,7 +81,7 @@ function renderPositionsTable(positions) {
     const cash = portfolioData?.summary?.cash || 0;
     const totalPortfolio = portfolioData?.summary?.totalPortfolio || 1;
     const cashWeight = (cash / totalPortfolio * 100);
-    const cashRow = `<tr style="border-top: 2px solid var(--border); font-style: italic; opacity: 0.85;">
+    const cashRow = `<tr class="summary-row">
         <td><strong>CASH</strong></td>
         <td>Cash & Equivalents</td>
         <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
