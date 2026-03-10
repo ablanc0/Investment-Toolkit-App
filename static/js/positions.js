@@ -47,7 +47,7 @@ function renderPositionsTable(positions) {
         const distDisplay = useIV && !p.intrinsicValue ? '—' : formatPercent(dist);
 
         return `<tr>
-            <td><strong>${escapeHtml(p.ticker)}</strong></td>
+            <td>${tickerLogo(p.ticker)}<strong>${escapeHtml(p.ticker)}</strong></td>
             <td>${escapeHtml(p.company)}</td>
             <td class="editable" onclick="editCell(this, '${escapeHtml(p.ticker)}', 'shares', ${p.shares}, 'number')">${parseFloat(p.shares).toFixed(3)}</td>
             <td class="editable" onclick="editCell(this, '${escapeHtml(p.ticker)}', 'avgCost', ${p.avgCost}, 'number')">${formatMoney(p.avgCost)}</td>

@@ -15,7 +15,7 @@ function populateWatchlist() {
 
         return `
             <tr>
-                <td><strong>${escapeHtml(item.ticker)}</strong></td>
+                <td>${tickerLogo(item.ticker)}<strong>${escapeHtml(item.ticker)}</strong></td>
                 <td>${escapeHtml(item.company)}</td>
                 <td>${formatMoney(item.price)}</td>
                 <td class="${(item.dayChangeShare||0) >= 0 ? 'positive' : 'negative'}">${formatMoney(item.dayChangeShare)}</td>

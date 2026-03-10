@@ -960,7 +960,7 @@ function renderCalendarList(allEvents) {
         html += `<tr>
             <td>${ev.exDate}</td>
             <td>${payDate}</td>
-            <td><strong>${escapeHtml(ev.ticker)}</strong></td>
+            <td>${tickerLogo(ev.ticker, 16)}<strong>${escapeHtml(ev.ticker)}</strong></td>
             <td style="text-align:right;">$${ev.amount.toFixed(4)}</td>
             <td style="text-align:right;">${ev.shares}</td>
             <td style="text-align:right; font-weight:600; color: #4ade80;">${formatMoney(ev.income)}</td>
