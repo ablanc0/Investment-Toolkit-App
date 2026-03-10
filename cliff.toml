@@ -5,13 +5,9 @@
 header = """# Changelog\n
 All notable changes to InvToolkit will be documented in this file.
 
-**Labels:** 🚀 Feature · ✨ Enhancement · 🐛 Fix · 🔒 Security · 📖 Documentation\n
+**Labels:** 🟩 Feature · 🟦 Enhancement · 🟧 Fix · 🟥 Security · ⬜ Documentation\n
 """
 body = """
-{%- macro remote_url() -%}
-  https://github.com/ablanc0/Investment-Toolkit-App
-{%- endmacro -%}
-
 {%- set_global current_date = "" -%}
 {% for commit in commits -%}
 {%- set commit_date = commit.author.timestamp | date(format="%Y-%m-%d") -%}
@@ -22,10 +18,8 @@ body = """
 {% endif -%}
 {%- if commit.scope -%}
 - {{ commit.group }} **{{ commit.scope }}:** {{ commit.message }}
-  {%- if commit.remote.pr_number %} ([#{{ commit.remote.pr_number }}]({{ self::remote_url() }}/pull/{{ commit.remote.pr_number }})){% endif %}
 {% else -%}
 - {{ commit.group }} {{ commit.message }}
-  {%- if commit.remote.pr_number %} ([#{{ commit.remote.pr_number }}]({{ self::remote_url() }}/pull/{{ commit.remote.pr_number }})){% endif %}
 {% endif -%}
 {%- endfor %}
 """
@@ -46,24 +40,24 @@ commit_parsers = [
   { message = "upgrade all logos to 128px", skip = true },
   { message = "standardize all logos to 128px", skip = true },
   # Security fixes (before generic fix rule)
-  { message = "^fix.*(?i)(xss|security|secret|env var|validation|header)", group = "🔒 Security" },
+  { message = "^fix.*(?i)(xss|security|secret|env var|validation|header)", group = "🟥 Security" },
   # 5 clean labels
-  { message = "^feat", group = "🚀 Feature" },
-  { message = "^fix", group = "🐛 Fix" },
-  { message = "^ui", group = "✨ Enhancement" },
-  { message = "^refactor", group = "✨ Enhancement" },
-  { message = "^style", group = "✨ Enhancement" },
-  { message = "^docs", group = "📖 Documentation" },
+  { message = "^feat", group = "🟩 Feature" },
+  { message = "^fix", group = "🟧 Fix" },
+  { message = "^ui", group = "🟦 Enhancement" },
+  { message = "^refactor", group = "🟦 Enhancement" },
+  { message = "^style", group = "🟦 Enhancement" },
+  { message = "^docs", group = "⬜ Documentation" },
   # Internal — skip from changelog
   { message = "^chore", skip = true },
   { message = "^test", skip = true },
   { message = "^experiment", skip = true },
 ]
+commit_preprocessors = [
+  # Strip all issue/PR references like (#123), (#68, #70) from messages
+  { pattern = '\s*\(#\d+(?:,\s*#\d+)*\)', replace = '' },
+]
 filter_commits = false
 # Never match tags — all commits in one flat group, sorted by date
 tag_pattern = "NONE"
 sort_commits = "newest"
-
-[remote.github]
-owner = "ablanc0"
-repo = "Investment-Toolkit-App"
