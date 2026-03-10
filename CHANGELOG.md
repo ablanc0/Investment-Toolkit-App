@@ -7,11 +7,7 @@ All notable changes to InvToolkit will be documented in this file.
 
 
 ## 2026-03-10
-- ⬜ Documentation update changelog and fix Sphinx include directive
-- ⬜ Documentation switch changelog to date-based grouping (AFFDO style)
-- ⬜ Documentation update changelog
-- ⬜ Documentation standardize changelog to 5 clean labels
-- 🟩 Feature automated changelog with git-cliff and Sphinx integration
+- 🟩 Feature automated changelog with git-cliff
 - 🟦 Enhancement toggle research/portfolio views in My Lab
 - 🟩 Feature add In Portfolio column to My Lab Most Held Tickers table
 - 🟦 Enhancement add logos to dividend log column headers
