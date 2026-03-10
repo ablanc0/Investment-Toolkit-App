@@ -9,7 +9,7 @@ function escapeHtml(str) {
 
 // ── Ticker Logo ────────────────────────────────────────────────
 function tickerLogo(ticker, size = 24) {
-    return `<img src="/api/logo/${encodeURIComponent(ticker)}" alt="" style="height:${size}px;width:${size}px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:4px;" onerror="this.style.display='none'" loading="lazy">`;
+    return `<img src="/api/logo/${encodeURIComponent(ticker)}" alt="" style="height:${size}px;width:${size}px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:4px;" onerror="if(!this.dataset.retry){this.dataset.retry='1';this.src='/api/logo/${encodeURIComponent(ticker)}?'+Date.now()}else{this.style.display='none'}" loading="lazy">`;
 }
 
 // ── Display settings (populated from /api/settings) ──────────────
