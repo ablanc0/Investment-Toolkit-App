@@ -7,6 +7,8 @@ All notable changes to InvToolkit will be documented in this file.
 
 
 ## 2026-03-11
+- 🟦 Enhancement API abstraction and resilience foundation
+- ⬜ Documentation update changelog
 - 🟧 Fix exclude quota-limited APIs from health check pings
 - ⬜ Documentation update changelog
 - 🟩 Feature bulk refresh IV list values and scores
