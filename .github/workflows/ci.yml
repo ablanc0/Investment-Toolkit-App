@@ -45,7 +45,7 @@ jobs:
           python-version: '3.13'
 
       - name: Install dependencies
-        run: pip install flask yfinance requests pytest
+        run: pip install flask yfinance requests pytest finvizfinance openpyxl numpy pandas
 
       - name: Run tests
         run: pytest tests/ -v --tb=short
