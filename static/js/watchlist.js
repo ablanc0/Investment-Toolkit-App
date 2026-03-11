@@ -52,7 +52,7 @@ function populateWatchlist() {
     const tbody = document.getElementById('watchlistBody');
     tbody.innerHTML = sorted.map(item => {
         const distance = item.distance || 0;
-        const signal = item.signal || 'Hold';
+        const signal = item.signal || '';
         const belowIV = distance < 0;
 
         // Priority badge
