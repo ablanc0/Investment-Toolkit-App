@@ -1,0 +1,963 @@
+{
+  "generatedAt": "2026-03-11T14:29:44.618543",
+  "cities": [
+    "New York",
+    "San Francisco",
+    "Chicago",
+    "Los Angeles",
+    "Houston",
+    "Miami",
+    "Seattle",
+    "Boston",
+    "Denver",
+    "Austin"
+  ],
+  "numbeoBaseline": {
+    "New York": {
+      "rent1br": 4399,
+      "avgNetSalary": 5254,
+      "utilities": 200,
+      "mealInexpensive": 25,
+      "monthlyTransit": 132,
+      "colIndex": 100
+    },
+    "San Francisco": {
+      "rent1br": 3413,
+      "avgNetSalary": 7288,
+      "utilities": 191,
+      "mealInexpensive": 25,
+      "monthlyTransit": 98,
+      "colIndex": 93
+    },
+    "Chicago": {
+      "rent1br": 2208,
+      "avgNetSalary": 4621,
+      "utilities": 155,
+      "mealInexpensive": 20,
+      "monthlyTransit": 105,
+      "colIndex": 79
+    },
+    "Los Angeles": {
+      "rent1br": 2642,
+      "avgNetSalary": 5069,
+      "utilities": 170,
+      "mealInexpensive": 22,
+      "monthlyTransit": 100,
+      "colIndex": 83
+    },
+    "Houston": {
+      "rent1br": 1436,
+      "avgNetSalary": 4340,
+      "utilities": 164,
+      "mealInexpensive": 18,
+      "monthlyTransit": 44,
+      "colIndex": 67
+    },
+    "Miami": {
+      "rent1br": 2498,
+      "avgNetSalary": 3741,
+      "utilities": 168,
+      "mealInexpensive": 22,
+      "monthlyTransit": 112,
+      "colIndex": 80
+    },
+    "Seattle": {
+      "rent1br": 2335,
+      "avgNetSalary": 6207,
+      "utilities": 163,
+      "mealInexpensive": 22,
+      "monthlyTransit": 99,
+      "colIndex": 82
+    },
+    "Boston": {
+      "rent1br": 3074,
+      "avgNetSalary": 5409,
+      "utilities": 195,
+      "mealInexpensive": 22,
+      "monthlyTransit": 90,
+      "colIndex": 91
+    },
+    "Denver": {
+      "rent1br": 1815,
+      "avgNetSalary": 4852,
+      "utilities": 150,
+      "mealInexpensive": 20,
+      "monthlyTransit": 114,
+      "colIndex": 76
+    },
+    "Austin": {
+      "rent1br": 1716,
+      "avgNetSalary": 4813,
+      "utilities": 173,
+      "mealInexpensive": 18,
+      "monthlyTransit": 41,
+      "colIndex": 72
+    }
+  },
+  "scores": {
+    "ditno": {
+      "freshnessDays": 271.0,
+      "completeness": 80.0,
+      "accuracyPctDev": 29.5,
+      "citiesFetched": 10,
+      "citiesFailed": 0,
+      "callsUsed": 1
+    },
+    "zyla-global": {
+      "freshnessDays": "N/A",
+      "completeness": 100.0,
+      "accuracyPctDev": 24.5,
+      "citiesFetched": 10,
+      "citiesFailed": 0,
+      "callsUsed": 10
+    }
+  },
+  "details": {
+    "ditno": {
+      "freshnessDays": 271.0,
+      "completeness": 80.0,
+      "accuracyPctDev": 29.5,
+      "citiesFetched": 10,
+      "citiesFailed": 0,
+      "callsUsed": 1,
+      "cityDetails": [
+        {
+          "name": "New York",
+          "daysOld": 271,
+          "accuracy": {
+            "rent1br": {
+              "api": 4168.08,
+              "numbeo": 4399,
+              "devPct": 5.2
+            },
+            "avgNetSalary": {
+              "api": 5158.83,
+              "numbeo": 5254,
+              "devPct": 1.8
+            },
+            "utilities": {
+              "api": 0,
+              "numbeo": 200,
+              "devPct": 100
+            },
+            "mealInexpensive": {
+              "api": 30.18,
+              "numbeo": 25,
+              "devPct": 20.7
+            },
+            "monthlyTransit": {
+              "api": 132.79,
+              "numbeo": 132,
+              "devPct": 0.6
+            }
+          }
+        },
+        {
+          "name": "San Francisco",
+          "daysOld": 271,
+          "accuracy": {
+            "rent1br": {
+              "api": 3352.08,
+              "numbeo": 3413,
+              "devPct": 1.8
+            },
+            "avgNetSalary": {
+              "api": 7058.6,
+              "numbeo": 7288,
+              "devPct": 3.1
+            },
+            "utilities": {
+              "api": 0,
+              "numbeo": 191,
+              "devPct": 100
+            },
+            "mealInexpensive": {
+              "api": 25.15,
+              "numbeo": 25,
+              "devPct": 0.6
+            },
+            "monthlyTransit": {
+              "api": 95.57,
+              "numbeo": 98,
+              "devPct": 2.5
+            }
+          }
+        },
+        {
+          "name": "Chicago",
+          "daysOld": 271,
+          "accuracy": {
+            "rent1br": {
+              "api": 2358.21,
+              "numbeo": 2208,
+              "devPct": 6.8
+            },
+            "avgNetSalary": {
+              "api": 5172.95,
+              "numbeo": 4621,
+              "devPct": 11.9
+            },
+            "utilities": {
+              "api": 0,
+              "numbeo": 155,
+              "devPct": 100
+            },
+            "mealInexpensive": {
+              "api": 20.63,
+              "numbeo": 20,
+              "devPct": 3.1
+            },
+            "monthlyTransit": {
+              "api": 75.44,
+              "numbeo": 105,
+              "devPct": 28.2
+            }
+          }
+        },
+        {
+          "name": "Los Angeles",
+          "daysOld": 271,
+          "accuracy": {
+            "rent1br": {
+              "api": 2628.65,
+              "numbeo": 2642,
+              "devPct": 0.5
+            },
+            "avgNetSalary": {
+              "api": 4465.51,
+              "numbeo": 5069,
+              "devPct": 11.9
+            },
+            "utilities": {
+              "api": 0,
+              "numbeo": 170,
+              "devPct": 100
+            },
+            "mealInexpensive": {
+              "api": 25.15,
+              "numbeo": 22,
+              "devPct": 14.3
+            },
+            "monthlyTransit": {
+              "api": 83.98,
+              "numbeo": 100,
+              "devPct": 16.0
+            }
+          }
+        },
+        {
+          "name": "Houston",
+          "daysOld": 271,
+          "accuracy": {
+            "rent1br": {
+              "api": 1665.44,
+              "numbeo": 1436,
+              "devPct": 16.0
+            },
+            "avgNetSalary": {
+              "api": 4661.45,
+              "numbeo": 4340,
+              "devPct": 7.4
+            },
+            "utilities": {
+              "api": 0,
+              "numbeo": 164,
+              "devPct": 100
+            },
+            "mealInexpensive": {
+              "api": 20.12,
+              "numbeo": 18,
+              "devPct": 11.8
+            },
+            "monthlyTransit": {
+              "api": 75.44,
+              "numbeo": 44,
+              "devPct": 71.5
+            }
+          }
+        },
+        {
+          "name": "Miami",
+          "daysOld": 271,
+          "accuracy": {
+            "rent1br": {
+              "api": 2944.11,
+              "numbeo": 2498,
+              "devPct": 17.9
+            },
+            "avgNetSalary": {
+              "api": 4414.71,
+              "numbeo": 3741,
+              "devPct": 18.0
+            },
+            "utilities": {
+              "api": 0,
+              "numbeo": 168,
+              "devPct": 100
+            },
+            "mealInexpensive": {
+              "api": 30.18,
+              "numbeo": 22,
+              "devPct": 37.2
+            },
+            "monthlyTransit": {
+              "api": 104.37,
+              "numbeo": 112,
+              "devPct": 6.8
+            }
+          }
+        },
+        {
+          "name": "Seattle",
+          "daysOld": 271,
+          "accuracy": {
+            "rent1br": {
+              "api": 2383.42,
+              "numbeo": 2335,
+              "devPct": 2.1
+            },
+            "avgNetSalary": {
+              "api": 6658.27,
+              "numbeo": 6207,
+              "devPct": 7.3
+            },
+            "utilities": {
+              "api": 0,
+              "numbeo": 163,
+              "devPct": 100
+            },
+            "mealInexpensive": {
+              "api": 25.15,
+              "numbeo": 22,
+              "devPct": 14.3
+            },
+            "monthlyTransit": {
+              "api": 99.59,
+              "numbeo": 99,
+              "devPct": 0.6
+            }
+          }
+        },
+        {
+          "name": "Boston",
+          "daysOld": 271,
+          "accuracy": {
+            "rent1br": {
+              "api": 3436.19,
+              "numbeo": 3074,
+              "devPct": 11.8
+            },
+            "avgNetSalary": {
+              "api": 5975.06,
+              "numbeo": 5409,
+              "devPct": 10.5
+            },
+            "utilities": {
+              "api": 0,
+              "numbeo": 195,
+              "devPct": 100
+            },
+            "mealInexpensive": {
+              "api": 25.15,
+              "numbeo": 22,
+              "devPct": 14.3
+            },
+            "monthlyTransit": {
+              "api": 90.54,
+              "numbeo": 90,
+              "devPct": 0.6
+            }
+          }
+        },
+        {
+          "name": "Denver",
+          "daysOld": 271,
+          "accuracy": {
+            "rent1br": {
+              "api": 2154.44,
+              "numbeo": 1815,
+              "devPct": 18.7
+            },
+            "avgNetSalary": {
+              "api": 5086.24,
+              "numbeo": 4852,
+              "devPct": 4.8
+            },
+            "utilities": {
+              "api": 0,
+              "numbeo": 150,
+              "devPct": 100
+            },
+            "mealInexpensive": {
+              "api": 20.12,
+              "numbeo": 20,
+              "devPct": 0.6
+            },
+            "monthlyTransit": {
+              "api": 88.52,
+              "numbeo": 114,
+              "devPct": 22.4
+            }
+          }
+        },
+        {
+          "name": "Austin",
+          "daysOld": 271,
+          "accuracy": {
+            "rent1br": {
+              "api": 2221.54,
+              "numbeo": 1716,
+              "devPct": 29.5
+            },
+            "avgNetSalary": {
+              "api": 5096.95,
+              "numbeo": 4813,
+              "devPct": 5.9
+            },
+            "utilities": {
+              "api": 0,
+              "numbeo": 173,
+              "devPct": 100
+            },
+            "mealInexpensive": {
+              "api": 19.87,
+              "numbeo": 18,
+              "devPct": 10.4
+            },
+            "monthlyTransit": {
+              "api": 43.73,
+              "numbeo": 41,
+              "devPct": 6.7
+            }
+          }
+        }
+      ]
+    },
+    "zyla-global": {
+      "freshnessDays": "N/A",
+      "completeness": 100.0,
+      "accuracyPctDev": 24.5,
+      "citiesFetched": 10,
+      "citiesFailed": 0,
+      "callsUsed": 10,
+      "cityDetails": [
+        {
+          "name": "New York",
+          "daysOld": null,
+          "accuracy": {
+            "rent1br": {
+              "api": 1697.82,
+              "numbeo": 4399,
+              "devPct": 61.4
+            },
+            "avgNetSalary": {
+              "api": 4252.41,
+              "numbeo": 5254,
+              "devPct": 19.1
+            },
+            "utilities": {
+              "api": 211.86,
+              "numbeo": 200,
+              "devPct": 5.9
+            },
+            "mealInexpensive": {
+              "api": 20.0,
+              "numbeo": 25,
+              "devPct": 20.0
+            },
+            "monthlyTransit": {
+              "api": 65.0,
+              "numbeo": 132,
+              "devPct": 50.8
+            }
+          }
+        },
+        {
+          "name": "San Francisco",
+          "daysOld": null,
+          "accuracy": {
+            "rent1br": {
+              "api": 1697.82,
+              "numbeo": 3413,
+              "devPct": 50.3
+            },
+            "avgNetSalary": {
+              "api": 4252.41,
+              "numbeo": 7288,
+              "devPct": 41.7
+            },
+            "utilities": {
+              "api": 211.86,
+              "numbeo": 191,
+              "devPct": 10.9
+            },
+            "mealInexpensive": {
+              "api": 20.0,
+              "numbeo": 25,
+              "devPct": 20.0
+            },
+            "monthlyTransit": {
+              "api": 65.0,
+              "numbeo": 98,
+              "devPct": 33.7
+            }
+          }
+        },
+        {
+          "name": "Chicago",
+          "daysOld": null,
+          "accuracy": {
+            "rent1br": {
+              "api": 1697.82,
+              "numbeo": 2208,
+              "devPct": 23.1
+            },
+            "avgNetSalary": {
+              "api": 4252.41,
+              "numbeo": 4621,
+              "devPct": 8.0
+            },
+            "utilities": {
+              "api": 211.86,
+              "numbeo": 155,
+              "devPct": 36.7
+            },
+            "mealInexpensive": {
+              "api": 20.0,
+              "numbeo": 20,
+              "devPct": 0.0
+            },
+            "monthlyTransit": {
+              "api": 65.0,
+              "numbeo": 105,
+              "devPct": 38.1
+            }
+          }
+        },
+        {
+          "name": "Los Angeles",
+          "daysOld": null,
+          "accuracy": {
+            "rent1br": {
+              "api": 1697.82,
+              "numbeo": 2642,
+              "devPct": 35.7
+            },
+            "avgNetSalary": {
+              "api": 4252.41,
+              "numbeo": 5069,
+              "devPct": 16.1
+            },
+            "utilities": {
+              "api": 211.86,
+              "numbeo": 170,
+              "devPct": 24.6
+            },
+            "mealInexpensive": {
+              "api": 20.0,
+              "numbeo": 22,
+              "devPct": 9.1
+            },
+            "monthlyTransit": {
+              "api": 65.0,
+              "numbeo": 100,
+              "devPct": 35.0
+            }
+          }
+        },
+        {
+          "name": "Houston",
+          "daysOld": null,
+          "accuracy": {
+            "rent1br": {
+              "api": 1697.82,
+              "numbeo": 1436,
+              "devPct": 18.2
+            },
+            "avgNetSalary": {
+              "api": 4252.41,
+              "numbeo": 4340,
+              "devPct": 2.0
+            },
+            "utilities": {
+              "api": 211.86,
+              "numbeo": 164,
+              "devPct": 29.2
+            },
+            "mealInexpensive": {
+              "api": 20.0,
+              "numbeo": 18,
+              "devPct": 11.1
+            },
+            "monthlyTransit": {
+              "api": 65.0,
+              "numbeo": 44,
+              "devPct": 47.7
+            }
+          }
+        },
+        {
+          "name": "Miami",
+          "daysOld": null,
+          "accuracy": {
+            "rent1br": {
+              "api": 1697.82,
+              "numbeo": 2498,
+              "devPct": 32.0
+            },
+            "avgNetSalary": {
+              "api": 4252.41,
+              "numbeo": 3741,
+              "devPct": 13.7
+            },
+            "utilities": {
+              "api": 211.86,
+              "numbeo": 168,
+              "devPct": 26.1
+            },
+            "mealInexpensive": {
+              "api": 20.0,
+              "numbeo": 22,
+              "devPct": 9.1
+            },
+            "monthlyTransit": {
+              "api": 65.0,
+              "numbeo": 112,
+              "devPct": 42.0
+            }
+          }
+        },
+        {
+          "name": "Seattle",
+          "daysOld": null,
+          "accuracy": {
+            "rent1br": {
+              "api": 1697.82,
+              "numbeo": 2335,
+              "devPct": 27.3
+            },
+            "avgNetSalary": {
+              "api": 4252.41,
+              "numbeo": 6207,
+              "devPct": 31.5
+            },
+            "utilities": {
+              "api": 211.86,
+              "numbeo": 163,
+              "devPct": 30.0
+            },
+            "mealInexpensive": {
+              "api": 20.0,
+              "numbeo": 22,
+              "devPct": 9.1
+            },
+            "monthlyTransit": {
+              "api": 65.0,
+              "numbeo": 99,
+              "devPct": 34.3
+            }
+          }
+        },
+        {
+          "name": "Boston",
+          "daysOld": null,
+          "accuracy": {
+            "rent1br": {
+              "api": 1697.82,
+              "numbeo": 3074,
+              "devPct": 44.8
+            },
+            "avgNetSalary": {
+              "api": 4252.41,
+              "numbeo": 5409,
+              "devPct": 21.4
+            },
+            "utilities": {
+              "api": 211.86,
+              "numbeo": 195,
+              "devPct": 8.6
+            },
+            "mealInexpensive": {
+              "api": 20.0,
+              "numbeo": 22,
+              "devPct": 9.1
+            },
+            "monthlyTransit": {
+              "api": 65.0,
+              "numbeo": 90,
+              "devPct": 27.8
+            }
+          }
+        },
+        {
+          "name": "Denver",
+          "daysOld": null,
+          "accuracy": {
+            "rent1br": {
+              "api": 1697.82,
+              "numbeo": 1815,
+              "devPct": 6.5
+            },
+            "avgNetSalary": {
+              "api": 4252.41,
+              "numbeo": 4852,
+              "devPct": 12.4
+            },
+            "utilities": {
+              "api": 211.86,
+              "numbeo": 150,
+              "devPct": 41.2
+            },
+            "mealInexpensive": {
+              "api": 20.0,
+              "numbeo": 20,
+              "devPct": 0.0
+            },
+            "monthlyTransit": {
+              "api": 65.0,
+              "numbeo": 114,
+              "devPct": 43.0
+            }
+          }
+        },
+        {
+          "name": "Austin",
+          "daysOld": null,
+          "accuracy": {
+            "rent1br": {
+              "api": 1697.82,
+              "numbeo": 1716,
+              "devPct": 1.1
+            },
+            "avgNetSalary": {
+              "api": 4252.41,
+              "numbeo": 4813,
+              "devPct": 11.6
+            },
+            "utilities": {
+              "api": 211.86,
+              "numbeo": 173,
+              "devPct": 22.5
+            },
+            "mealInexpensive": {
+              "api": 20.0,
+              "numbeo": 18,
+              "devPct": 11.1
+            },
+            "monthlyTransit": {
+              "api": 65.0,
+              "numbeo": 41,
+              "devPct": 58.5
+            }
+          }
+        }
+      ]
+    }
+  },
+  "raw": {
+    "ditno": [
+      {
+        "name": "New York",
+        "rent1br": 4168.08,
+        "avgNetSalary": 5158.83,
+        "utilities": 0,
+        "mealInexpensive": 30.18,
+        "monthlyTransit": 132.79,
+        "colIndex": 100.0,
+        "lastUpdated": "2025-06-13 06:01:17.250936+00:00"
+      },
+      {
+        "name": "San Francisco",
+        "rent1br": 3352.08,
+        "avgNetSalary": 7058.6,
+        "utilities": 0,
+        "mealInexpensive": 25.15,
+        "monthlyTransit": 95.57,
+        "colIndex": 90.6,
+        "lastUpdated": "2025-06-13 06:01:19.186763+00:00"
+      },
+      {
+        "name": "Chicago",
+        "rent1br": 2358.21,
+        "avgNetSalary": 5172.95,
+        "utilities": 0,
+        "mealInexpensive": 20.63,
+        "monthlyTransit": 75.44,
+        "colIndex": 71.6,
+        "lastUpdated": "2025-06-13 06:01:32.883927+00:00"
+      },
+      {
+        "name": "Los Angeles",
+        "rent1br": 2628.65,
+        "avgNetSalary": 4465.51,
+        "utilities": 0,
+        "mealInexpensive": 25.15,
+        "monthlyTransit": 83.98,
+        "colIndex": 76.9,
+        "lastUpdated": "2025-06-13 06:01:25.184678+00:00"
+      },
+      {
+        "name": "Houston",
+        "rent1br": 1665.44,
+        "avgNetSalary": 4661.45,
+        "utilities": 0,
+        "mealInexpensive": 20.12,
+        "monthlyTransit": 75.44,
+        "colIndex": 61.6,
+        "lastUpdated": "2025-06-13 06:02:18.427160+00:00"
+      },
+      {
+        "name": "Miami",
+        "rent1br": 2944.11,
+        "avgNetSalary": 4414.71,
+        "utilities": 0,
+        "mealInexpensive": 30.18,
+        "monthlyTransit": 104.37,
+        "colIndex": 74.4,
+        "lastUpdated": "2025-06-13 06:01:27.225939+00:00"
+      },
+      {
+        "name": "Seattle",
+        "rent1br": 2383.42,
+        "avgNetSalary": 6658.27,
+        "utilities": 0,
+        "mealInexpensive": 25.15,
+        "monthlyTransit": 99.59,
+        "colIndex": 86.0,
+        "lastUpdated": "2025-06-13 06:01:19.246016+00:00"
+      },
+      {
+        "name": "Boston",
+        "rent1br": 3436.19,
+        "avgNetSalary": 5975.06,
+        "utilities": 0,
+        "mealInexpensive": 25.15,
+        "monthlyTransit": 90.54,
+        "colIndex": 82.5,
+        "lastUpdated": "2025-06-13 06:01:23.239781+00:00"
+      },
+      {
+        "name": "Denver",
+        "rent1br": 2154.44,
+        "avgNetSalary": 5086.24,
+        "utilities": 0,
+        "mealInexpensive": 20.12,
+        "monthlyTransit": 88.52,
+        "colIndex": 71.5,
+        "lastUpdated": "2025-06-13 06:01:32.984624+00:00"
+      },
+      {
+        "name": "Austin",
+        "rent1br": 2221.54,
+        "avgNetSalary": 5096.95,
+        "utilities": 0,
+        "mealInexpensive": 19.87,
+        "monthlyTransit": 43.73,
+        "colIndex": 61.7,
+        "lastUpdated": "2025-06-13 06:02:17.682289+00:00"
+      }
+    ],
+    "zyla-global": [
+      {
+        "name": "New York",
+        "colIndex": 0,
+        "lastUpdated": "",
+        "rent1br": 1697.82,
+        "avgNetSalary": 4252.41,
+        "utilities": 211.86,
+        "mealInexpensive": 20.0,
+        "monthlyTransit": 65.0
+      },
+      {
+        "name": "San Francisco",
+        "colIndex": 0,
+        "lastUpdated": "",
+        "rent1br": 1697.82,
+        "avgNetSalary": 4252.41,
+        "utilities": 211.86,
+        "mealInexpensive": 20.0,
+        "monthlyTransit": 65.0
+      },
+      {
+        "name": "Chicago",
+        "colIndex": 0,
+        "lastUpdated": "",
+        "rent1br": 1697.82,
+        "avgNetSalary": 4252.41,
+        "utilities": 211.86,
+        "mealInexpensive": 20.0,
+        "monthlyTransit": 65.0
+      },
+      {
+        "name": "Los Angeles",
+        "colIndex": 0,
+        "lastUpdated": "",
+        "rent1br": 1697.82,
+        "avgNetSalary": 4252.41,
+        "utilities": 211.86,
+        "mealInexpensive": 20.0,
+        "monthlyTransit": 65.0
+      },
+      {
+        "name": "Houston",
+        "colIndex": 0,
+        "lastUpdated": "",
+        "rent1br": 1697.82,
+        "avgNetSalary": 4252.41,
+        "utilities": 211.86,
+        "mealInexpensive": 20.0,
+        "monthlyTransit": 65.0
+      },
+      {
+        "name": "Miami",
+        "colIndex": 0,
+        "lastUpdated": "",
+        "rent1br": 1697.82,
+        "avgNetSalary": 4252.41,
+        "utilities": 211.86,
+        "mealInexpensive": 20.0,
+        "monthlyTransit": 65.0
+      },
+      {
+        "name": "Seattle",
+        "colIndex": 0,
+        "lastUpdated": "",
+        "rent1br": 1697.82,
+        "avgNetSalary": 4252.41,
+        "utilities": 211.86,
+        "mealInexpensive": 20.0,
+        "monthlyTransit": 65.0
+      },
+      {
+        "name": "Boston",
+        "colIndex": 0,
+        "lastUpdated": "",
+        "rent1br": 1697.82,
+        "avgNetSalary": 4252.41,
+        "utilities": 211.86,
+        "mealInexpensive": 20.0,
+        "monthlyTransit": 65.0
+      },
+      {
+        "name": "Denver",
+        "colIndex": 0,
+        "lastUpdated": "",
+        "rent1br": 1697.82,
+        "avgNetSalary": 4252.41,
+        "utilities": 211.86,
+        "mealInexpensive": 20.0,
+        "monthlyTransit": 65.0
+      },
+      {
+        "name": "Austin",
+        "colIndex": 0,
+        "lastUpdated": "",
+        "rent1br": 1697.82,
+        "avgNetSalary": 4252.41,
+        "utilities": 211.86,
+        "mealInexpensive": 20.0,
+        "monthlyTransit": 65.0
+      }
+    ]
+  }
+}
