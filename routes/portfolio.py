@@ -369,7 +369,7 @@ def api_watchlist():
 
         # InvT Score from IV list
         invt_score_data = iv_entry.get("invtScore", 0)
-        invt_score = invt_score_data.get("score", 0) if isinstance(invt_score_data, dict) else (float(invt_score_data) if invt_score_data else 0)
+        invt_score = (invt_score_data.get("score") or 0) if isinstance(invt_score_data, dict) else (float(invt_score_data) if invt_score_data else 0)
 
         result.append({
             "ticker": ticker,
