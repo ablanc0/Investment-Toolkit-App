@@ -1,12 +1,14 @@
-"""InvToolkit — RapidAPI Cost of Living data service.
+"""InvToolkit — Cost of Living data service.
 
-Fetches city-level cost data from the ditno Cities Cost of Living API
-and persists to col_data.json (normalized) + col_raw.json (raw responses).
-Follows the 13F history pattern (separate JSON, module-level state, startup loader).
+Primary source: Numbeo (on-demand scraping, like the logo service).
+Fallback: ditno RapidAPI bulk data (768 cities, legacy).
 
-Refresh is 2-phase to conserve the 5 calls/month budget:
-  Phase 1 (check-cities): GET city list → detect new cities, store global list.
-  Phase 2 (fetch-details): POST bulk details → update data, save raw backup.
+Every city lookup ALWAYS tries Numbeo first. The local DB (col_data.json)
+grows as users explore — if Numbeo fails, the last scraped entry is the
+fallback. Manual entries are never overwritten.
+
+Legacy ditno functions (check_for_new_cities, fetch_city_details) remain
+for the existing 768-city dataset but are no longer the primary path.
 """
 
 import json
@@ -158,7 +160,99 @@ def delete_manual_city(city_name):
     return False
 
 
-# ── Fetch from RapidAPI ───────────────────────────────────────────────
+# ── On-demand Numbeo scraping (primary path) ─────────────────────────
+
+def lookup_or_scrape(city_name):
+    """Look up a city — ALWAYS scrapes Numbeo first, DB is fallback.
+
+    Flow:
+      1. Scrape Numbeo for fresh data
+      2. On success: compute indices (NYC baseline), upsert in DB, return
+      3. On failure: return existing DB entry if available, else error
+
+    Returns dict with city data, or dict with "error" key.
+    """
+    from services.col_scraper import scrape_city, compute_indices
+
+    nyc_ref = _get_nyc_reference()
+
+    # Always try Numbeo first
+    result = scrape_city(city_name, nyc_data=nyc_ref)
+
+    if result and not result.get("error"):
+        # Success — upsert into DB so it grows over time
+        _upsert_city(result)
+        return result
+
+    # Numbeo failed — try DB fallback
+    db_entry = lookup_city(city_name)
+    if db_entry:
+        print(f"[COL] Numbeo failed for '{city_name}', using DB fallback "
+              f"(last scraped: {db_entry.get('lastScraped', 'unknown')})")
+        return db_entry
+
+    # Both failed
+    return result  # Return the Numbeo error dict
+
+
+def _get_nyc_reference():
+    """Get NYC data for index computation (NYC = 100 baseline).
+
+    Must be a Numbeo-sourced entry so detail keys match our basket
+    constants (ditno uses different item names). If NYC is missing
+    or from ditno, scrapes Numbeo and stores it.
+    """
+    nyc = lookup_city("New York")
+
+    # Need Numbeo-sourced NYC with proper details for basket computations
+    if (nyc and nyc.get("source") == "numbeo"
+            and nyc.get("monthlyCostsNoRent", 0) > 0):
+        return nyc
+
+    # NYC not from Numbeo — scrape it (first time or refresh)
+    print("[COL] NYC reference needs Numbeo data, scraping...")
+    from services.col_scraper import scrape_city
+    nyc_fresh = scrape_city("New York")
+    if nyc_fresh and not nyc_fresh.get("error"):
+        _upsert_city(nyc_fresh)
+        return nyc_fresh
+
+    # Last resort: return whatever we have (even if incomplete)
+    return nyc or {}
+
+
+def _upsert_city(city_data):
+    """Insert or update a city in col_data.json by name.
+
+    - Overwrites existing entries with same name (any source except manual)
+    - Manual entries are never overwritten
+    - DB grows organically as users explore cities
+    """
+    cities = _col_data.get("cities", [])
+    name_lower = city_data["name"].lower().strip()
+
+    # Find existing entry (skip manual entries — never overwrite those)
+    for i, c in enumerate(cities):
+        if c["name"].lower() == name_lower:
+            if c.get("source") == "manual":
+                # Don't overwrite manual entries — store alongside
+                continue
+            cities[i] = city_data
+            _col_data["cities"] = cities
+            _save_col_data()
+            print(f"[COL] Updated '{city_data['name']}' (source={city_data.get('source', '?')})")
+            return
+
+    # New city — append and sort
+    cities.append(city_data)
+    cities.sort(key=lambda c: c["name"])
+    _col_data["cities"] = cities
+    _col_data["cityCount"] = len(cities)
+    _save_col_data()
+    print(f"[COL] Added new city '{city_data['name']}' (source={city_data.get('source', '?')})")
+
+
+# ── Fetch from RapidAPI (legacy) ─────────────────────────────────────
 
 def check_for_new_cities():
     """Phase 1: GET /get_cities_list — discover all cities globally.

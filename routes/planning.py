@@ -87,8 +87,8 @@ def _compute_col_entry(entry, config, api_cities=None):
     current_rent = config.get("currentRent", 1458)
     home_costs = float(config.get("homeMonthlyCosts") or 0)
 
-    # For API-sourced entries: derive rent from stored API data
-    if entry.get("source") == "api":
+    # For API/Numbeo-sourced entries: derive rent from stored API data
+    if entry.get("source") in ("api", "numbeo"):
         api_data = entry.get("apiData", {})
         # Select rent based on bedroomCount + locationType (unless user overrode)
         if not entry.get("rentOverride") and api_data:
@@ -110,15 +110,15 @@ def _compute_col_entry(entry, config, api_cities=None):
     city_rent = float(entry.get("rent", 0))
     city_costs = float(entry.get("monthlyCostsNoRent", 0))
 
-    # Auto-compute COL index for non-API entries from costs
-    if entry.get("source") != "api" and city_costs > 0 and api_cities:
+    # Auto-compute COL index for non-API/Numbeo entries from costs
+    if entry.get("source") not in ("api", "numbeo") and city_costs > 0 and api_cities:
         nyc = next((c for c in api_cities if c["name"].lower() == "new york"), None)
         nyc_costs = float(nyc.get("monthlyCostsNoRent", 1728)) if nyc else 1728.0
         if nyc_costs > 0:
             entry["colIndex"] = round((city_costs / nyc_costs) * 100, 1)
 
-    # Auto-compute PPI for non-API entries using colPlusRentIndex (Numbeo-compatible)
-    if entry.get("source") != "api" and api_cities:
+    # Auto-compute PPI for non-API/Numbeo entries using colPlusRentIndex (Numbeo-compatible)
+    if entry.get("source") not in ("api", "numbeo") and api_cities:
         col_idx = float(entry.get("colIndex", 0))
         if col_idx > 0:
             nyc = next((c for c in api_cities if c["name"].lower() == "new york"), None)
@@ -160,7 +160,7 @@ def _compute_col_entry(entry, config, api_cities=None):
     # Non-housing multiplier for display
     if city_costs > 0 and home_costs > 0:
         entry["nonHousingMult"] = round(city_costs / home_costs, 2)
-    elif not entry.get("nhmOverride") and entry.get("source") == "api":
+    elif not entry.get("nhmOverride") and entry.get("source") in ("api", "numbeo"):
         api_data = entry.get("apiData", {})
         col_index = float(api_data.get("colIndex", 100)) if api_data else 100
         home_col = float(config.get("homeColIndex") or 0)
@@ -335,8 +335,8 @@ def api_cost_of_living_update():
     index = int(b.get("index", -1))
     if metro:
         index = next((i for i, item in enumerate(items) if item.get("metro") == metro), -1)
-    # Track manual overrides on API-sourced entries
-    if 0 <= index < len(items) and items[index].get("source") == "api":
+    # Track manual overrides on API/Numbeo-sourced entries
+    if 0 <= index < len(items) and items[index].get("source") in ("api", "numbeo"):
         if "rent" in updates:
             updates["rentOverride"] = True
         if "nonHousingMult" in updates:
@@ -650,7 +650,7 @@ def api_col_upgrade():
     upgraded = 0
     refreshed = 0
     for city in cities:
-        already_api = city.get("source") == "api"
+        already_api = city.get("source") in ("api", "numbeo")
         if already_api and not refresh:
             continue
         metro_lower = city["metro"].lower()
@@ -662,7 +662,7 @@ def api_col_upgrade():
                     api_match = api_city
                     break
         if api_match and api_match.get("name"):
-            city["source"] = "api"
+            city["source"] = api_match.get("source", "api")
             city["rentOverride"] = False
             city["nhmOverride"] = False
             city["apiData"] = api_match
@@ -711,6 +711,27 @@ def api_col_api_cities():
     if request.args.get("include_global"):
         result["globalCities"] = get_global_city_list()
     return jsonify(result)
+
+
+@bp.route("/api/cost-of-living/scrape-city", methods=["POST"])
+def api_col_scrape_city():
+    """On-demand Numbeo scrape for a single city.
+
+    Always scrapes Numbeo first, falls back to DB if Numbeo fails.
+    Returns the full city dict with computed indices.
+    """
+    b = request.get_json()
+    name = (b.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "City name is required"}), 400
+
+    from services.col_api import lookup_or_scrape
+    city = lookup_or_scrape(name)
+
+    if city and not city.get("error"):
+        return jsonify({"ok": True, "city": city})
+    error = city.get("error", "City not found") if city else "City not found"
+    return jsonify({"ok": False, "error": error}), 404
 
 
 # ── Passive Income ─────────────────────────────────────────────────────

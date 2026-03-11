@@ -816,7 +816,11 @@ function onCityInputSearch(query) {
         .filter(c => c.name.toLowerCase().includes(q) && !existing.has(c.name.toLowerCase()))
         .slice(0, 8);
     if (matches.length === 0) {
-        results.innerHTML = `<div style="padding:10px; font-size:0.82rem; color:var(--text-muted);">No match found — <a href="#" onclick="showManualFields('${q}'); return false;" style="color:var(--accent);">add manually</a></div>`;
+        const titleQ = q.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        const qEsc = titleQ.replace(/'/g, "\\'");
+        results.innerHTML = `<div style="padding:10px 12px; cursor:pointer; font-size:0.82rem; border-bottom:1px solid var(--border); color:var(--accent);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''" onclick="scrapeNumbeoCity('${qEsc}')">
+            🔍 Search Numbeo for "${titleQ}"...</div>
+            <div style="padding:8px 12px; cursor:pointer; font-size:0.82rem; color:var(--text-muted);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''" onclick="showManualFields('${q}')">Enter manually...</div>`;
         results.style.display = 'block';
         return;
     }
@@ -829,6 +833,9 @@ function onCityInputSearch(query) {
             <strong>${c.name}</strong>, ${loc2}${srcTag} <span style="color:var(--text-muted); margin-left:8px;">$${rent.toLocaleString()}/mo · COL ${c.colIndex}</span></div>`;
     }).join('');
     if (matches.length > 0) {
+        const titleQ = q.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        const qEsc = titleQ.replace(/'/g, "\\'");
+        results.innerHTML += `<div style="padding:8px 12px; cursor:pointer; font-size:0.82rem; color:var(--accent); border-top:1px solid var(--border);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''" onclick="scrapeNumbeoCity('${qEsc}')">🔍 Search Numbeo for "${titleQ}"...</div>`;
         results.innerHTML += `<div style="padding:8px 12px; cursor:pointer; font-size:0.82rem; color:var(--text-muted);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''" onclick="showManualFields('${q}')">Enter manually...</div>`;
     }
     results.style.display = 'block';
@@ -844,6 +851,38 @@ function selectCityResult(name) {
     const type = loc === 'city' ? 'Downtown' : 'Suburban';
     hideAddCityResults();
     addCOLApiCity(city.name, city.state || '', type, rent, 1.0, city);
+}
+
+async function scrapeNumbeoCity(name) {
+    const results = document.getElementById('addCityResults');
+    if (results) {
+        results.innerHTML = `<div style="padding:10px 12px; font-size:0.82rem; color:var(--text-muted);">Fetching from Numbeo...</div>`;
+    }
+    try {
+        const resp = await fetch('/api/cost-of-living/scrape-city', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name}),
+        });
+        const data = await resp.json();
+        if (data.ok && data.city) {
+            // Add to local cache so it appears in future searches
+            const existing = colApiCities.findIndex(c => c.name.toLowerCase() === data.city.name.toLowerCase());
+            if (existing >= 0) colApiCities[existing] = data.city;
+            else colApiCities.push(data.city);
+            // Auto-select the scraped city
+            selectCityResult(data.city.name);
+        } else {
+            if (results) {
+                results.innerHTML = `<div style="padding:10px 12px; font-size:0.82rem; color:var(--text-muted);">Not found on Numbeo — <a href="#" onclick="showManualFields('${name}'); return false;" style="color:var(--accent);">add manually</a></div>`;
+            }
+        }
+    } catch(e) {
+        console.error('Numbeo scrape error:', e);
+        if (results) {
+            results.innerHTML = `<div style="padding:10px 12px; font-size:0.82rem; color:#f87171;">Scrape failed — <a href="#" onclick="showManualFields('${name}'); return false;" style="color:var(--accent);">add manually</a></div>`;
+        }
+    }
 }
 
 function showManualFields(prefill) {
