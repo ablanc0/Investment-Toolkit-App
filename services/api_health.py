@@ -84,24 +84,16 @@ def get_health_summary():
 
 
 def run_health_check():
-    """Ping each API with lightweight test calls. Returns updated health summary."""
+    """Ping free/unlimited APIs only. Returns updated health summary.
+
+    Quota-limited providers (FMP, RapidAPI) are SKIPPED — their status
+    is tracked passively from real usage via record_api_call().
+    This avoids wasting limited API calls on health pings.
+    """
     import requests as http_requests
     import yfinance as yf
-    from config import FMP_BASE
-    from services.fmp import _get_fmp_key
 
-    # FMP
-    start = time.time()
-    try:
-        r = http_requests.get(f"{FMP_BASE}/profile", params={"symbol": "AAPL", "apikey": _get_fmp_key()}, timeout=10)
-        latency = int((time.time() - start) * 1000)
-        data = r.json()
-        ok = isinstance(data, list) and len(data) > 0
-        record_api_call("fmp", success=ok, latency_ms=latency, error_msg=None if ok else "Invalid response")
-    except Exception as e:
-        record_api_call("fmp", success=False, latency_ms=int((time.time() - start) * 1000), error_msg=str(e)[:80])
-
-    # yfinance
+    # yfinance — free, unlimited
     start = time.time()
     try:
         info = yf.Ticker("AAPL").info or {}
@@ -111,7 +103,7 @@ def run_health_check():
     except Exception as e:
         record_api_call("yfinance", success=False, latency_ms=int((time.time() - start) * 1000), error_msg=str(e)[:80])
 
-    # FRED
+    # FRED — free, generous limits
     start = time.time()
     try:
         r = http_requests.head("https://fred.stlouisfed.org/graph/fredgraph.csv?id=AAA", timeout=10)
@@ -121,7 +113,7 @@ def run_health_check():
     except Exception as e:
         record_api_call("fred", success=False, latency_ms=int((time.time() - start) * 1000), error_msg=str(e)[:80])
 
-    # EDGAR
+    # EDGAR — free, 10 req/s
     start = time.time()
     try:
         from config import EDGAR_USER_AGENT
@@ -133,24 +125,7 @@ def run_health_check():
     except Exception as e:
         record_api_call("edgar", success=False, latency_ms=int((time.time() - start) * 1000), error_msg=str(e)[:80])
 
-    # RapidAPI (Cost of Living)
-    from services.col_api import _get_rapidapi_key
-    from config import RAPIDAPI_COL_CITIES_URL, RAPIDAPI_COL_HOST
-    rapid_key = _get_rapidapi_key()
-    if rapid_key:
-        start = time.time()
-        try:
-            r = http_requests.get(RAPIDAPI_COL_CITIES_URL,
-                                  headers={"x-rapidapi-host": RAPIDAPI_COL_HOST, "x-rapidapi-key": rapid_key},
-                                  timeout=15)
-            latency = int((time.time() - start) * 1000)
-            ok = r.status_code == 200
-            record_api_call("rapidapi", success=ok, latency_ms=latency,
-                            error_msg=None if ok else f"HTTP {r.status_code}")
-        except Exception as e:
-            record_api_call("rapidapi", success=False, latency_ms=int((time.time() - start) * 1000), error_msg=str(e)[:80])
-
-    # Elbstream (Logos)
+    # Elbstream (Logos) — free
     from services.logo_svc import ELBSTREAM_URL
     start = time.time()
     try:
@@ -161,6 +136,9 @@ def run_health_check():
                         error_msg=None if ok else f"HTTP {r.status_code}")
     except Exception as e:
         record_api_call("elbstream", success=False, latency_ms=int((time.time() - start) * 1000), error_msg=str(e)[:80])
+
+    # FMP (250/day) and RapidAPI (~100/month) — status tracked passively
+    # from real usage. No dedicated health ping needed.
 
     return get_health_summary()
 
