@@ -47,4 +47,22 @@ function renderIntrinsicValues(items) {
             <td style="font-size:0.78rem; color: var(--text-dim);">${escapeHtml(updated)}</td>
         </tr>`;
     }).join('');
+
+    // Summary row
+    const avgScore = items.reduce((s, iv) => {
+        const sc = typeof iv.invtScore === 'object' && iv.invtScore ? iv.invtScore.score : iv.invtScore;
+        return s + (Number(sc) || 0);
+    }, 0) / (items.length || 1);
+    tbody.innerHTML += `<tr class="summary-row">
+        <td colspan="2"><strong>${items.length} Holdings</strong></td>
+        <td></td><td></td><td></td>
+        <td style="text-align:right;"><span style="color:${_invtScoreColor(avgScore)};font-weight:600">${avgScore.toFixed(1)}</span></td>
+        <td></td><td></td><td></td><td></td>
+        <td>
+            <span style="color:#4ade80;font-weight:600;">${strongBuy} SB</span> ·
+            <span style="color:#22d3ee;font-weight:600;">${buy} B</span> ·
+            <span style="color:#f87171;font-weight:600;">${overrated} OR</span>
+        </td>
+        <td></td>
+    </tr>`;
 }

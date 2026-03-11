@@ -317,11 +317,13 @@ def api_portfolio():
 
 @bp.route("/api/watchlist")
 def api_watchlist():
-    """Watchlist with live quotes."""
+    """Watchlist with live quotes, IV signals, and notes."""
     portfolio = load_portfolio()
+    thresholds = get_settings().get("signalThresholds", {})
     wl = portfolio.get("watchlist", [])
     tickers = [w["ticker"] if isinstance(w, dict) else w for w in wl]
     priorities = {(w["ticker"] if isinstance(w, dict) else w): (w.get("priority", "Low") if isinstance(w, dict) else "Low") for w in wl}
+    notes_map = {(w["ticker"] if isinstance(w, dict) else w): (w.get("notes", "") if isinstance(w, dict) else "") for w in wl}
 
     quotes = fetch_all_quotes(tickers)
 
@@ -355,9 +357,17 @@ def api_watchlist():
         iv_val = iv_entry.get("intrinsicValue", 0) or 0
         if iv_val > 0:
             intrinsic = iv_val
-        else:
+            iv_source = "IV List"
+        elif target_price > 0:
             intrinsic = target_price
+            iv_source = "Analyst"
+        else:
+            intrinsic = 0
+            iv_source = "\u2014"
         dist_pct = round(((price - intrinsic) / intrinsic * 100) if intrinsic > 0 else 0, 2)
+
+        # IV Signal (server-side, same logic as portfolio endpoint)
+        signal = _get_iv_signal(dist_pct / 100, thresholds) if intrinsic > 0 else ""
 
         # InvT Score from IV list
         invt_score_data = iv_entry.get("invtScore", 0)
@@ -370,10 +380,13 @@ def api_watchlist():
             "price": round(price, 2),
             "intrinsicValue": round(intrinsic, 2),
             "iv": round(intrinsic, 2),
+            "ivSource": iv_source,
+            "signal": signal,
             "pe": pe,
             "eps": eps_val,
             "marketCap": q.get("marketCap", 0),
             "priority": priorities.get(ticker, "Low"),
+            "notes": notes_map.get(ticker, ""),
             "distance": dist_pct,
             "dist": dist_pct,
             "invtScore": round(invt_score, 1),
@@ -531,7 +544,7 @@ def api_position_delete():
 
 @bp.route("/api/watchlist/add", methods=["POST"])
 def api_watchlist_add():
-    """Add to watchlist. Body: {ticker, priority}"""
+    """Add to watchlist. Body: {ticker, priority, notes}"""
     body = request.get_json()
     ticker = validate_ticker(body.get("ticker", ""))
     if not ticker:
@@ -546,6 +559,7 @@ def api_watchlist_add():
     portfolio.setdefault("watchlist", []).append({
         "ticker": ticker,
         "priority": body.get("priority", "Low"),
+        "notes": body.get("notes", ""),
     })
     save_portfolio(portfolio)
     return jsonify({"ok": True})
@@ -572,17 +586,21 @@ def api_watchlist_delete():
 
 @bp.route("/api/watchlist/update", methods=["POST"])
 def api_watchlist_update():
-    """Update watchlist item priority. Body: {ticker, priority}"""
+    """Update watchlist item fields. Body: {ticker, priority?, notes?}"""
     body = request.get_json()
     ticker = validate_ticker(body.get("ticker", ""))
     if not ticker:
         return jsonify({"error": "Invalid ticker symbol"}), 400
-    priority = body.get("priority", "Low")
+    priority = body.get("priority")
+    notes = body.get("notes")
 
     portfolio = load_portfolio()
     for w in portfolio.get("watchlist", []):
         if isinstance(w, dict) and w["ticker"] == ticker:
-            w["priority"] = priority
+            if priority is not None:
+                w["priority"] = priority
+            if notes is not None:
+                w["notes"] = notes
             save_portfolio(portfolio)
             return jsonify({"ok": True})
 

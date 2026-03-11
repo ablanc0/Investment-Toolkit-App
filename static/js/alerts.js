@@ -65,19 +65,10 @@ function populateScreening() {
         etfCount > 0 ? `<span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#6b728020;color:#9ca3af;">${etfCount} ETF/Fund</span>` : '',
     ].filter(Boolean).join('');
 
-    // Watchlist opportunities — ETFs inferred by missing IV
+    // Watchlist opportunities — use server-computed IV signal
     const wlSignaled = watchlist.map(item => {
         const hasIV = item.intrinsicValue && item.intrinsicValue > 0;
-        const distance = item.distance || 0;
-        let signal = null;
-        if (hasIV) {
-            if (distance < -5) signal = 'Strong Buy';
-            else if (distance < 0) signal = 'Buy';
-            else if (distance > 50) signal = 'Overrated';
-            else if (distance > 20) signal = 'Expensive';
-            else signal = 'Hold';
-        }
-        return { ...item, signal, hasIV };
+        return { ...item, signal: item.signal || null, hasIV };
     }).sort((a, b) => (a.distance || 0) - (b.distance || 0));
 
     document.getElementById('watchlistSignalsBody').innerHTML = wlSignaled.length > 0 ?
