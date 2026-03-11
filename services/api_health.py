@@ -87,11 +87,11 @@ def run_health_check():
     """Ping free/unlimited APIs only. Returns updated health summary.
 
     Quota-limited providers (FMP, RapidAPI) are SKIPPED — their status
-    is tracked passively from real usage via record_api_call().
+    is tracked passively from real usage via resilient_get/resilient_post.
     This avoids wasting limited API calls on health pings.
     """
-    import requests as http_requests
     import yfinance as yf
+    from services.http_client import resilient_get
 
     # yfinance — free, unlimited
     start = time.time()
@@ -104,38 +104,32 @@ def run_health_check():
         record_api_call("yfinance", success=False, latency_ms=int((time.time() - start) * 1000), error_msg=str(e)[:80])
 
     # FRED — free, generous limits
-    start = time.time()
     try:
-        r = http_requests.head("https://fred.stlouisfed.org/graph/fredgraph.csv?id=AAA", timeout=10)
-        latency = int((time.time() - start) * 1000)
-        record_api_call("fred", success=r.status_code == 200, latency_ms=latency,
-                        error_msg=None if r.status_code == 200 else f"HTTP {r.status_code}")
+        resilient_get("https://fred.stlouisfed.org/graph/fredgraph.csv?id=AAA",
+                       provider="fred", timeout=10, max_retries=0)
     except Exception as e:
-        record_api_call("fred", success=False, latency_ms=int((time.time() - start) * 1000), error_msg=str(e)[:80])
+        record_api_call("fred", success=False, error_msg=str(e)[:80])
 
     # EDGAR — free, 10 req/s
-    start = time.time()
     try:
         from config import EDGAR_USER_AGENT
-        r = http_requests.get("https://www.sec.gov/files/company_tickers.json",
-                              headers={"User-Agent": EDGAR_USER_AGENT}, timeout=10)
-        latency = int((time.time() - start) * 1000)
-        record_api_call("edgar", success=r.status_code == 200, latency_ms=latency,
-                        error_msg=None if r.status_code == 200 else f"HTTP {r.status_code}")
+        resilient_get("https://www.sec.gov/files/company_tickers.json",
+                       provider="edgar",
+                       headers={"User-Agent": EDGAR_USER_AGENT},
+                       timeout=10, max_retries=0)
     except Exception as e:
-        record_api_call("edgar", success=False, latency_ms=int((time.time() - start) * 1000), error_msg=str(e)[:80])
+        record_api_call("edgar", success=False, error_msg=str(e)[:80])
 
     # Elbstream (Logos) — free
-    from services.logo_svc import ELBSTREAM_URL
-    start = time.time()
     try:
-        r = http_requests.get(f"{ELBSTREAM_URL}/AAPL", params={"format": "png", "size": 250}, timeout=10)
-        latency = int((time.time() - start) * 1000)
-        ok = r.status_code == 200 and len(r.content) > 100
-        record_api_call("elbstream", success=ok, latency_ms=latency,
-                        error_msg=None if ok else f"HTTP {r.status_code}")
+        from services.logo_svc import ELBSTREAM_URL
+        r = resilient_get(f"{ELBSTREAM_URL}/AAPL", provider="elbstream",
+                          params={"format": "png", "size": 250},
+                          timeout=10, max_retries=0)
+        if not (r.status_code == 200 and len(r.content) > 100):
+            record_api_call("elbstream", success=False, error_msg=f"HTTP {r.status_code}")
     except Exception as e:
-        record_api_call("elbstream", success=False, latency_ms=int((time.time() - start) * 1000), error_msg=str(e)[:80])
+        record_api_call("elbstream", success=False, error_msg=str(e)[:80])
 
     # FMP (250/day) and RapidAPI (~100/month) — status tracked passively
     # from real usage. No dedicated health ping needed.

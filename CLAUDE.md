@@ -22,6 +22,9 @@ python server.py          # http://localhost:5050
 server.py                  # 62-line entry point — creates app, registers 9 Blueprints
 config.py                  # All constants, paths, API keys, tax brackets, investor list
 services/
+  stock_data.py            # Provider cascade orchestrator (EDGAR → FMP → yfinance)
+  http_client.py           # Resilient HTTP: retry, circuit breaker, auto health tracking
+  contracts.py             # Canonical data contracts (QUOTE_FIELDS, INFO_FIELDS)
   cache.py                 # Thread-safe TTL cache (5 min) + disk persistence
   data_store.py            # portfolio.json I/O + generic CRUD helpers
   yfinance_svc.py          # fetch_ticker_data, fetch_all_quotes, fetch_dividends
@@ -109,8 +112,32 @@ cache_get(key)             # Returns data or None if expired (5-min TTL)
 cache_set(key, data)       # Stores with timestamp, persists to disk
 ```
 
-**Data source cascade** (Stock Analyzer):
-EDGAR XBRL → FMP API → yfinance (fallback chain for financial data)
+**Provider cascade** (`services/stock_data.py`):
+```python
+fetch_stock_analysis(ticker)  # Routes call this — handles full cascade
+# Default order: EDGAR → FMP → yfinance (configurable via settings.providerConfig)
+# Skips providers with open circuit breakers automatically
+```
+
+**Resilient HTTP** (`services/http_client.py`):
+```python
+resilient_get(url, provider="fmp")   # Drop-in for requests.get + retry + circuit breaker
+resilient_post(url, provider="fmp")  # Drop-in for requests.post + auto health recording
+is_circuit_open("fmp")               # Check if provider is in cooldown
+```
+
+**Data contracts** (`services/contracts.py`):
+```python
+QUOTE_FIELDS     # 17 fields for portfolio/watchlist display
+INFO_FIELDS      # 54 fields for valuation models
+validate_quote(data)   # Strict: returns only QUOTE_FIELDS keys
+validate_info(data)    # Permissive: fills defaults but keeps extras
+```
+
+**Adding a new data provider**:
+1. Create `services/<provider>_svc.py` with fetch fn: `(ticker, yf_info) → (info, income, cashflow, balance, label)`
+2. Add to `_PROVIDERS` dict in `services/stock_data.py`
+3. Add to `PROVIDER_DEFAULTS` in `config.py`
 
 ## Conventions
 

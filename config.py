@@ -69,6 +69,21 @@ _13F_HISTORY_FILE  = DATA_DIR / "13f_history.json"
 COL_DATA_FILE      = DATA_DIR / "col_data.json"
 COL_RAW_FILE       = DATA_DIR / "col_raw.json"
 
+# ── Provider Defaults ──────────────────────────────────────────────────
+# Cascade order per data domain. Override in user settings under "providerConfig".
+# To add a new provider: create services/<name>_svc.py, register in stock_data._PROVIDERS.
+
+PROVIDER_DEFAULTS = {
+    "financials": ["edgar", "fmp", "yfinance"],  # cascade order for financial statements
+    "quotes":     ["yfinance"],                   # real-time quotes (free, unlimited)
+    "benchmarks": ["fmp"],                        # Graham number, Altman Z, Piotroski
+    "peers":      ["finviz"],                     # peer comparison
+    "dividends":  ["yfinance"],                   # dividend history
+    "riskFreeRate": ["fred"],                     # AAA yield for DCF/Graham
+    "logos":      ["elbstream", "fmp"],            # ticker logo images
+    "13f":        ["edgar"],                       # institutional 13F filings
+}
+
 # ── Valuation Constants ─────────────────────────────────────────────────
 
 RISK_FREE_RATE   = 0.0425      # 10Y Treasury

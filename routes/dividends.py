@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request
 
 from services.data_store import load_portfolio, save_portfolio, crud_list, crud_add, crud_update, crud_delete
-from services.yfinance_svc import fetch_sp500_annual_returns, fetch_dividends
+from services.yfinance_svc import fetch_sp500_annual_returns, fetch_dividends, fetch_dividend_calendar
 
 bp = Blueprint('dividends', __name__)
 
@@ -434,10 +434,8 @@ def _get_declared_info(ticker):
     Returns dict with exDate and paymentDate, or None.
     """
     try:
-        import yfinance as yf
-        t = yf.Ticker(ticker)
-        cal = t.calendar
-        if not isinstance(cal, dict):
+        cal = fetch_dividend_calendar(ticker)
+        if not cal:
             return None
 
         def _parse_date(val):
