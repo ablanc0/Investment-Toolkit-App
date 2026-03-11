@@ -174,7 +174,7 @@ def check_for_new_cities():
     headers = {"x-rapidapi-host": RAPIDAPI_COL_HOST, "x-rapidapi-key": key}
     try:
         r = resilient_get(RAPIDAPI_COL_CITIES_URL, provider="rapidapi",
-                          headers=headers, timeout=30)
+                          headers=headers, timeout=30, max_retries=0)
         if r.status_code != 200:
             return {"error": f"Cities list HTTP {r.status_code}: {r.text[:200]}"}
 
@@ -245,7 +245,7 @@ def fetch_city_details(city_names=None):
 
     try:
         r = resilient_post(RAPIDAPI_COL_URL, provider="rapidapi",
-                           headers=headers, data=payload, timeout=120)
+                           headers=headers, data=payload, timeout=120, max_retries=0)
 
         if r.status_code != 200:
             return None, f"API returned HTTP {r.status_code}: {r.text[:200]}"
@@ -340,7 +340,7 @@ def fetch_all_global_details(batch_size=50):
         start = time.time()
         try:
             r = resilient_post(RAPIDAPI_COL_URL, provider="rapidapi",
-                               headers=headers, data=payload, timeout=120)
+                               headers=headers, data=payload, timeout=120, max_retries=0)
             latency = int((time.time() - start) * 1000)
 
             if r.status_code != 200:
