@@ -5,10 +5,8 @@ import json
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request
 
-import yfinance as yf
-
 from services.data_store import load_portfolio, save_portfolio, get_settings, crud_add, crud_delete
-from services.yfinance_svc import fetch_ticker_data, fetch_all_quotes, fetch_dividends
+from services.yfinance_svc import fetch_ticker_data, fetch_all_quotes, fetch_dividends, fetch_daily_prices
 from services.cache import cache_get, cache_set
 from services.geo_svc import resolve_geo
 from services.validation import validate_ticker
@@ -703,7 +701,7 @@ def api_find_the_dip():
     results = []
 
     try:
-        data = yf.download(tickers, period="1y", interval="1d", progress=False)
+        data = fetch_daily_prices(tickers, period="1y")
         close = data["Close"] if "Close" in data.columns else None
         if close is None:
             return jsonify({"holdings": []})

@@ -161,6 +161,34 @@ def fetch_sp500_annual_returns():
         return {}
 
 
+def fetch_daily_prices(tickers, period="1y"):
+    """Fetch daily closing prices for multiple tickers.
+
+    Wraps yf.download() for daily interval data.
+    Used by find-the-dip (SMA analysis) and similar features.
+
+    Returns: pandas DataFrame (same return type as yf.download).
+    """
+    return yf.download(tickers, period=period, interval="1d", progress=False)
+
+
+def fetch_dividend_calendar(ticker):
+    """Fetch the dividend calendar for a ticker.
+
+    Wraps yf.Ticker(ticker).calendar to retrieve next ex-dividend
+    and payment dates.
+
+    Returns: dict (calendar data) or None on failure.
+    """
+    try:
+        cal = yf.Ticker(ticker).calendar
+        if isinstance(cal, dict):
+            return cal
+        return None
+    except Exception:
+        return None
+
+
 def fetch_dividends(ticker):
     """Fetch dividend history for a ticker."""
     cached = cache_get(f"divs_{ticker}")

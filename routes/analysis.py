@@ -7,11 +7,8 @@ from datetime import datetime
 import yfinance as yf
 from flask import Blueprint, jsonify, request
 
-from services.edgar import _fetch_edgar_facts, _edgar_to_info, _edgar_to_financials
+from services.stock_data import fetch_stock_analysis
 from services.fmp import (
-    _fetch_fmp_stock_data,
-    _fmp_to_info,
-    _fmp_to_financials,
     _fetch_fred_aaa_yield,
     _fetch_fmp_dcf,
     _fetch_fmp_benchmarks,
@@ -86,65 +83,16 @@ def api_stock_analyzer(ticker):
             return jsonify(store[ticker])
 
     try:
-        # yfinance: profile, ratios, supplementary fields
-        try:
-            yf_info = yf.Ticker(ticker).info or {}
-        except Exception:
-            yf_info = {}
-        if not yf_info.get("currentPrice") and not yf_info.get("regularMarketPrice"):
+        # Fetch stock data via provider cascade (EDGAR -> FMP -> yfinance)
+        result_data = fetch_stock_analysis(ticker)
+        if not result_data:
             return jsonify({"error": f"Ticker '{ticker}' not found"}), 404
 
-        # Primary: SEC EDGAR (1 call, 10yr history, no daily limit)
-        edgar_facts = _fetch_edgar_facts(ticker)
-        data_source = None
-        if edgar_facts:
-            info = _edgar_to_info(edgar_facts, yf_info)
-            income, cashflow, balance = _edgar_to_financials(edgar_facts)
-            if income or cashflow:
-                data_source = "SEC EDGAR"
-                print(f"[Analyzer] {ticker}: SEC EDGAR ({len(income)} yr income, {len(cashflow)} yr cashflow)")
-        if not data_source:
-            # Fallback 1: FMP (5 API calls)
-            print(f"[Analyzer] {ticker}: EDGAR unavailable, trying FMP")
-            fmp = _fetch_fmp_stock_data(ticker)
-            info = _fmp_to_info(fmp, yf_info)
-            income, cashflow, balance = _fmp_to_financials(fmp)
-            data_source = "FMP"
-        if data_source == "FMP" and not income and not cashflow:
-            # Fallback 2: yfinance (foreign ADRs not covered by EDGAR or FMP)
-            print(f"[Analyzer] {ticker}: FMP empty, falling back to yfinance")
-            info = dict(yf_info)
-            t = yf.Ticker(ticker)
-            income, cashflow, balance = {}, {}, {}
-            try:
-                cf = t.cashflow
-                if cf is not None and not cf.empty:
-                    for col in cf.columns:
-                        yr = str(col.year) if hasattr(col, 'year') else str(col)[:4]
-                        ocf = cf.at["Operating Cash Flow", col] if "Operating Cash Flow" in cf.index else 0
-                        capex = cf.at["Capital Expenditure", col] if "Capital Expenditure" in cf.index else 0
-                        cashflow[yr] = {
-                            "Operating Cash Flow": int(ocf) if ocf == ocf else 0,
-                            "Capital Expenditure": int(capex) if capex == capex else 0,
-                        }
-            except Exception as e:
-                print(f"[Analyzer] yfinance cashflow error: {e}")
-            try:
-                inc = t.income_stmt
-                if inc is not None and not inc.empty:
-                    for col in inc.columns:
-                        yr = str(col.year) if hasattr(col, 'year') else str(col)[:4]
-                        pretax = inc.at["Pretax Income", col] if "Pretax Income" in inc.index else 0
-                        tax = inc.at["Tax Provision", col] if "Tax Provision" in inc.index else 0
-                        interest = inc.at["Interest Expense", col] if "Interest Expense" in inc.index else 0
-                        income[yr] = {
-                            "Pretax Income": int(pretax) if pretax == pretax else 0,
-                            "Tax Provision": int(tax) if tax == tax else 0,
-                            "Interest Expense": int(interest) if interest == interest else 0,
-                        }
-            except Exception as e:
-                print(f"[Analyzer] yfinance income error: {e}")
-            data_source = "Yahoo Finance"
+        info = result_data["info"]
+        income = result_data["income"]
+        cashflow = result_data["cashflow"]
+        balance = result_data["balance"]
+        data_source = result_data["data_source"]
 
         price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
         result = {
