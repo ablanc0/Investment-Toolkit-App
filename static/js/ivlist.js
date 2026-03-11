@@ -194,7 +194,7 @@ async function refreshAllIV() {
     }
 
     // Reset UI
-    btn.textContent = '🔄 Refresh All';
+    btn.textContent = '🔄 Update IV';
     btn.style.borderColor = 'var(--accent)';
     btn.style.color = 'var(--accent)';
     btn.onclick = refreshAllIV;
