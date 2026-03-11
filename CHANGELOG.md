@@ -7,6 +7,8 @@ All notable changes to InvToolkit will be documented in this file.
 
 
 ## 2026-03-11
+- 🟧 Fix exclude quota-limited APIs from health check pings
+- ⬜ Documentation update changelog
 - 🟩 Feature bulk refresh IV list values and scores
 - 🟧 Fix grant write permissions to changelog workflow
 - 🟧 Fix use server-provided IV signal in watchlist and alerts
