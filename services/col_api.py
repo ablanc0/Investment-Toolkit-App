@@ -13,8 +13,6 @@ import json
 import time
 from datetime import datetime
 
-import requests as http_requests
-
 from config import (
     COL_DATA_FILE,
     COL_RAW_FILE,
@@ -23,6 +21,7 @@ from config import (
     RAPIDAPI_COL_CITIES_URL,
 )
 from services.data_store import get_settings
+from services.http_client import resilient_get, resilient_post
 
 # ── Module-level state (loaded at startup) ────────────────────────────
 
@@ -168,24 +167,18 @@ def check_for_new_cities():
     against stored names to detect new additions.  Uses 1 API call.
     Returns dict: {newCities, totalAll, totalUS, totalCountries, usNames, error}.
     """
-    from services.api_health import record_api_call
-
     key = _get_rapidapi_key()
     if not key:
         return {"error": "No RapidAPI key configured. Add it in Settings > API Keys."}
 
     headers = {"x-rapidapi-host": RAPIDAPI_COL_HOST, "x-rapidapi-key": key}
-    start = time.time()
     try:
-        r = http_requests.get(RAPIDAPI_COL_CITIES_URL, headers=headers, timeout=30)
-        latency = int((time.time() - start) * 1000)
+        r = resilient_get(RAPIDAPI_COL_CITIES_URL, provider="rapidapi",
+                          headers=headers, timeout=30)
         if r.status_code != 200:
-            record_api_call("rapidapi", success=False, latency_ms=latency,
-                            error_msg=f"HTTP {r.status_code}")
             return {"error": f"Cities list HTTP {r.status_code}: {r.text[:200]}"}
 
         data = r.json()
-        record_api_call("rapidapi", success=True, latency_ms=latency)
 
         if "message" in data and isinstance(data["message"], str):
             return {"error": data["message"]}
@@ -221,8 +214,6 @@ def check_for_new_cities():
         }
 
     except Exception as e:
-        latency = int((time.time() - start) * 1000)
-        record_api_call("rapidapi", success=False, latency_ms=latency, error_msg=str(e)[:80])
         return {"error": str(e)}
 
 
@@ -233,8 +224,6 @@ def fetch_city_details(city_names=None):
     to col_raw.json for future formula improvements.  Uses 1 API call.
     Returns (normalized_cities_list, error_string_or_None).
     """
-    from services.api_health import record_api_call
-
     key = _get_rapidapi_key()
     if not key:
         return None, "No RapidAPI key configured."
@@ -254,18 +243,14 @@ def fetch_city_details(city_names=None):
         "currencies": json.dumps(["USD"]),
     }
 
-    start = time.time()
     try:
-        r = http_requests.post(RAPIDAPI_COL_URL, headers=headers, data=payload, timeout=120)
-        latency = int((time.time() - start) * 1000)
+        r = resilient_post(RAPIDAPI_COL_URL, provider="rapidapi",
+                           headers=headers, data=payload, timeout=120)
 
         if r.status_code != 200:
-            record_api_call("rapidapi", success=False, latency_ms=latency,
-                            error_msg=f"HTTP {r.status_code}")
             return None, f"API returned HTTP {r.status_code}: {r.text[:200]}"
 
         raw = r.json()
-        record_api_call("rapidapi", success=True, latency_ms=latency)
 
         if "message" in raw and isinstance(raw["message"], str):
             return None, raw["message"]
@@ -306,8 +291,6 @@ def fetch_city_details(city_names=None):
         return merged, None
 
     except Exception as e:
-        latency = int((time.time() - start) * 1000)
-        record_api_call("rapidapi", success=False, latency_ms=latency, error_msg=str(e)[:80])
         return None, str(e)
 
 
@@ -318,8 +301,6 @@ def fetch_all_global_details(batch_size=50):
     Saves raw + normalized data after all batches complete.
     Returns (normalized_cities_list, error_string_or_None).
     """
-    from services.api_health import record_api_call
-
     key = _get_rapidapi_key()
     if not key:
         return None, "No RapidAPI key configured."
@@ -358,17 +339,15 @@ def fetch_all_global_details(batch_size=50):
         }
         start = time.time()
         try:
-            r = http_requests.post(RAPIDAPI_COL_URL, headers=headers, data=payload, timeout=120)
+            r = resilient_post(RAPIDAPI_COL_URL, provider="rapidapi",
+                               headers=headers, data=payload, timeout=120)
             latency = int((time.time() - start) * 1000)
 
             if r.status_code != 200:
-                record_api_call("rapidapi", success=False, latency_ms=latency,
-                                error_msg=f"HTTP {r.status_code}")
                 print(f"[COL] Batch {idx + 1} failed: HTTP {r.status_code}")
                 continue  # Skip failed batch, keep going
 
             raw = r.json()
-            record_api_call("rapidapi", success=True, latency_ms=latency)
 
             if "message" in raw and isinstance(raw["message"], str):
                 print(f"[COL] Batch {idx + 1} error: {raw['message']}")
@@ -380,8 +359,6 @@ def fetch_all_global_details(batch_size=50):
             print(f"[COL] Batch {idx + 1} OK: {len(raw_cities)} cities in {latency}ms")
 
         except Exception as e:
-            latency = int((time.time() - start) * 1000)
-            record_api_call("rapidapi", success=False, latency_ms=latency, error_msg=str(e)[:80])
             print(f"[COL] Batch {idx + 1} exception: {e}")
             continue
 

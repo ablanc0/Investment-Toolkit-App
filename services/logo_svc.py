@@ -4,9 +4,9 @@ Downloads logos from Elbstream API (primary) with FMP CDN fallback.
 Caches as files on disk. Always requests PNG at 250px for retina quality.
 """
 
-import time
 from pathlib import Path
-import requests as http_requests
+
+from services.http_client import resilient_get
 
 LOGO_DIR = Path(__file__).resolve().parent.parent / "data" / "logos"
 ELBSTREAM_URL = "https://api.elbstream.com/logos/symbol"
@@ -42,30 +42,26 @@ def get_logo_path(ticker):
 
 def _fetch_elbstream(ticker):
     """Try Elbstream API. Returns (Path, mimetype) or None."""
-    from services.api_health import record_api_call
-    start = time.time()
     try:
-        resp = http_requests.get(
+        resp = resilient_get(
             f"{ELBSTREAM_URL}/{ticker}",
+            provider="elbstream",
             params={"format": "png", "size": 250},
             timeout=10,
         )
-        latency = int((time.time() - start) * 1000)
         if resp.status_code == 200 and len(resp.content) > 100:
             path = LOGO_DIR / f"{ticker}.png"
             path.write_bytes(resp.content)
-            record_api_call("elbstream", success=True, latency_ms=latency)
             return path, "image/png"
-        record_api_call("elbstream", success=False, latency_ms=latency, error_msg=f"HTTP {resp.status_code}")
-    except Exception as e:
-        record_api_call("elbstream", success=False, latency_ms=int((time.time() - start) * 1000), error_msg=str(e)[:80])
+    except Exception:
+        pass
     return None
 
 
 def _fetch_fmp(ticker):
     """Try FMP image CDN (no API key). Returns (Path, mimetype) or None."""
     try:
-        resp = http_requests.get(f"{FMP_IMAGE_URL}/{ticker}.png", timeout=10)
+        resp = resilient_get(f"{FMP_IMAGE_URL}/{ticker}.png", provider="fmp", timeout=10)
         if resp.status_code == 200 and len(resp.content) > 100:
             path = LOGO_DIR / f"{ticker}.png"
             path.write_bytes(resp.content)

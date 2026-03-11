@@ -10,9 +10,8 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 from datetime import datetime
 
-import requests as http_requests
-
 from config import SUPER_INVESTORS, EDGAR_USER_AGENT, _13F_HISTORY_FILE
+from services.http_client import resilient_get, resilient_post
 
 _13f_history = {}  # investor_key -> {fund, cik, quarters: [{quarter, filingDate, totalValue, ...}]}
 _13f_progress = {"done": 0, "total": 0, "current": "", "results": {}, "running": False}
@@ -133,20 +132,9 @@ def _append_to_history(investor_key, result):
 
 def _edgar_request(url, timeout=15):
     """HTTP GET to SEC EDGAR with retry and rate-limit compliance."""
-    for attempt in range(3):
-        try:
-            time.sleep(0.15)  # SEC fair access: max 10 req/sec
-            r = http_requests.get(url, headers={"User-Agent": EDGAR_USER_AGENT}, timeout=timeout)
-            if r.status_code == 429:
-                time.sleep(10)
-                continue
-            r.raise_for_status()
-            return r
-        except http_requests.exceptions.RequestException:
-            if attempt == 2:
-                raise
-            time.sleep(2)
-    return None
+    time.sleep(0.15)  # SEC fair access: max 10 req/sec
+    return resilient_get(url, provider="edgar",
+                         headers={"User-Agent": EDGAR_USER_AGENT}, timeout=timeout)
 
 
 def _fetch_13f_latest(cik):
@@ -252,29 +240,23 @@ def _openfigi_batch(cusip_list, id_type="ID_CUSIP"):
     for i in range(0, len(cusip_list), 10):
         batch = cusip_list[i:i+10]
         body = [{"idType": id_type, "idValue": c} for c in batch]
-        for attempt in range(3):
-            try:
-                r = http_requests.post(
-                    "https://api.openfigi.com/v3/mapping",
-                    json=body,
-                    headers={"Content-Type": "application/json"},
-                    timeout=30,
-                )
-                if r.status_code == 200:
-                    results = r.json()
-                    for j, item in enumerate(results):
-                        if isinstance(item, dict) and "data" in item and item["data"]:
-                            entries = item["data"]
-                            us_entry = next((e for e in entries if e.get("exchCode") == "US"), None)
-                            chosen = us_entry or entries[0]
-                            ticker_map[batch[j]] = chosen.get("ticker", "")
-                    break
-                elif r.status_code == 429:
-                    time.sleep(30)  # wait for rate limit reset
-                else:
-                    break
-            except Exception:
-                break
+        try:
+            r = resilient_post(
+                "https://api.openfigi.com/v3/mapping",
+                json=body,
+                headers={"Content-Type": "application/json"},
+                timeout=30,
+            )
+            if r.status_code == 200:
+                results = r.json()
+                for j, item in enumerate(results):
+                    if isinstance(item, dict) and "data" in item and item["data"]:
+                        entries = item["data"]
+                        us_entry = next((e for e in entries if e.get("exchCode") == "US"), None)
+                        chosen = us_entry or entries[0]
+                        ticker_map[batch[j]] = chosen.get("ticker", "")
+        except Exception:
+            pass  # Skip failed batch, continue with next
         batch_count += 1
         # Rate limit: 25 req/min for unauthenticated. Pause every 20 batches.
         if batch_count % 20 == 0:

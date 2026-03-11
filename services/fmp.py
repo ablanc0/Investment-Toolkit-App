@@ -3,12 +3,9 @@ InvToolkit — Financial Modeling Prep (FMP) API helpers.
 Fetches financial statements, DCF, benchmarks, and FRED AAA yield.
 """
 
-import time
-
-import requests as http_requests
-
 from config import FMP_API_KEY, FMP_BASE, AAA_YIELD_CURRENT
 from services.data_store import get_settings
+from services.http_client import resilient_get
 
 
 def _get_fmp_key():
@@ -22,21 +19,17 @@ def _fmp_get(endpoint, **params):
     """Call FMP stable API. Returns parsed JSON or None on error."""
     from services.api_health import record_api_call
     params["apikey"] = _get_fmp_key()
-    start = time.time()
     try:
-        r = http_requests.get(f"{FMP_BASE}/{endpoint}", params=params, timeout=15)
-        latency = int((time.time() - start) * 1000)
+        r = resilient_get(f"{FMP_BASE}/{endpoint}", provider="fmp", params=params, timeout=15)
         data = r.json()
+        # FMP returns 200 with error payload — handle separately
         if isinstance(data, dict) and "Error Message" in data:
             print(f"[FMP] Error on {endpoint}: {data['Error Message'][:80]}")
-            record_api_call("fmp", success=False, latency_ms=latency, error_msg=data["Error Message"][:80])
+            record_api_call("fmp", success=False, error_msg=data["Error Message"][:80])
             return None
-        record_api_call("fmp", success=True, latency_ms=latency)
         return data
     except Exception as e:
-        latency = int((time.time() - start) * 1000)
         print(f"[FMP] Request failed for {endpoint}: {e}")
-        record_api_call("fmp", success=False, latency_ms=latency, error_msg=str(e)[:80])
         return None
 
 
@@ -85,21 +78,16 @@ def _fetch_fred_aaa_yield():
     Returns (value, date_str) e.g. (5.30, '2026-02-01').
     """
     from services.api_health import record_api_call
-    start = time.time()
     try:
         url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=AAA&cosd=2025-01-01"
-        r = http_requests.get(url, timeout=10)
-        latency = int((time.time() - start) * 1000)
+        r = resilient_get(url, provider="fred", timeout=10)
         lines = r.text.strip().split("\n")
         if len(lines) >= 2:
             parts = lines[-1].split(",")
-            record_api_call("fred", success=True, latency_ms=latency)
             return float(parts[1]), parts[0]
-        record_api_call("fred", success=False, latency_ms=latency, error_msg="No data rows in response")
+        record_api_call("fred", success=False, error_msg="No data rows in response")
     except Exception as e:
-        latency = int((time.time() - start) * 1000)
         print(f"[FRED] Failed to fetch AAA yield: {e}")
-        record_api_call("fred", success=False, latency_ms=latency, error_msg=str(e)[:80])
     return AAA_YIELD_CURRENT, None  # fallback to constant
 
 
