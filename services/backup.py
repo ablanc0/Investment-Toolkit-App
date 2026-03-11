@@ -17,10 +17,11 @@ from config import BASE_DIR, DATA_DIR
 BACKUP_DIR = BASE_DIR / "backups"
 BACKUP_FILES = [
     "portfolio.json",
-    "cache.json",
     "analyzer.json",
-    "13f_history.json",
     "Investments Toolkit-v1.0.xlsx",
+    # Excluded from git backup (still copied locally as safety net):
+    #   cache.json — ephemeral TTL cache, auto-regenerated
+    #   13f_history.json — 50+ MB, grows quarterly, too large for git
 ]
 DEBOUNCE_SECONDS = 30
 

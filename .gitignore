@@ -35,3 +35,6 @@ docs/_build/
 !backups/
 !backups/*.json
 !backups/*.xlsx
+# Exclude large/ephemeral files from git backup
+backups/13f_history.json
+backups/cache.json
