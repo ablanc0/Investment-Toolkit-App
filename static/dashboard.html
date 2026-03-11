@@ -672,8 +672,18 @@
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
                     <div class="card-title" style="margin-bottom: 0;">💎 Intrinsic Values List</div>
+                    <button id="ivRefreshAllBtn" class="add-row-btn" onclick="refreshAllIV()" style="border-color: var(--accent); color: var(--accent);">🔄 Refresh All</button>
                     <p style="color:var(--text-dim); font-size:11px; margin:4px 0 0 0;">Fair value estimates from DCF, Graham, and relative valuation models. Distance shows how far the current price is from your estimated intrinsic value.</p>
                     <div id="ivKpis" style="display: flex; gap: 16px; font-size: 0.85rem;"></div>
+                </div>
+                <div id="ivRefreshProgress" style="display:none; margin-bottom:16px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                        <span id="ivRefreshStatus" style="font-size:13px; color:var(--text-dim);"></span>
+                        <span id="ivRefreshCount" style="font-size:13px; color:var(--text-dim);"></span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="ivRefreshFill" style="width:0%;"></div>
+                    </div>
                 </div>
                 <div class="table-wrapper"><table style="font-size: 0.82rem;">
                     <thead><tr>
