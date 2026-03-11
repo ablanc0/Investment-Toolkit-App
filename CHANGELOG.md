@@ -6,7 +6,20 @@ All notable changes to InvToolkit will be documented in this file.
 
 
 
+## 2026-03-11
+- 🟩 Feature bulk refresh IV list values and scores
+- 🟧 Fix grant write permissions to changelog workflow
+- 🟧 Fix use server-provided IV signal in watchlist and alerts
+
+
 ## 2026-03-10
+- 🟩 Feature enhance watchlist tab with KPIs, inline editing, and IV signals
+- 🟦 Enhancement visually separate totals/summary rows and fix sticky column backgrounds
+- 🟩 Feature add CI pipeline with Python/JS linting and Sphinx docs build
+- ⬜ Documentation remove invt-changelog agent, replaced by GitHub Action
+- 🟧 Fix trigger changelog update on PR merge instead of push
+- 🟩 Feature add GitHub Action to auto-update changelog on push to main
+- ⬜ Documentation update changelog
 - 🟩 Feature automated changelog with git-cliff
 - 🟦 Enhancement toggle research/portfolio views in My Lab
 - 🟩 Feature add In Portfolio column to My Lab Most Held Tickers table
