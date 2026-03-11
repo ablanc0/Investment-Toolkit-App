@@ -186,3 +186,10 @@ def api_health_check():
     """Run health checks against all APIs and return results."""
     from services.api_health import run_health_check
     return jsonify(run_health_check())
+
+
+@bp.route("/api/health/fmp-quota")
+def api_fmp_quota():
+    """Return current FMP API quota state."""
+    from services.api_health import get_fmp_quota
+    return jsonify(get_fmp_quota())

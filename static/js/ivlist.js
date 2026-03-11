@@ -66,3 +66,154 @@ function renderIntrinsicValues(items) {
         <td></td>
     </tr>`;
 }
+
+// ── Bulk Refresh All IV Tickers ──
+let _ivRefreshAbort = false;
+
+async function refreshAllIV() {
+    // Get current IV list tickers
+    let items;
+    try {
+        const data = await fetch('/api/intrinsic-values').then(r => r.json());
+        items = (data.intrinsicValues || []).filter(i => i.ticker && i.ticker.length <= 5);
+    } catch (e) {
+        showSaveToast('Failed to load IV list', true);
+        return;
+    }
+
+    if (items.length === 0) {
+        showSaveToast('No tickers in IV list');
+        return;
+    }
+
+    // Check FMP quota
+    try {
+        const quota = await fetch('/api/health/fmp-quota').then(r => r.json());
+        if (quota.remaining < 50) {
+            if (!confirm(`FMP API quota is low: ${quota.remaining}/${quota.limit} remaining today.\n\nEach ticker uses ~4-9 FMP calls. Continue anyway?`)) {
+                return;
+            }
+        }
+    } catch (e) {
+        console.warn('[iv-refresh] Could not check FMP quota:', e);
+    }
+
+    // Setup UI
+    _ivRefreshAbort = false;
+    const btn = document.getElementById('ivRefreshAllBtn');
+    const progress = document.getElementById('ivRefreshProgress');
+    const status = document.getElementById('ivRefreshStatus');
+    const count = document.getElementById('ivRefreshCount');
+    const fill = document.getElementById('ivRefreshFill');
+
+    btn.textContent = '⏹ Stop';
+    btn.style.borderColor = 'var(--red)';
+    btn.style.color = 'var(--red)';
+    btn.onclick = () => { _ivRefreshAbort = true; };
+    progress.style.display = '';
+
+    const total = items.length;
+    let success = 0;
+    let errors = 0;
+    const errorTickers = [];
+
+    for (let i = 0; i < total; i++) {
+        if (_ivRefreshAbort) {
+            status.textContent = 'Stopped by user';
+            break;
+        }
+
+        const ticker = items[i].ticker;
+        const pct = Math.round(((i + 1) / total) * 100);
+        status.textContent = `Refreshing ${ticker}...`;
+        count.textContent = `${i + 1} / ${total}`;
+        fill.style.width = pct + '%';
+
+        try {
+            // Step 1: Stock Analyzer (full refresh)
+            const analyzerResp = await fetch(`/api/stock-analyzer/${ticker}?refresh=true`);
+            if (!analyzerResp.ok) throw new Error(`Analyzer ${analyzerResp.status}`);
+            const d = await analyzerResp.json();
+            if (d.error) throw new Error(d.error);
+
+            // Step 2: InvT Score (full refresh)
+            const scoreResp = await fetch(`/api/invt-score/${ticker}?refresh=true`);
+            let invtScore = '';
+            if (scoreResp.ok) {
+                const scoreData = await scoreResp.json();
+                if (!scoreData.error) invtScore = scoreData;
+            }
+
+            // Step 3: Build upsert body (mirrors analyzer.js saveCompositeIvToList)
+            const s = d.valuation?.summary;
+            const compositeIv = s?.compositeIv || 0;
+            const signal = compositeIv > 0 && d.price > 0
+                ? (d.price <= compositeIv * 0.85 ? 'Strong Buy'
+                    : d.price < compositeIv ? 'Buy'
+                    : d.price <= compositeIv * 1.15 ? 'Expensive'
+                    : 'Overrated')
+                : '';
+
+            const body = {
+                ticker: d.ticker || d.symbol || ticker,
+                companyName: d.name || d.shortName || d.companyName || '',
+                currentPrice: d.price || 0,
+                intrinsicValue: compositeIv,
+                targetPrice: d.targetMeanPrice || 0,
+                week52Low: d.fiftyTwoWeekLow || 0,
+                week52High: d.fiftyTwoWeekHigh || 0,
+                sector: d.sector || '',
+                category: s?.category || items[i].category || '',
+                peRatio: d.trailingPE || 0,
+                eps: d.earningsPerShare || d.trailingEps || 0,
+                annualDividend: d.dividendRate || 0,
+                dividendYield: d.dividendYield || 0,
+                signal: signal,
+                invtScore: invtScore,
+            };
+
+            // Step 4: Upsert to IV list
+            const upsertResp = await fetch('/api/intrinsic-values/upsert', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (!upsertResp.ok) throw new Error(`Upsert ${upsertResp.status}`);
+
+            success++;
+        } catch (e) {
+            console.error(`[iv-refresh] ${ticker} failed:`, e);
+            errors++;
+            errorTickers.push(ticker);
+        }
+
+        // Rate limit delay (1 second between tickers)
+        if (i < total - 1 && !_ivRefreshAbort) {
+            await new Promise(r => setTimeout(r, 1000));
+        }
+    }
+
+    // Reset UI
+    btn.textContent = '🔄 Update IV';
+    btn.style.borderColor = 'var(--accent)';
+    btn.style.color = 'var(--accent)';
+    btn.onclick = refreshAllIV;
+
+    // Show result
+    fill.style.width = '100%';
+    const msg = errors > 0
+        ? `Refreshed ${success}/${total} — ${errors} error(s): ${errorTickers.join(', ')}`
+        : `Refreshed ${success}/${total} successfully`;
+    status.textContent = msg;
+    count.textContent = '';
+    showSaveToast(errors > 0 ? `${success} refreshed, ${errors} errors` : `All ${success} tickers refreshed`);
+
+    // Re-fetch IV list to update the table
+    await fetchIntrinsicValues();
+
+    // Hide progress after 5 seconds
+    setTimeout(() => {
+        progress.style.display = 'none';
+        fill.style.width = '0%';
+    }, 5000);
+}
