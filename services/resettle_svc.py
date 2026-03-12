@@ -36,7 +36,7 @@ def search_place(city_name, country_code=None):
     try:
         r = resilient_get(
             f"{RESETTLE_API_BASE}/place/search",
-            provider="rapidapi",
+            provider="resettle",
             headers=headers,
             params=params,
             timeout=15,
@@ -81,7 +81,7 @@ def fetch_cost_of_living(place_id):
     try:
         r = resilient_get(
             f"{RESETTLE_API_BASE}/place/query/cost-of-living",
-            provider="rapidapi",
+            provider="resettle",
             headers=headers,
             params=params,
             timeout=20,

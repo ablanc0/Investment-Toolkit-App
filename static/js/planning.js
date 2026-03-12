@@ -345,6 +345,9 @@ function renderDataSourceLine(matchedCity) {
         opts += `<option value="stateAvg" ${sel}>${label} — COL ${avgCol}, $${avgCosts.toLocaleString()}/mo</option>`;
     }
 
+    // Search Online option
+    opts += `<option value="searchOnline">Search Online</option>`;
+
     // Manual option
     const manualSel = colSource === 'manual' ? 'selected' : '';
     opts += `<option value="manual" ${manualSel}>Enter manually</option>`;
@@ -371,9 +374,11 @@ function renderDataSourceLine(matchedCity) {
 
     // Resolved footer
     if (resolvedCosts != null) {
+        const resolvedPpi = colConfig.homePurchasingPower;
         html += `<div style="margin-top:4px; font-size:0.72rem; color:var(--text-dim);">
             Resolved: <strong style="color:#4ade80;">$${resolvedCosts.toLocaleString()}/mo</strong>
             ${resolvedCol != null ? ` · COL <strong style="color:#4ade80;">${resolvedCol}</strong>` : ''}
+            ${resolvedPpi != null ? ` · PPI <strong style="color:#f59e0b;">${resolvedPpi}</strong>` : ''}
         </div>`;
     }
 
@@ -498,7 +503,10 @@ async function saveEditManualCity() {
 }
 
 function onDataSourceChange(value) {
-    if (value === 'manual') {
+    if (value === 'searchOnline') {
+        searchHomeCity();
+        return;
+    } else if (value === 'manual') {
         updateCOLConfig('homeColSource', 'manual');
     } else if (value === 'stateAvg') {
         updateCOLConfig('homeColSource', 'stateAvg');
@@ -519,6 +527,57 @@ function onDataSourceChange(value) {
                 showSaveToast('Data source: ' + cityName);
             }
         }).catch(e => console.error(e));
+    }
+}
+
+async function searchHomeCity() {
+    const cityName = (colConfig.homeCityName || '').trim();
+    if (!cityName) { showAlert('Enter a city name first', 'error'); renderCOLConfig(); return; }
+    const country = colConfig.homeCountry || '';
+    // Show searching state in the config area
+    const configArea = document.getElementById('homeDataSourceLine');
+    if (configArea) {
+        configArea.innerHTML = `<div style="padding:8px; font-size:0.82rem; color:var(--text-muted);"><span class="spinner" style="display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.6s linear infinite; vertical-align:middle; margin-right:6px;"></span>Searching online for "${cityName}"...</div>`;
+    }
+    try {
+        const resp = await fetch('/api/cost-of-living/fetch-city', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ city: cityName, country_code: country, force: true })
+        });
+        const data = await resp.json();
+        if (data.quota) updateQuotaDisplay(data.quota);
+        if (data.ok && data.city) {
+            const city = data.city;
+            // Update local cache
+            const idx = colApiCities.findIndex(c => c.name.toLowerCase() === city.name.toLowerCase());
+            if (idx >= 0) colApiCities[idx] = city; else colApiCities.push(city);
+            // Set as proxy source
+            const cfgResp = await fetch('/api/cost-of-living/config/update', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ homeProxyCity: city.name, homeColSource: 'proxy' })
+            }).then(r => r.json());
+            if (cfgResp.ok) {
+                colConfig = cfgResp.colConfig;
+                allCOLData = cfgResp.costOfLiving;
+                renderCOLConfig(); renderCOLKpis(); renderCOLChart();
+                const activeType = document.querySelector('#colFilters .filter-btn.active');
+                filterCOL(activeType?.dataset?.type || 'all');
+            }
+            showSaveToast(`${city.name} found — COL ${city.colIndex || '?'}, $${(city.monthlyCostsNoRent || 0).toLocaleString()}/mo`);
+        } else {
+            const msg = data.message || 'City not found online';
+            if (configArea) {
+                configArea.innerHTML = `<div style="padding:8px; font-size:0.82rem; color:#f87171;">${msg}</div>`;
+                setTimeout(() => renderCOLConfig(), 3000);
+            } else {
+                showAlert(msg, 'error');
+                renderCOLConfig();
+            }
+        }
+    } catch(e) {
+        console.error('[COL] Home city search failed:', e);
+        showAlert('Search failed — try again', 'error');
+        renderCOLConfig();
     }
 }
 
