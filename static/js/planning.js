@@ -34,7 +34,10 @@ function renderCOLConfig() {
     if (!div) return;
 
     const homeName = colConfig.homeCityName || '';
-    const matchedCity = colApiCities.find(c => c.name.toLowerCase() === homeName.toLowerCase().trim());
+    const _matchName = homeName.toLowerCase().trim();
+    const _matchedAll = colApiCities.filter(c => c.name.toLowerCase() === _matchName);
+    const apiMatch = _matchedAll.find(c => c.source !== 'manual');
+    const manualMatch = _matchedAll.find(c => c.source === 'manual');
 
     // ── Salary section ──
     const source = colConfig.referenceSalarySource || 'manual';
@@ -72,7 +75,7 @@ function renderCOLConfig() {
                         ${renderStateSelector()}
                     </div>
                 </div>
-                <div id="homeDataSourceLine">${renderDataSourceLine(matchedCity)}</div>
+                <div id="homeDataSourceLine">${renderDataSourceLine(apiMatch, manualMatch)}</div>
                 <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:10px;">
                     <div><label class="form-label" style="font-size:0.72rem;">Your Rent/mo</label>
                         <input type="number" value="${colConfig.currentRent || 0}" class="form-input"
@@ -115,7 +118,7 @@ function renderCOLConfig() {
         </div>
         <div style="margin-top:8px; font-size:0.75rem; color:var(--text-dim);">
             ${colApiMeta.fetchedAt
-                ? `<span style="color:#4ade80;">&#9679;</span> ${colApiMeta.cityCount} cities in database${colApiMeta.totalKnownCities ? ' / ' + colApiMeta.totalKnownCities + ' global' : ''} (updated ${new Date(colApiMeta.fetchedAt).toLocaleDateString()})`
+                ? `<span style="color:#4ade80;">&#9679;</span> ${colApiMeta.cityCount} cities in database (updated ${new Date(colApiMeta.fetchedAt).toLocaleDateString()})`
                 : '<span style="color:#64748b;">&#9679;</span> No API data — click "Refresh API Data" to fetch'}
         </div>`;
 }
@@ -259,24 +262,40 @@ function renderStateSelector() {
 }
 
 // ── Data source line + selector ──
-function renderDataSourceLine(matchedCity) {
+function renderDataSourceLine(apiMatch, manualMatch) {
     const resolvedCosts = colConfig.homeMonthlyCosts;
     const resolvedCol = colConfig.homeColIndex;
     const colSource = colConfig.homeColSource || 'manual';
 
-    // City found in DB — green status
-    if (matchedCity) {
-        const loc = matchedCity.state && matchedCity.state !== 'N/A'
-            ? `${matchedCity.state}, ${matchedCity.country}` : matchedCity.country || '';
-        const srcTag = matchedCity.source === 'manual'
-            ? ' <span style="color:#f59e0b;">(manual)</span>' : '';
-        const editLabel = matchedCity.source === 'manual' ? 'edit' : 'edit (creates manual entry)';
-        let html = `<div style="padding:6px 8px; background:#22c55e10; border:1px solid #22c55e30; border-radius:6px; font-size:0.75rem;">
-            <span style="color:#4ade80; font-weight:600;">✓ ${matchedCity.name}, ${loc}</span>${srcTag}
-            <span style="color:var(--text-dim);"> — COL ${matchedCity.colIndex} · $${matchedCity.monthlyCostsNoRent?.toLocaleString()}/mo · Salary $${(matchedCity.avgNetSalary || 0).toLocaleString()}/mo</span>
-            <a href="#" onclick="toggleEditManualCity(); return false;" style="color:var(--accent); font-size:0.7rem; margin-left:6px;">${editLabel}</a>
-        </div>`;
-        // Compute state avg salary for the selector
+    // City found in DB — show entry line(s)
+    if (apiMatch || manualMatch) {
+        let html = '';
+        const _loc = (c) => c.state && c.state !== 'N/A' ? `${c.state}, ${c.country}` : c.country || '';
+
+        // API/Resettle entry — green, edit only (creates manual copy)
+        if (apiMatch) {
+            const srcLabel = apiMatch.source === 'resettle' ? 'Resettle' : 'API';
+            html += `<div style="padding:6px 8px; background:#22c55e10; border:1px solid #22c55e30; border-radius:6px; font-size:0.75rem;">
+                <span style="color:#4ade80; font-weight:600;">✓ ${apiMatch.name}, ${_loc(apiMatch)}</span>
+                <span style="font-size:0.65rem; color:#60a5fa; margin-left:4px;">(${srcLabel})</span>
+                <span style="color:var(--text-dim);"> — COL ${apiMatch.colIndex} · $${apiMatch.monthlyCostsNoRent?.toLocaleString()}/mo · Salary $${(apiMatch.avgNetSalary || 0).toLocaleString()}/mo</span>
+                <a href="#" onclick="toggleEditManualCity(); return false;" style="color:var(--accent); font-size:0.7rem; margin-left:6px;">edit (creates manual entry)</a>
+            </div>`;
+        }
+
+        // Manual entry — amber, edit + delete
+        if (manualMatch) {
+            html += `<div style="padding:6px 8px; background:#f59e0b10; border:1px solid #f59e0b30; border-radius:6px; font-size:0.75rem;${apiMatch ? ' margin-top:4px;' : ''}">
+                <span style="color:#f59e0b; font-weight:600;">✎ ${manualMatch.name}, ${_loc(manualMatch)}</span>
+                <span style="font-size:0.65rem; color:#f59e0b; margin-left:4px;">(manual)</span>
+                <span style="color:var(--text-dim);"> — COL ${manualMatch.colIndex} · $${manualMatch.monthlyCostsNoRent?.toLocaleString()}/mo · Salary $${(manualMatch.avgNetSalary || 0).toLocaleString()}/mo</span>
+                <a href="#" onclick="toggleEditManualCity(); return false;" style="color:var(--accent); font-size:0.7rem; margin-left:6px;">edit</a>
+                <a href="#" onclick="deleteHomeCityManual('${manualMatch.name.replace(/'/g, "\\'")}'); return false;" style="color:#f87171; font-size:0.7rem; margin-left:6px;">delete</a>
+            </div>`;
+        }
+
+        // Edit form — pre-fill from manual entry if exists, else API entry
+        const editCity = manualMatch || apiMatch;
         const homeState = (colConfig.homeState || '').toLowerCase();
         const homeCountry = (colConfig.homeCountry || '').toLowerCase();
         const stateSalaryCities = colApiCities.filter(c =>
@@ -288,11 +307,11 @@ function renderDataSourceLine(matchedCity) {
             ? Math.round(stateSalaryCities.reduce((s, c) => s + c.avgNetSalary, 0) / stateSalaryCities.length)
             : 0;
         const userMonthlySalary = Math.round((colConfig.referenceSalary || 0) / 12);
-        const currentSalary = matchedCity.avgNetSalary || stateAvgSalary || userMonthlySalary || 0;
+        const currentSalary = editCity.avgNetSalary || stateAvgSalary || userMonthlySalary || 0;
         html += `<div id="editManualCityFields" style="display:none; margin-top:6px; padding:8px; background:var(--card-hover); border-radius:6px;">
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
                 <div><label class="form-label" style="font-size:0.68rem;">Costs/mo (no rent)</label>
-                    <input type="number" id="editManualCosts" value="${matchedCity.monthlyCostsNoRent || ''}" class="form-input"
+                    <input type="number" id="editManualCosts" value="${editCity.monthlyCostsNoRent || ''}" class="form-input"
                         style="width:100%; font-size:0.78rem; padding:4px 8px;" oninput="updateEditPreview()"></div>
                 <div><label class="form-label" style="font-size:0.68rem;">Avg Net Salary/mo (for PPI)</label>
                     <select id="editManualSalarySource" class="form-input" style="width:100%; font-size:0.72rem; padding:4px 8px; margin-bottom:4px;"
@@ -316,32 +335,43 @@ function renderDataSourceLine(matchedCity) {
     // City NOT in DB — show data source selector
     const homeState = (colConfig.homeState || '').toLowerCase();
     const homeCountry = (colConfig.homeCountry || '').toLowerCase();
-    // Filter by country first, then exact state match
-    const countryCities = homeCountry
+    // All cities matching country/state (for individual options — includes manual)
+    const allCountryCities = homeCountry
         ? colApiCities.filter(c => (c.country || '').toLowerCase() === homeCountry)
-        : colApiCities;
-    const stateCities = homeState
-        ? countryCities.filter(c => (c.state || '').toLowerCase() === homeState).sort((a, b) => a.name.localeCompare(b.name))
+        : [...colApiCities];
+    const allStateCities = homeState
+        ? allCountryCities.filter(c => (c.state || '').toLowerCase() === homeState).sort((a, b) => a.name.localeCompare(b.name))
         : [];
-    // If no state match but we have country cities, offer all country cities as proxies
-    const proxyCities = stateCities.length > 0 ? stateCities : countryCities.sort((a, b) => a.name.localeCompare(b.name));
+    const proxyCities = allStateCities.length > 0 ? allStateCities : allCountryCities.sort((a, b) => a.name.localeCompare(b.name));
+    // API-only cities for average calculation (exclude manual)
+    const apiProxyCities = proxyCities.filter(c => c.source !== 'manual');
 
-    // Build <select> options: proxy cities + average + manual
+    // "Not found" hint
+    const homeName = (colConfig.homeCityName || '').trim();
+    let html = '';
+    if (homeName) {
+        html += `<div style="padding:6px 8px; margin-bottom:6px; background:#f8717110; border:1px solid #f8717130; border-radius:6px; font-size:0.72rem; color:#f87171;">
+            "${homeName}" not found in database — select a data source below: use a nearby city as proxy, search online, or enter costs manually.
+        </div>`;
+    }
+
+    // Build <select> options: proxy cities + average + search + manual
     let opts = '';
     const proxyCity = (colConfig.homeProxyCity || '').toLowerCase();
 
-    // Proxy city options
+    // Proxy city options (all sources, label manual ones)
     proxyCities.forEach(c => {
         const sel = colSource === 'proxy' && c.name.toLowerCase() === proxyCity ? 'selected' : '';
-        opts += `<option value="proxy:${c.name}" ${sel}>${c.name} — COL ${c.colIndex}, $${c.monthlyCostsNoRent?.toLocaleString()}/mo</option>`;
+        const tag = c.source === 'manual' ? ' (manual)' : '';
+        opts += `<option value="proxy:${c.name}" ${sel}>${c.name}${tag} — COL ${c.colIndex}, $${c.monthlyCostsNoRent?.toLocaleString()}/mo</option>`;
     });
 
-    // Average option (only if multiple proxy cities)
-    if (proxyCities.length > 1) {
-        const avgCol = (proxyCities.reduce((s, c) => s + (c.colIndex || 0), 0) / proxyCities.length).toFixed(1);
-        const avgCosts = Math.round(proxyCities.reduce((s, c) => s + (c.monthlyCostsNoRent || 0), 0) / proxyCities.length);
+    // Average option (API cities only — exclude manual)
+    if (apiProxyCities.length > 1) {
+        const avgCol = (apiProxyCities.reduce((s, c) => s + (c.colIndex || 0), 0) / apiProxyCities.length).toFixed(1);
+        const avgCosts = Math.round(apiProxyCities.reduce((s, c) => s + (c.monthlyCostsNoRent || 0), 0) / apiProxyCities.length);
         const sel = colSource === 'stateAvg' ? 'selected' : '';
-        const label = stateCities.length > 0 ? `Average (${proxyCities.length} cities)` : `Country average (${proxyCities.length} cities)`;
+        const label = allStateCities.length > 0 ? `API average (${apiProxyCities.length} cities)` : `Country API average (${apiProxyCities.length} cities)`;
         opts += `<option value="stateAvg" ${sel}>${label} — COL ${avgCol}, $${avgCosts.toLocaleString()}/mo</option>`;
     }
 
@@ -352,7 +382,7 @@ function renderDataSourceLine(matchedCity) {
     const manualSel = colSource === 'manual' ? 'selected' : '';
     opts += `<option value="manual" ${manualSel}>Enter manually</option>`;
 
-    let html = `<div style="margin-bottom:4px;">
+    html += `<div style="margin-bottom:4px;">
         <label class="form-label" style="font-size:0.72rem;">Data Source</label>
         <select class="form-input" style="width:100%; font-size:0.78rem;" onchange="onDataSourceChange(this.value)">
             ${opts}
@@ -500,6 +530,25 @@ async function saveEditManualCity() {
             showAlert(data.error || 'Save failed', 'error');
         }
     } catch(e) { showAlert('Save failed: ' + e.message, 'error'); }
+}
+
+async function deleteHomeCityManual(cityName) {
+    try {
+        const resp = await fetch('/api/cost-of-living/delete-manual-city', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name: cityName })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            showSaveToast(`Manual entry for ${cityName} deleted`);
+            const apiResp = await fetch('/api/cost-of-living/api-cities?include_global=1').then(r => r.json()).catch(() => ({ cities: [] }));
+            colApiCities = apiResp.cities || [];
+            colApiMeta = apiResp.meta || {};
+            fetchCostOfLiving();
+        } else {
+            showAlert(data.error || 'Delete failed', 'error');
+        }
+    } catch(e) { showAlert('Delete failed: ' + e.message, 'error'); }
 }
 
 function onDataSourceChange(value) {

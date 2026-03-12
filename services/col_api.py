@@ -83,12 +83,19 @@ def get_col_metadata():
     """Return metadata about the stored COL data."""
     global_list = _col_data.get("globalCityList", [])
     countries = set(c.get("country", "") for c in global_list if isinstance(c, dict))
+    cities = _col_data.get("cities", [])
+    # Last updated = most recent lastUpdated across all cities (includes Resettle/manual)
+    last_updated = _col_data.get("fetchedAt")
+    for c in cities:
+        lu = c.get("lastUpdated", "")
+        if lu and (not last_updated or lu > last_updated):
+            last_updated = lu
     return {
-        "cityCount": len(_col_data.get("cities", [])),
+        "cityCount": len(cities),
         "totalKnownCities": len(global_list),
         "totalCountries": len(countries),
         "usCityCount": len(_col_data.get("cityNames", [])),
-        "fetchedAt": _col_data.get("fetchedAt"),
+        "fetchedAt": last_updated,
         "newCitiesAdded": _col_data.get("newCitiesAdded", 0),
     }
 
@@ -472,14 +479,24 @@ def _parse_value(val_str):
 # ── On-demand city lookup (Resettle) ──────────────────────────────────
 
 def _find_city(city_name):
-    """Find a city in stored data by name (case-insensitive, exact then partial)."""
+    """Find a city in stored data by name (case-insensitive, exact then partial).
+
+    Prefers non-manual (API/resettle) entries so that having a manual entry
+    doesn't prevent API lookups or shadow the API data.
+    """
     cities = _col_data.get("cities", [])
     name_lower = city_name.lower().strip()
-    # Exact match
+    # Exact match — prefer non-manual
+    for c in cities:
+        if c["name"].lower() == name_lower and c.get("source") != "manual":
+            return c
     for c in cities:
         if c["name"].lower() == name_lower:
             return c
-    # Partial match
+    # Partial match — prefer non-manual
+    for c in cities:
+        if name_lower in c["name"].lower() and c.get("source") != "manual":
+            return c
     for c in cities:
         if name_lower in c["name"].lower():
             return c
@@ -542,9 +559,9 @@ def _upsert_city(city):
 
     for i, existing in enumerate(cities):
         if existing["name"].lower() == name_lower:
-            # Never overwrite manual entries
+            # Skip manual entries — they coexist with API entries
             if existing.get("source") == "manual":
-                return existing
+                continue
 
             # Inflation heuristic: compare rent1brCity
             existing_rent = float(existing.get("rent1brCity", 0))
