@@ -87,8 +87,8 @@ def _compute_col_entry(entry, config, api_cities=None):
     current_rent = config.get("currentRent", 1458)
     home_costs = float(config.get("homeMonthlyCosts") or 0)
 
-    # For API-sourced entries: derive rent from stored API data
-    if entry.get("source") == "api":
+    # For API/Resettle-sourced entries: derive rent from stored API data
+    if entry.get("source") in ("api", "resettle"):
         api_data = entry.get("apiData", {})
         # Select rent based on bedroomCount + locationType (unless user overrode)
         if not entry.get("rentOverride") and api_data:
@@ -110,15 +110,15 @@ def _compute_col_entry(entry, config, api_cities=None):
     city_rent = float(entry.get("rent", 0))
     city_costs = float(entry.get("monthlyCostsNoRent", 0))
 
-    # Auto-compute COL index for non-API entries from costs
-    if entry.get("source") != "api" and city_costs > 0 and api_cities:
+    # Auto-compute COL index for non-API/Resettle entries from costs
+    if entry.get("source") not in ("api", "resettle") and city_costs > 0 and api_cities:
         nyc = next((c for c in api_cities if c["name"].lower() == "new york"), None)
         nyc_costs = float(nyc.get("monthlyCostsNoRent", 1728)) if nyc else 1728.0
         if nyc_costs > 0:
             entry["colIndex"] = round((city_costs / nyc_costs) * 100, 1)
 
-    # Auto-compute PPI for non-API entries using colPlusRentIndex (Numbeo-compatible)
-    if entry.get("source") != "api" and api_cities:
+    # Auto-compute PPI for non-API/Resettle entries using colPlusRentIndex
+    if entry.get("source") not in ("api", "resettle") and api_cities:
         col_idx = float(entry.get("colIndex", 0))
         if col_idx > 0:
             nyc = next((c for c in api_cities if c["name"].lower() == "new york"), None)
@@ -160,7 +160,7 @@ def _compute_col_entry(entry, config, api_cities=None):
     # Non-housing multiplier for display
     if city_costs > 0 and home_costs > 0:
         entry["nonHousingMult"] = round(city_costs / home_costs, 2)
-    elif not entry.get("nhmOverride") and entry.get("source") == "api":
+    elif not entry.get("nhmOverride") and entry.get("source") in ("api", "resettle"):
         api_data = entry.get("apiData", {})
         col_index = float(api_data.get("colIndex", 100)) if api_data else 100
         home_col = float(config.get("homeColIndex") or 0)
@@ -335,8 +335,8 @@ def api_cost_of_living_update():
     index = int(b.get("index", -1))
     if metro:
         index = next((i for i, item in enumerate(items) if item.get("metro") == metro), -1)
-    # Track manual overrides on API-sourced entries
-    if 0 <= index < len(items) and items[index].get("source") == "api":
+    # Track manual overrides on API/Resettle-sourced entries
+    if 0 <= index < len(items) and items[index].get("source") in ("api", "resettle"):
         if "rent" in updates:
             updates["rentOverride"] = True
         if "nonHousingMult" in updates:
@@ -650,7 +650,7 @@ def api_col_upgrade():
     upgraded = 0
     refreshed = 0
     for city in cities:
-        already_api = city.get("source") == "api"
+        already_api = city.get("source") in ("api", "resettle")
         if already_api and not refresh:
             continue
         metro_lower = city["metro"].lower()
@@ -662,7 +662,7 @@ def api_col_upgrade():
                     api_match = api_city
                     break
         if api_match and api_match.get("name"):
-            city["source"] = "api"
+            city["source"] = api_match.get("source", "api")
             city["rentOverride"] = False
             city["nhmOverride"] = False
             city["apiData"] = api_match
@@ -696,6 +696,36 @@ def api_col_dedup():
     portfolio["costOfLiving"] = unique
     save_portfolio(portfolio)
     return jsonify({"ok": True, "removed": removed, "remaining": len(unique), "costOfLiving": unique})
+
+
+@bp.route("/api/cost-of-living/fetch-city", methods=["POST"])
+@bp.route("/api/cost-of-living/scrape-city", methods=["POST"])  # backward compat alias
+def api_col_fetch_city():
+    """Fetch a single city's COL data on-demand via Resettle API."""
+    from services.col_api import lookup_or_fetch
+    from services.col_quota import check_quota
+    b = request.get_json()
+    city_name = (b.get("city") or b.get("name") or "").strip()
+    country = b.get("country") or b.get("country_code")
+    if not city_name:
+        return jsonify({"ok": False, "error": "City name is required"}), 400
+
+    result = lookup_or_fetch(city_name, country=country)
+    if result.get("error"):
+        quota = check_quota("resettle")
+        return jsonify({"ok": False, "error": result["error"],
+                        "message": result.get("message", ""),
+                        "quota": quota}), 400
+
+    quota = check_quota("resettle")
+    return jsonify({"ok": True, "city": result, "quota": quota})
+
+
+@bp.route("/api/cost-of-living/quota")
+def api_col_quota():
+    """Return quota status for all COL providers."""
+    from services.col_quota import get_all_quotas
+    return jsonify({"ok": True, "quotas": get_all_quotas()})
 
 
 @bp.route("/api/cost-of-living/api-cities")

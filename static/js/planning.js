@@ -8,9 +8,10 @@ let colGlobalCities = []; // Global cities (all countries)
 
 async function fetchCostOfLiving() {
     try {
-        const [colResp, apiResp] = await Promise.all([
+        const [colResp, apiResp, quotaResp] = await Promise.all([
             fetch('/api/cost-of-living').then(r => r.json()),
             fetch('/api/cost-of-living/api-cities?include_global=1').then(r => r.json()).catch(() => ({ cities: [], meta: {} })),
+            fetch('/api/cost-of-living/quota').then(r => r.json()).catch(() => ({ quotas: {} })),
         ]);
         allCOLData = colResp.costOfLiving || [];
         colConfig = colResp.colConfig || {};
@@ -18,6 +19,9 @@ async function fetchCostOfLiving() {
         colApiCities = apiResp.cities || [];
         colApiMeta = apiResp.meta || {};
         colGlobalCities = apiResp.globalCities || [];
+        // Update quota display
+        const rq = (quotaResp.quotas || {}).resettle;
+        if (rq) updateQuotaDisplay({ remaining: Math.max(0, rq.limit - rq.used), limit: rq.limit });
         renderCOLConfig();
         renderCOLKpis();
         renderCOLChart();
@@ -720,8 +724,11 @@ function filterCOL(type, btn) {
         return dir * (va - vb);
     }).map(c => {
         const metroEsc = c.metro.replace(/'/g, "\\'");
-        const isApi = c.source === 'api';
-        const apiBadge = isApi ? ' <span style="font-size:0.65rem; padding:1px 4px; border-radius:3px; background:#6366f120; color:#6366f1; vertical-align:middle;">API</span>' : '';
+        const isApi = c.source === 'api' || c.source === 'resettle';
+        const isResettle = c.source === 'resettle' || (c.apiData && c.apiData.source === 'resettle');
+        const apiBadge = isResettle
+            ? ' <span style="font-size:0.65rem; padding:1px 4px; border-radius:3px; background:#8b5cf620; color:#8b5cf6; vertical-align:middle;">Resettle</span>'
+            : isApi ? ' <span style="font-size:0.65rem; padding:1px 4px; border-radius:3px; background:#6366f120; color:#6366f1; vertical-align:middle;">API</span>' : '';
         const costs = c.monthlyCostsNoRent ? formatMoney(c.monthlyCostsNoRent) : '—';
         const totalCost = c.totalMonthlyCost ? formatMoney(c.totalMonthlyCost) : '—';
         const colIdx = c.colIndex ? c.colIndex.toFixed(0) : '—';
@@ -816,7 +823,9 @@ function onCityInputSearch(query) {
         .filter(c => c.name.toLowerCase().includes(q) && !existing.has(c.name.toLowerCase()))
         .slice(0, 8);
     if (matches.length === 0) {
-        results.innerHTML = `<div style="padding:10px; font-size:0.82rem; color:var(--text-muted);">No match found — <a href="#" onclick="showManualFields('${q}'); return false;" style="color:var(--accent);">add manually</a></div>`;
+        const titleQ = q.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        const qEsc = titleQ.replace(/'/g, "\\'");
+        results.innerHTML = `<div style="padding:10px; font-size:0.82rem; color:var(--text-muted);">No local match — <a href="#" onclick="searchOnline('${qEsc}'); return false;" style="color:#8b5cf6; font-weight:500;">Search Online for "${titleQ}"</a> · <a href="#" onclick="showManualFields('${qEsc}'); return false;" style="color:var(--accent);">add manually</a></div>`;
         results.style.display = 'block';
         return;
     }
@@ -828,9 +837,10 @@ function onCityInputSearch(query) {
         return `<div style="padding:8px 12px; cursor:pointer; font-size:0.82rem; border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''" onclick="selectCityResult('${nameEsc}')">
             <strong>${c.name}</strong>, ${loc2}${srcTag} <span style="color:var(--text-muted); margin-left:8px;">$${rent.toLocaleString()}/mo · COL ${c.colIndex}</span></div>`;
     }).join('');
-    if (matches.length > 0) {
-        results.innerHTML += `<div style="padding:8px 12px; cursor:pointer; font-size:0.82rem; color:var(--text-muted);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''" onclick="showManualFields('${q}')">Enter manually...</div>`;
-    }
+    const titleQ = q.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    const qEsc = titleQ.replace(/'/g, "\\'");
+    results.innerHTML += `<div style="padding:8px 12px; cursor:pointer; font-size:0.82rem; border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''" onclick="searchOnline('${qEsc}')"><span style="color:#8b5cf6;">Search Online for "${titleQ}"</span> <span style="color:var(--text-muted);">— Resettle API</span></div>`;
+    results.innerHTML += `<div style="padding:8px 12px; cursor:pointer; font-size:0.82rem; color:var(--text-muted);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''" onclick="showManualFields('${qEsc}')">Enter manually...</div>`;
     results.style.display = 'block';
 }
 
@@ -844,6 +854,54 @@ function selectCityResult(name) {
     const type = loc === 'city' ? 'Downtown' : 'Suburban';
     hideAddCityResults();
     addCOLApiCity(city.name, city.state || '', type, rent, 1.0, city);
+}
+
+async function searchOnline(query) {
+    const results = document.getElementById('addCityResults');
+    if (results) {
+        results.innerHTML = `<div style="padding:12px; font-size:0.82rem; color:var(--text-muted);"><span class="spinner" style="display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.6s linear infinite; vertical-align:middle; margin-right:6px;"></span>Searching Resettle API...</div>`;
+        results.style.display = 'block';
+    }
+    try {
+        const resp = await fetch('/api/cost-of-living/fetch-city', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ city: query })
+        });
+        const data = await resp.json();
+        if (data.ok && data.city) {
+            const city = data.city;
+            // Update local cache so city appears in future searches
+            const existingIdx = colApiCities.findIndex(c => c.name.toLowerCase() === city.name.toLowerCase());
+            if (existingIdx >= 0) colApiCities[existingIdx] = city;
+            else colApiCities.push(city);
+            const br = colConfig.bedroomCount || 1;
+            const loc = colConfig.locationType || 'city';
+            const rentKey = `rent${br}br${loc === 'city' ? 'City' : 'Suburb'}`;
+            const rent = city[rentKey] || 0;
+            const type = loc === 'city' ? 'Downtown' : 'Suburban';
+            hideAddCityResults();
+            updateQuotaDisplay(data.quota);
+            addCOLApiCity(city.name, city.state || city.countryCode || '', type, rent, 1.0, city);
+            showSaveToast(`${city.name} fetched from Resettle (check to keep)`);
+        } else {
+            const msg = data.message || data.error || 'City not found';
+            if (results) {
+                const qEsc = query.replace(/'/g, "\\'");
+                results.innerHTML = `<div style="padding:10px; font-size:0.82rem; color:#f87171;">${msg}</div><div style="padding:8px 12px; font-size:0.82rem; color:var(--text-muted); cursor:pointer;" onclick="showManualFields('${qEsc}')">Enter manually instead...</div>`;
+            }
+            if (data.quota) updateQuotaDisplay(data.quota);
+        }
+    } catch(e) {
+        console.error('[COL] Online search failed:', e);
+        if (results) results.innerHTML = `<div style="padding:10px; font-size:0.82rem; color:#f87171;">Search failed — try again or add manually</div>`;
+    }
+}
+
+function updateQuotaDisplay(quota) {
+    const el = document.getElementById('colQuotaDisplay');
+    if (!el || !quota) return;
+    el.textContent = `API: ${quota.remaining}/${quota.limit} remaining`;
+    el.style.color = quota.remaining <= 10 ? '#f59e0b' : 'var(--text-dim)';
 }
 
 function showManualFields(prefill) {

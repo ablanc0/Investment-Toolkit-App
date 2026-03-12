@@ -919,6 +919,7 @@
                             <input type="text" id="addCityInput" class="form-input" style="font-size:0.82rem; width:100%; padding:5px 10px;" placeholder="Search city..." autocomplete="off" oninput="onCityInputSearch(this.value)">
                             <div id="addCityResults" style="position:absolute; top:100%; left:0; width:360px; z-index:50; max-height:260px; overflow-y:auto; background:var(--card); border:1px solid var(--border); border-radius:6px; display:none; box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>
                         </div>
+                        <span id="colQuotaDisplay" style="font-size:0.7rem; color:var(--text-dim); white-space:nowrap;"></span>
                         <div id="colFilters" style="display: flex; gap: 8px;">
                             <button class="filter-btn" data-type="Downtown" onclick="filterCOL('Downtown', this)">Downtown</button>
                             <button class="filter-btn" data-type="Suburban" onclick="filterCOL('Suburban', this)">Suburban</button>
