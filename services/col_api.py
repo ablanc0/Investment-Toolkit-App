@@ -528,13 +528,14 @@ def compute_indices(city, nyc):
         )
 
 
-def _upsert_city(city):
+def _upsert_city(city, force=False):
     """Insert or update a city in the stored data.
 
     Rules:
     1. source='manual' entries are never overwritten
-    2. New city → always insert
-    3. Existing city → inflation heuristic: compare rent1brCity,
+    2. force=True → always update (user explicitly requested fresh data)
+    3. New city → always insert
+    4. Existing city → inflation heuristic: compare rent1brCity,
        higher rent = more recent data (update); otherwise keep existing
     """
     cities = _col_data.get("cities", [])
@@ -545,6 +546,13 @@ def _upsert_city(city):
             # Never overwrite manual entries
             if existing.get("source") == "manual":
                 return existing
+
+            # Force update — user explicitly clicked "Search Online"
+            if force:
+                cities[i] = city
+                _col_data["cities"] = cities
+                _save_col_data()
+                return city
 
             # Inflation heuristic: compare rent1brCity
             existing_rent = float(existing.get("rent1brCity", 0))
@@ -586,15 +594,20 @@ def _upsert_city(city):
     return city
 
 
-def lookup_or_fetch(city_name, country=None):
+def lookup_or_fetch(city_name, country=None, force=False):
     """Look up a city locally, or fetch from Resettle API if not found.
+
+    Args:
+        force: If True, skip local DB check and always fetch from Resettle.
+               Used when user explicitly clicks "Search Online".
 
     Returns city dict on success, or dict with 'error' key on failure.
     """
-    # 1. Check local DB
-    existing = _find_city(city_name)
-    if existing:
-        return existing
+    # 1. Check local DB (skip if force=True — user wants fresh data)
+    if not force:
+        existing = _find_city(city_name)
+        if existing:
+            return existing
 
     # 2. Check Resettle quota
     from services.col_quota import check_quota, record_call
@@ -632,7 +645,7 @@ def lookup_or_fetch(city_name, country=None):
     if nyc:
         compute_indices(city, nyc)
 
-    result = _upsert_city(city)
+    result = _upsert_city(city, force=force)
     print(f"[COL] Fetched '{city['name']}' from Resettle: rent1br=${city.get('rent1brCity', 0)}, "
           f"salary=${city.get('avgNetSalary', 0)}, completeness={city.get('dataCompleteness', 0)}")
     return result

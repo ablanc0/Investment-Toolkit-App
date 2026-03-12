@@ -710,7 +710,8 @@ def api_col_fetch_city():
     if not city_name:
         return jsonify({"ok": False, "error": "City name is required"}), 400
 
-    result = lookup_or_fetch(city_name, country=country)
+    force = b.get("force", False)
+    result = lookup_or_fetch(city_name, country=country, force=force)
     if result.get("error"):
         quota = check_quota("resettle")
         return jsonify({"ok": False, "error": result["error"],

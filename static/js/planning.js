@@ -865,7 +865,7 @@ async function searchOnline(query) {
     try {
         const resp = await fetch('/api/cost-of-living/fetch-city', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ city: query })
+            body: JSON.stringify({ city: query, force: true })
         });
         const data = await resp.json();
         if (data.ok && data.city) {
