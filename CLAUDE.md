@@ -244,6 +244,8 @@ When working on complex tasks, dispatch specialized sub-agents for parallel work
 - Backend implementation → invt-engineer
 - Frontend implementation → invt-frontend
 - Code review before PR → invt-reviewer
+- Developer docs update → invt-docs
+- CI/validation checks → invt-ci
 - Browser testing → invt-browser-tester
 
 ### Independent domains (safe to parallelize)
@@ -269,6 +271,8 @@ These domains have no shared files — agents can work simultaneously without co
 - **Feature work (both sides)**: invt-engineer (backend) + invt-frontend (frontend) in parallel. Engineer defines the API response shape; frontend consumes it.
 - **Feature work (one side)**: dispatch only the relevant agent
 - **Pre-PR review**: invt-reviewer (read-only, plan mode) — run in background
+- **Dev docs update**: invt-docs (after implementation) — run in background
+- **CI validation**: invt-ci (after implementation) — run in background
 - **Browser verification**: invt-browser-tester (after implementation) — run in background
 - **Docs / config only**: main session, no sub-agents needed
 
@@ -281,9 +285,11 @@ These domains have no shared files — agents can work simultaneously without co
    - invt-frontend: implement frontend (JS modules, CSS, HTML)
 3. If only one side needed, dispatch the relevant agent
 
-#### Phase 2 — Review (after Phase 1)
+#### Phase 2 — Review (after Phase 1, all in parallel)
 1. Dispatch invt-reviewer: review code quality, check patterns match existing codebase
-2. Dispatch invt-browser-tester: verify in browser, check console for errors
+2. Dispatch invt-docs: update/create developer docs for changed features
+3. Dispatch invt-ci: run syntax checks, tests, and API smoke test
+4. Dispatch invt-browser-tester: verify in browser, check console for errors
 
 #### Phase 3 — Fix & PR (main session, sequential)
 1. Address review findings
