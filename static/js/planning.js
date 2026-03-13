@@ -850,7 +850,7 @@ function filterCOL(type, btn) {
         return `<tr style="${rowStyle}">
             <td style="text-align:center;">${isHome ? '' : `<input type="checkbox" ${isPinned ? 'checked' : ''} onchange="toggleCOLCity('${metroEsc}', this.checked)" title="${isPinned ? 'Uncheck to remove' : 'Check to pin'}">`}</td>
             <td><strong>${c.metro}</strong>${apiBadge}${homeBadge}${!isPinned && !isHome ? ' <span style="font-size:0.6rem; color:#f59e0b;">TEMP</span>' : ''}</td>
-            <td>${c.area}</td>
+            <td>${c.area && c.area !== 'N/A' ? c.area : (colApiCities.find(x => x.name.toLowerCase() === (c.metro||'').toLowerCase()) || {}).country || ''}</td>
             <td><span style="padding:2px 6px; border-radius:4px; font-size:0.75rem; background:${c.type==='Downtown'?'#f59e0b20':'#22c55e20'}; color:${c.type==='Downtown'?'#f59e0b':'#22c55e'};">${c.type}</span></td>
             <td style="text-align:right; cursor:pointer;" class="editable"
                 onclick="editCOLCell(this, '${metroEsc}', 'rent', ${c.rent})">${formatMoney(c.rent)}</td>
@@ -961,7 +961,8 @@ function selectCityResult(name) {
     const rent = city[rentKey] || 0;
     const type = loc === 'city' ? 'Downtown' : 'Suburban';
     hideAddCityResults();
-    addCOLApiCity(city.name, city.state || '', type, rent, 1.0, city);
+    const area = city.state && city.state !== 'N/A' ? city.state : city.country || city.countryCode || '';
+    addCOLApiCity(city.name, area, type, rent, 1.0, city);
 }
 
 async function searchOnline(query) {
@@ -989,7 +990,8 @@ async function searchOnline(query) {
             const type = loc === 'city' ? 'Downtown' : 'Suburban';
             hideAddCityResults();
             updateQuotaDisplay(data.quota);
-            addCOLApiCity(city.name, city.state || city.countryCode || '', type, rent, 1.0, city);
+            const area = city.state && city.state !== 'N/A' ? city.state : city.country || city.countryCode || '';
+            addCOLApiCity(city.name, area, type, rent, 1.0, city);
             showSaveToast(`${city.name} fetched from Resettle (check to keep)`);
         } else {
             const msg = data.message || data.error || 'City not found';
