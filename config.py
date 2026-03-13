@@ -211,12 +211,166 @@ RESETTLE_API_BASE = f"https://{RESETTLE_API_HOST}"
 
 # ── Tax Constants ───────────────────────────────────────────────────────
 
-# Federal progressive tax brackets (2023 Single Filer — from Excel)
-FEDERAL_BRACKETS = [
-    (12400, 0.10), (50400, 0.12), (105700, 0.22),
-    (201775, 0.24), (256225, 0.32), (640600, 0.35),
-    (float('inf'), 0.37),
-]
+FILING_STATUSES = ("single", "mfj", "mfs", "hoh")
+
+# Multi-year, multi-status federal tax data (IRS Revenue Procedures)
+FEDERAL_TAX_DATA = {
+    # ── 2023 (Rev. Proc. 2022-38) ────────────────────────────────────
+    2023: {
+        "single": {
+            "brackets": [
+                (11000, 0.10), (44725, 0.12), (95375, 0.22),
+                (182100, 0.24), (231250, 0.32), (578125, 0.35),
+                (float('inf'), 0.37),
+            ],
+            "standardDeduction": 13850,
+        },
+        "mfj": {
+            "brackets": [
+                (22000, 0.10), (89450, 0.12), (190750, 0.22),
+                (364200, 0.24), (462500, 0.32), (693750, 0.35),
+                (float('inf'), 0.37),
+            ],
+            "standardDeduction": 27700,
+        },
+        "mfs": {
+            "brackets": [
+                (11000, 0.10), (44725, 0.12), (95375, 0.22),
+                (182100, 0.24), (231250, 0.32), (346875, 0.35),
+                (float('inf'), 0.37),
+            ],
+            "standardDeduction": 13850,
+        },
+        "hoh": {
+            "brackets": [
+                (15700, 0.10), (59850, 0.12), (95350, 0.22),
+                (182100, 0.24), (231250, 0.32), (578100, 0.35),
+                (float('inf'), 0.37),
+            ],
+            "standardDeduction": 20800,
+        },
+    },
+    # ── 2024 (Rev. Proc. 2023-34) ────────────────────────────────────
+    2024: {
+        "single": {
+            "brackets": [
+                (11600, 0.10), (47150, 0.12), (100525, 0.22),
+                (191950, 0.24), (243725, 0.32), (609350, 0.35),
+                (float('inf'), 0.37),
+            ],
+            "standardDeduction": 14600,
+        },
+        "mfj": {
+            "brackets": [
+                (23200, 0.10), (94300, 0.12), (201050, 0.22),
+                (383900, 0.24), (487450, 0.32), (731200, 0.35),
+                (float('inf'), 0.37),
+            ],
+            "standardDeduction": 29200,
+        },
+        "mfs": {
+            "brackets": [
+                (11600, 0.10), (47150, 0.12), (100525, 0.22),
+                (191950, 0.24), (243725, 0.32), (365600, 0.35),
+                (float('inf'), 0.37),
+            ],
+            "standardDeduction": 14600,
+        },
+        "hoh": {
+            "brackets": [
+                (16550, 0.10), (63100, 0.12), (100500, 0.22),
+                (191950, 0.24), (243700, 0.32), (609350, 0.35),
+                (float('inf'), 0.37),
+            ],
+            "standardDeduction": 21900,
+        },
+    },
+    # ── 2025 (Rev. Proc. 2024-40) ────────────────────────────────────
+    2025: {
+        "single": {
+            "brackets": [
+                (11925, 0.10), (48475, 0.12), (103350, 0.22),
+                (197300, 0.24), (250525, 0.32), (626350, 0.35),
+                (float('inf'), 0.37),
+            ],
+            "standardDeduction": 15000,
+        },
+        "mfj": {
+            "brackets": [
+                (23850, 0.10), (96950, 0.12), (206700, 0.22),
+                (394600, 0.24), (501050, 0.32), (751600, 0.35),
+                (float('inf'), 0.37),
+            ],
+            "standardDeduction": 30000,
+        },
+        "mfs": {
+            "brackets": [
+                (11925, 0.10), (48475, 0.12), (103350, 0.22),
+                (197300, 0.24), (250525, 0.32), (375800, 0.35),
+                (float('inf'), 0.37),
+            ],
+            "standardDeduction": 15000,
+        },
+        "hoh": {
+            "brackets": [
+                (17000, 0.10), (64850, 0.12), (103350, 0.22),
+                (197300, 0.24), (250500, 0.32), (626350, 0.35),
+                (float('inf'), 0.37),
+            ],
+            "standardDeduction": 22500,
+        },
+    },
+    # ── 2026 (estimate — TCJA expiry; copy 2025 until IRS publishes) ─
+    2026: {
+        "single": {
+            "brackets": [
+                (11925, 0.10), (48475, 0.12), (103350, 0.22),
+                (197300, 0.24), (250525, 0.32), (626350, 0.35),
+                (float('inf'), 0.37),
+            ],
+            "standardDeduction": 15000,
+        },
+        "mfj": {
+            "brackets": [
+                (23850, 0.10), (96950, 0.12), (206700, 0.22),
+                (394600, 0.24), (501050, 0.32), (751600, 0.35),
+                (float('inf'), 0.37),
+            ],
+            "standardDeduction": 30000,
+        },
+        "mfs": {
+            "brackets": [
+                (11925, 0.10), (48475, 0.12), (103350, 0.22),
+                (197300, 0.24), (250525, 0.32), (375800, 0.35),
+                (float('inf'), 0.37),
+            ],
+            "standardDeduction": 15000,
+        },
+        "hoh": {
+            "brackets": [
+                (17000, 0.10), (64850, 0.12), (103350, 0.22),
+                (197300, 0.24), (250500, 0.32), (626350, 0.35),
+                (float('inf'), 0.37),
+            ],
+            "standardDeduction": 22500,
+        },
+    },
+}
+
+# Backward-compatible alias (2023 Single — matches original flat list)
+FEDERAL_BRACKETS = FEDERAL_TAX_DATA[2023]["single"]["brackets"]
+
+
+def get_tax_config(year=None, filing_status="single"):
+    """Return (brackets, standardDeduction) for year + status.
+    Falls back to most recent available year if year not found."""
+    from datetime import datetime
+    if year is None:
+        year = datetime.now().year
+    available = sorted(FEDERAL_TAX_DATA.keys())
+    chosen = max((y for y in available if y <= year), default=available[-1])
+    status_data = FEDERAL_TAX_DATA[chosen].get(filing_status, FEDERAL_TAX_DATA[chosen]["single"])
+    return status_data["brackets"], status_data["standardDeduction"]
 
 _TAX_NAME_MAP = {
     "Lansing Resident Tax": "City Tax (Resident)",
