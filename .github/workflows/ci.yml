@@ -63,5 +63,7 @@ jobs:
       - name: Install Sphinx dependencies
         run: pip install sphinx sphinx-rtd-theme myst-parser
 
-      - name: Build Sphinx docs
-        run: cd docs && make html
+      - name: Build Sphinx docs (User Guide + Developer Guide)
+        run: |
+          python -m sphinx docs/user docs/_build/user -b html -W
+          python -m sphinx docs/dev docs/_build/dev -b html -W
