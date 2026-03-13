@@ -6,7 +6,14 @@ All notable changes to InvToolkit will be documented in this file.
 
 
 
+## 2026-03-13
+- 🟩 Feature Resettle Place API as on-demand COL data source
+
+
 ## 2026-03-11
+- 🟧 Fix exclude large/ephemeral files from git backup
+- 🟩 Feature add new company logos and data backups
+- ⬜ Documentation update changelog
 - 🟦 Enhancement API abstraction and resilience foundation
 - ⬜ Documentation update changelog
 - 🟧 Fix exclude quota-limited APIs from health check pings
