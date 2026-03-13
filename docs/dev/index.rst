@@ -9,4 +9,9 @@ for each major subsystem.
    :maxdepth: 2
    :caption: Subsystems
 
+   portfolio-core
+   stock-analyzer
+   salary
+   super-investors
+   simulation-projections
    cost-of-living
