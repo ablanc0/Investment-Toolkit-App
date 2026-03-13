@@ -238,5 +238,5 @@ multiplied by 1000.
 See Also
 --------
 
-* :doc:`/architecture/api-quotas` — API quota management
-* :doc:`/architecture/api-abstraction` — Resilient HTTP and circuit breakers
+* :doc:`api-quotas` — API quota management
+* :doc:`api-abstraction` — Resilient HTTP and circuit breakers

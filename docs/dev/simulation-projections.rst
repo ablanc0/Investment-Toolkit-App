@@ -248,4 +248,4 @@ cash allocation, not a dynamic bucket strategy.
 See Also
 --------
 
-* :doc:`/formulas/rule4` — Rule 4% formulas (user-facing)
+* See the Formulas & Metrics section in the User Guide for Rule 4% formulas

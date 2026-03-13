@@ -341,7 +341,7 @@ each ``None``.
 See Also
 --------
 
-* :doc:`/architecture/api-abstraction` — Provider cascade and resilient HTTP
-* :doc:`/architecture/api-quotas` — API quota management
-* :doc:`/formulas/valuation` — Valuation formulas (user-facing)
-* :doc:`/formulas/invt-score` — InvT Score formulas (user-facing)
+* :doc:`api-abstraction` — Provider cascade and resilient HTTP
+* :doc:`api-quotas` — API quota management
+* See the Formulas & Metrics section in the User Guide for valuation formulas
+* See the Formulas & Metrics section in the User Guide for InvT Score formulas

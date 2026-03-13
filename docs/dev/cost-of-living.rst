@@ -5,7 +5,7 @@ Internal architecture of the Cost of Living subsystem: data model,
 data flow, key functions, API endpoints, and design decisions.
 
 For user-facing documentation (KPIs, metrics, formulas, configuration),
-see :doc:`/user/cost-of-living`.
+see the User Guide.
 
 .. contents::
    :local:
@@ -430,6 +430,6 @@ refresh.
 See Also
 --------
 
-* :doc:`/user/cost-of-living` — User guide (KPIs, metrics, formulas)
-* :doc:`/architecture/api-quotas` — API quota management for ditno and Resettle
-* :doc:`/architecture/api-abstraction` — Provider cascade and resilient HTTP
+* See the User Guide for user-facing documentation (KPIs, metrics, formulas)
+* :doc:`api-quotas` — API quota management for ditno and Resettle
+* :doc:`api-abstraction` — Provider cascade and resilient HTTP

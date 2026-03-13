@@ -236,4 +236,4 @@ return (if positive) or 7%.
 See Also
 --------
 
-* :doc:`/formulas/taxes` — Tax formulas (user-facing)
+* See the Formulas & Metrics section in the User Guide for tax formulas

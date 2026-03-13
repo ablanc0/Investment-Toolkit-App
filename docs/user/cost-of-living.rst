@@ -194,8 +194,8 @@ Each API city provides: cost-of-living indices, rent variants (1 BR and
 index, monthly costs, and utilities.
 
 Data can be refreshed from the API management panel — first check for
-new cities, then fetch detailed data.  See
-:doc:`/dev/cost-of-living` for the refresh mechanism internals.
+new cities, then fetch detailed data.  See the Developer Guide for the
+refresh mechanism internals.
 
 Manual Entries
 ^^^^^^^^^^^^^^
@@ -401,6 +401,6 @@ Combined with bedroom count, this produces four possible rent lookups:
 See Also
 --------
 
-* :doc:`/formulas/taxes` -- Salary and tax computation used by salary profiles
-* :doc:`/formulas/rule4` -- Retirement simulation on the same Planning tab
-* :doc:`/dev/cost-of-living` -- Developer architecture (data model, data flow, API endpoints)
+* :doc:`formulas/taxes` -- Salary and tax computation used by salary profiles
+* :doc:`formulas/rule4` -- Retirement simulation on the same Planning tab
+* See the Developer Guide for developer architecture (data model, data flow, API endpoints)

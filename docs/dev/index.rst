@@ -15,3 +15,13 @@ for each major subsystem.
    super-investors
    simulation-projections
    cost-of-living
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Infrastructure
+
+   api-abstraction
+   api-quotas
+   cache
+   portfolio-json
+   crud
