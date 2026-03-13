@@ -269,21 +269,48 @@ def fetch_city_details(city_names=None):
 
         new_cities = _normalize_cities(raw_cities)
 
-        # Merge: update API entries, preserve manual entries untouched
-        manual_cities = [c for c in _col_data.get("cities", []) if c.get("source") == "manual"]
-        existing_api = {c["name"]: c for c in _col_data.get("cities", []) if c.get("source") != "manual"}
-        merged = list(manual_cities)  # Always keep manual entries
+        # Smart merge: per-city timestamp check, never overwrite fresher data
+        existing_by_name = {}
+        for c in _col_data.get("cities", []):
+            existing_by_name.setdefault(c["name"].lower(), []).append(c)
+
+        merged = []
+        fetched_names = set()
         new_count = 0
+        updated_count = 0
+
         for city in new_cities:
-            if city["name"] not in existing_api:
-                new_count += 1
             city["source"] = "api"
-            merged.append(city)
-        # Keep API cities no longer returned by the fetch
-        fetched_names = {c["name"] for c in new_cities}
-        for name, city in existing_api.items():
-            if name not in fetched_names:
+            key = city["name"].lower()
+            fetched_names.add(key)
+            matches = existing_by_name.get(key, [])
+
+            if not matches:
+                new_count += 1
                 merged.append(city)
+                continue
+
+            # Keep manual entries as-is, check API/Resettle entries
+            for existing in matches:
+                if existing.get("source") == "manual":
+                    merged.append(existing)
+                elif _should_update(existing, city):
+                    updated_count += 1
+                else:
+                    merged.append(existing)  # Keep fresher existing data
+
+            # If all existing were manual (or kept), still add API entry
+            non_manual = [e for e in matches if e.get("source") != "manual"]
+            if non_manual and any(_should_update(e, city) for e in non_manual):
+                merged.append(city)
+            elif not non_manual:
+                merged.append(city)  # Only manual existed, add API alongside
+
+        # Keep existing cities not in this fetch (other countries, etc.)
+        for key, entries in existing_by_name.items():
+            if key not in fetched_names:
+                merged.extend(entries)
+
         merged.sort(key=lambda c: c["name"])
 
         _col_data.update({
@@ -379,22 +406,42 @@ def fetch_all_global_details(batch_size=50):
     # Save raw response
     _save_raw(all_raw, "globalDetails")
 
-    # Deduplicate API entries by city name (last occurrence wins)
-    seen = {}
+    # Deduplicate incoming by city name (last occurrence wins)
+    incoming_by_name = {}
     for c in all_normalized:
         c["source"] = "api"
-        seen[c["name"]] = c
-    all_normalized = sorted(seen.values(), key=lambda c: c["name"])
+        incoming_by_name[c["name"].lower()] = c
 
-    # Preserve manual entries
-    manual_cities = [c for c in _col_data.get("cities", []) if c.get("source") == "manual"]
-    combined = manual_cities + all_normalized
+    # Smart merge: per-city timestamp check, never overwrite fresher data
+    existing_by_name = {}
+    for c in _col_data.get("cities", []):
+        existing_by_name.setdefault(c["name"].lower(), []).append(c)
+
+    combined = []
+    for key, city in incoming_by_name.items():
+        matches = existing_by_name.pop(key, [])
+        if not matches:
+            combined.append(city)
+            continue
+        for existing in matches:
+            if existing.get("source") == "manual":
+                combined.append(existing)
+            elif not _should_update(existing, city):
+                combined.append(existing)  # Keep fresher existing data
+        non_manual = [e for e in matches if e.get("source") != "manual"]
+        if not non_manual or any(_should_update(e, city) for e in non_manual):
+            combined.append(city)
+
+    # Keep existing cities not in this fetch
+    for entries in existing_by_name.values():
+        combined.extend(entries)
+
     combined.sort(key=lambda c: c["name"])
 
     _col_data.update({
         "cities": combined,
         "fetchedAt": datetime.now().isoformat(),
-        "cityCount": len(all_normalized),
+        "cityCount": len(combined),
     })
     _save_col_data()
 
@@ -545,54 +592,55 @@ def compute_indices(city, nyc):
         )
 
 
+def _should_update(existing, incoming):
+    """Decide whether incoming data should replace an existing city entry.
+
+    Consistent rules used by BOTH ditno bulk merge and Resettle upsert:
+    1. Manual entries → never overwrite
+    2. Both have lastUpdated → newer timestamp wins
+    3. Only incoming has timestamp → update (existing is undated)
+    4. Neither has timestamp → more complete data wins (non-null field count)
+    5. Tie → keep existing (conservative)
+    """
+    if existing.get("source") == "manual":
+        return False
+
+    existing_ts = existing.get("lastUpdated", "")
+    incoming_ts = incoming.get("lastUpdated", "")
+
+    if existing_ts and incoming_ts:
+        return incoming_ts > existing_ts
+    if incoming_ts and not existing_ts:
+        return True
+    if existing_ts and not incoming_ts:
+        return False
+
+    # Neither has timestamp — compare completeness
+    _skip = {"name", "country", "state", "source", "lastUpdated", "details"}
+    new_count = sum(1 for k, v in incoming.items() if k not in _skip and v and v != 0)
+    old_count = sum(1 for k, v in existing.items() if k not in _skip and v and v != 0)
+    return new_count > old_count
+
+
 def _upsert_city(city):
     """Insert or update a city in the stored data.
 
-    Rules:
-    1. source='manual' entries are never overwritten
-    2. New city → always insert
-    3. Existing city → inflation heuristic: compare rent1brCity,
-       higher rent = more recent data (update); otherwise keep existing
+    Uses _should_update() for consistent timestamp-based merge logic.
+    Manual entries are never overwritten.
     """
     cities = _col_data.get("cities", [])
     name_lower = city["name"].lower().strip()
 
     for i, existing in enumerate(cities):
         if existing["name"].lower() == name_lower:
-            # Skip manual entries — they coexist with API entries
             if existing.get("source") == "manual":
                 continue
-
-            # Inflation heuristic: compare rent1brCity
-            existing_rent = float(existing.get("rent1brCity", 0))
-            new_rent = float(city.get("rent1brCity", 0))
-
-            if new_rent > 0 and existing_rent > 0:
-                if new_rent > existing_rent:
-                    # New data is likely more recent — update
-                    cities[i] = city
-                    _col_data["cities"] = cities
-                    _save_col_data()
-                    return city
-                else:
-                    # Existing data is likely more current — keep it
-                    return existing
-            elif new_rent > 0 and existing_rent == 0:
-                # New data has rent info, existing doesn't — update
+            if _should_update(existing, city):
                 cities[i] = city
                 _col_data["cities"] = cities
                 _save_col_data()
                 return city
-            else:
-                # Compare completeness
-                new_nonnull = sum(1 for v in city.values() if v and v != 0)
-                old_nonnull = sum(1 for v in existing.values() if v and v != 0)
-                if new_nonnull > old_nonnull:
-                    cities[i] = city
-                    _col_data["cities"] = cities
-                    _save_col_data()
-                    return city
-                return existing
+            return existing
 
     # New city — insert
     cities.append(city)
@@ -618,8 +666,8 @@ def lookup_or_fetch(city_name, country=None, force=False):
         if existing:
             return existing
 
-    # 2. Check Resettle quota
-    from services.col_quota import check_quota, record_call
+    # 2. Check Resettle quota (early exit before constructing API calls)
+    from services.quota_svc import check_quota
     quota = check_quota("resettle")
     if not quota["allowed"]:
         return {
@@ -630,16 +678,15 @@ def lookup_or_fetch(city_name, country=None, force=False):
         }
 
     # 3. Search Resettle for place_id
+    #    (quota recording happens automatically inside resilient_get)
     from services.resettle_svc import search_place, fetch_cost_of_living, normalize_resettle
     place = search_place(city_name, country_code=country)
-    record_call("resettle")  # search uses 1 call
 
     if not place:
         return {"error": "city_not_found", "message": f"'{city_name}' not found on Resettle"}
 
     # 4. Fetch COL data
     raw = fetch_cost_of_living(place["place_id"])
-    record_call("resettle")  # COL fetch uses 1 call
 
     if not raw:
         return {"error": "fetch_failed", "message": f"Failed to fetch COL data for '{city_name}'"}
@@ -662,3 +709,49 @@ def lookup_or_fetch(city_name, country=None, force=False):
 
 # Backward compatibility alias
 lookup_or_scrape = lookup_or_fetch
+
+
+# ── Auto-refresh ──────────────────────────────────────────────────────
+
+def auto_refresh_if_stale(max_age_days=30):
+    """Auto-refresh US COL data on startup if stale and quota allows.
+
+    Checks col_data.fetchedAt — if >max_age_days old (or missing) AND
+    ditno quota has ≥2 remaining, triggers US refresh in background.
+    Self-limiting: after refresh, fetchedAt updates and won't trigger
+    again for another max_age_days.
+    """
+    import threading
+    from services.quota_svc import check_quota
+
+    fetched_at = _col_data.get("fetchedAt", "")
+    if fetched_at:
+        try:
+            last = datetime.fromisoformat(fetched_at)
+            age_days = (datetime.now() - last).days
+            if age_days < max_age_days:
+                print(f"[COL] US data is {age_days}d old (threshold {max_age_days}d) — skip auto-refresh")
+                return
+        except (ValueError, TypeError):
+            pass  # Invalid timestamp — treat as stale
+
+    # Check ditno quota
+    quota = check_quota("rapidapi")
+    if not quota["allowed"] or (quota["remaining"] is not None and quota["remaining"] < 2):
+        print(f"[COL] Auto-refresh skipped — ditno quota insufficient "
+              f"(remaining={quota.get('remaining', 'N/A')})")
+        return
+
+    age_str = f"{age_days}d old" if fetched_at else "never fetched"
+    print(f"[COL] Auto-refreshing US data ({age_str}, quota={quota['remaining']} remaining)")
+
+    def _background_refresh():
+        try:
+            check_for_new_cities()
+            fetch_city_details()
+            print("[COL] Auto-refresh complete")
+        except Exception as e:
+            print(f"[COL] Auto-refresh failed: {e}")
+
+    t = threading.Thread(target=_background_refresh, daemon=True)
+    t.start()

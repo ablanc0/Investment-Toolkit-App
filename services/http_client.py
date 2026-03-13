@@ -1,9 +1,9 @@
 """
-InvToolkit — Resilient HTTP client with retry and circuit breaker.
+InvToolkit — Resilient HTTP client with retry, circuit breaker, and quota.
 
 Drop-in replacement for raw requests.get/post calls across service files.
-Provides exponential backoff, per-provider circuit breaker, and automatic
-api_health integration when a provider name is specified.
+Provides exponential backoff, per-provider circuit breaker, quota enforcement,
+and automatic api_health integration when a provider name is specified.
 """
 
 import time
@@ -27,6 +27,17 @@ _CB_OPEN_DURATION = 60       # seconds — how long circuit stays open before ha
 _DEFAULT_MAX_RETRIES = 2
 _BACKOFF_BASE = 1            # first retry waits 1s, second waits 2s
 _RATE_LIMIT_WAIT = 10        # seconds to wait on HTTP 429
+_RATE_LIMIT_SLEEP_CAP = 5    # max seconds to sleep for sliding-window rate limits
+
+
+class QuotaExhaustedError(Exception):
+    """Raised when a provider's quota is exhausted (daily/monthly limit)."""
+
+    def __init__(self, provider, remaining=0, resets_at=None):
+        self.provider = provider
+        self.remaining = remaining
+        self.resets_at = resets_at
+        super().__init__(f"Quota exhausted for '{provider}' — resets at {resets_at}")
 
 
 def _get_cb(provider):
@@ -119,6 +130,10 @@ def _resilient_request(method, url, provider=None, headers=None, params=None,
     if provider and is_circuit_open(provider):
         raise ConnectionError(f"Circuit breaker open for '{provider}' — request blocked")
 
+    # Pre-flight quota check
+    if provider:
+        _quota_preflight(provider)
+
     last_exception = None
     start_total = time.time()
 
@@ -140,11 +155,13 @@ def _resilient_request(method, url, provider=None, headers=None, params=None,
                     with _cb_lock:
                         _record_success(provider)
                     _record_health(provider, success=True, latency_ms=latency)
+                    _record_quota(provider)
                 return resp
 
-            # HTTP 429 — rate limited
+            # HTTP 429 — rate limited (API consumed the call)
             if resp.status_code == 429:
                 if provider:
+                    _record_quota(provider)
                     _record_health(provider, success=False, latency_ms=latency,
                                    error_msg=f"HTTP 429 (rate limited)")
                 if attempt < max_retries:
@@ -161,6 +178,7 @@ def _resilient_request(method, url, provider=None, headers=None, params=None,
             # HTTP 5xx — server error, retryable
             if resp.status_code >= 500:
                 if provider:
+                    _record_quota(provider)  # API consumed the call
                     _record_health(provider, success=False, latency_ms=latency,
                                    error_msg=f"HTTP {resp.status_code}")
                 if attempt < max_retries:
@@ -177,6 +195,7 @@ def _resilient_request(method, url, provider=None, headers=None, params=None,
 
             # HTTP 4xx (except 429) — client error, no retry
             if provider:
+                _record_quota(provider)  # API consumed the call
                 with _cb_lock:
                     _record_failure(provider)
                 _record_health(provider, success=False, latency_ms=latency,
@@ -223,6 +242,45 @@ def _resilient_request(method, url, provider=None, headers=None, params=None,
 
 
 # ── Helpers ───────────────────────────────────────────────────────────
+
+def _quota_preflight(provider):
+    """Pre-flight quota check. Raises QuotaExhaustedError if quota exhausted.
+
+    For rate limits (e.g., EDGAR 10/s), sleeps up to _RATE_LIMIT_SLEEP_CAP
+    seconds and re-checks. Silently skips if quota_svc not available.
+    """
+    try:
+        from services.quota_svc import check_quota
+    except ImportError:
+        return
+
+    quota = check_quota(provider)
+    if quota["allowed"]:
+        return
+
+    if quota.get("rate_limited"):
+        # Sliding-window rate limit — sleep and retry
+        wait = min(quota.get("rate_retry_after", 1.0), _RATE_LIMIT_SLEEP_CAP)
+        if wait > 0:
+            time.sleep(wait)
+        quota = check_quota(provider)
+        if quota["allowed"]:
+            return
+
+    # Hard quota exhausted or rate limit still blocked
+    _record_health(provider, success=False, latency_ms=0,
+                   error_msg=f"Quota exhausted ({quota.get('used', '?')}/{quota.get('limit', '?')})")
+    raise QuotaExhaustedError(provider, quota.get("remaining", 0), quota.get("resets_at"))
+
+
+def _record_quota(provider):
+    """Record a consumed API call in the quota service. Silent on failure."""
+    try:
+        from services.quota_svc import record_call
+        record_call(provider)
+    except Exception:
+        pass
+
 
 def _record_health(provider, success, latency_ms, error_msg=None):
     """Auto-call record_api_call when provider is specified."""

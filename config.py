@@ -69,6 +69,7 @@ _13F_HISTORY_FILE  = DATA_DIR / "13f_history.json"
 COL_DATA_FILE      = DATA_DIR / "col_data.json"
 COL_RAW_FILE       = DATA_DIR / "col_raw.json"
 COL_QUOTA_FILE     = DATA_DIR / "col_quota.json"
+QUOTA_FILE         = DATA_DIR / "quota.json"
 
 # ── Provider Defaults ──────────────────────────────────────────────────
 # Cascade order per data domain. Override in user settings under "providerConfig".

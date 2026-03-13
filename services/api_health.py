@@ -1,24 +1,51 @@
-"""API Health Tracking — monitors external service status and FMP quota."""
+"""API Health Tracking — monitors external service status.
 
+Quota tracking is handled by services/quota_svc.py (unified system).
+This module only tracks health status (ok/error/exhausted) and latency.
+
+Health state is persisted to ``health.json`` in DATA_DIR so status
+survives server restarts (last known status from real usage).
+"""
+
+import json
 import time
 import threading
-from datetime import date, datetime
+from datetime import datetime
+
+from config import DATA_DIR
 
 _health_lock = threading.Lock()
+_HEALTH_FILE = DATA_DIR / "health.json"
 
 _DEFAULT_API = {"status": "unknown", "lastSuccess": None, "lastError": None, "lastErrorMsg": "", "latencyMs": None}
 
-_api_health = {
-    "fmp": dict(_DEFAULT_API),
-    "yfinance": dict(_DEFAULT_API),
-    "fred": dict(_DEFAULT_API),
-    "edgar": dict(_DEFAULT_API),
-    "rapidapi": dict(_DEFAULT_API),
-    "resettle": dict(_DEFAULT_API),
-    "elbstream": dict(_DEFAULT_API),
-}
+_PROVIDERS = ("fmp", "yfinance", "fred", "edgar", "rapidapi", "resettle", "elbstream")
 
-_fmp_quota = {"date": None, "count": 0, "limit": 250}
+
+def _load_health():
+    """Load persisted health state, falling back to defaults."""
+    defaults = {p: dict(_DEFAULT_API) for p in _PROVIDERS}
+    if not _HEALTH_FILE.exists():
+        return defaults
+    try:
+        saved = json.loads(_HEALTH_FILE.read_text())
+        for p in _PROVIDERS:
+            if p in saved:
+                defaults[p].update(saved[p])
+        return defaults
+    except Exception:
+        return defaults
+
+
+def _save_health():
+    """Persist current health state to disk (called under lock)."""
+    try:
+        _HEALTH_FILE.write_text(json.dumps(_api_health, indent=2))
+    except Exception:
+        pass
+
+
+_api_health = _load_health()
 
 
 def record_api_call(api_name, success, latency_ms=None, error_msg=None):
@@ -34,60 +61,39 @@ def record_api_call(api_name, success, latency_ms=None, error_msg=None):
             h["lastSuccess"] = now
         else:
             msg = error_msg or ""
-            # Detect quota exhaustion for RapidAPI (monthly message or 429 rate limit)
-            if api_name == "rapidapi" and ("MONTHLY" in msg.upper() or "429" in msg):
+            # Detect quota exhaustion (monthly message, 429, or explicit)
+            if "MONTHLY" in msg.upper() or "429" in msg or "exhausted" in msg.lower():
                 h["status"] = "exhausted"
             else:
                 h["status"] = "error"
             h["lastError"] = now
             h["lastErrorMsg"] = msg
-        # Track FMP quota
-        if api_name == "fmp":
-            _check_quota_reset()
-            _fmp_quota["count"] += 1
-            _persist_quota()
-
-
-def get_fmp_quota():
-    """Return current FMP quota state. Auto-resets if date changed."""
-    with _health_lock:
-        _check_quota_reset()
-        return {
-            "used": _fmp_quota["count"],
-            "limit": _fmp_quota["limit"],
-            "remaining": max(0, _fmp_quota["limit"] - _fmp_quota["count"]),
-            "date": _fmp_quota["date"],
-        }
-
-
-def _check_quota_reset():
-    """Reset quota counter if date changed. Must hold _health_lock."""
-    today = date.today().isoformat()
-    if _fmp_quota["date"] != today:
-        _fmp_quota["date"] = today
-        _fmp_quota["count"] = 0
+        _save_health()
 
 
 def get_health_summary():
-    """Return full health dict for /api/health endpoint."""
+    """Return full health dict for /api/health endpoint.
+
+    Includes unified quota data from quota_svc.
+    """
     import copy
     with _health_lock:
-        _check_quota_reset()
-        return {
-            "apis": copy.deepcopy(_api_health),
-            "fmpQuota": {
-                "used": _fmp_quota["count"],
-                "limit": _fmp_quota["limit"],
-                "remaining": max(0, _fmp_quota["limit"] - _fmp_quota["count"]),
-                "date": _fmp_quota["date"],
-            },
-        }
+        summary = {"apis": copy.deepcopy(_api_health)}
+
+    # Attach unified quota data (outside health_lock to avoid deadlock)
+    try:
+        from services.quota_svc import get_all_quotas
+        summary["quotas"] = get_all_quotas()
+    except Exception:
+        summary["quotas"] = {}
+
+    return summary
 
 
 def run_health_check():
     """Ping free/unlimited APIs only. Returns updated health summary.
 
-    Quota-limited providers (FMP, RapidAPI) are SKIPPED — their status
+    Quota-limited providers (FMP, RapidAPI, Resettle) are SKIPPED — their status
     is tracked passively from real usage via resilient_get/resilient_post.
     This avoids wasting limited API calls on health pings.
     """
@@ -132,27 +138,7 @@ def run_health_check():
     except Exception as e:
         record_api_call("elbstream", success=False, error_msg=str(e)[:80])
 
-    # FMP (250/day) and RapidAPI (~100/month) — status tracked passively
-    # from real usage. No dedicated health ping needed.
+    # FMP (250/day), RapidAPI (~5/month), Resettle (~100/month) — status
+    # tracked passively from real usage. No dedicated health ping needed.
 
     return get_health_summary()
-
-
-def load_quota_from_cache():
-    """Restore FMP quota from cache.json on startup."""
-    from services.cache import cache_get
-    cached = cache_get("_fmp_quota")
-    if cached and isinstance(cached, dict):
-        with _health_lock:
-            _fmp_quota["date"] = cached.get("date")
-            _fmp_quota["count"] = cached.get("count", 0)
-            _check_quota_reset()
-
-
-def _persist_quota():
-    """Save FMP quota to cache.json. Must hold _health_lock."""
-    from services.cache import cache_set
-    try:
-        cache_set("_fmp_quota", {"date": _fmp_quota["date"], "count": _fmp_quota["count"]})
-    except Exception:
-        pass

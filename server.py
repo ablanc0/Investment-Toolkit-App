@@ -66,13 +66,14 @@ if __name__ == "__main__":
     import os
     from services.cache import load_disk_cache
     from services.edgar_13f import _load_13f_history
-    from services.api_health import load_quota_from_cache
-    from services.col_api import load_col_data
+    from services.quota_svc import load_quotas
+    from services.col_api import load_col_data, auto_refresh_if_stale
 
     load_disk_cache()
     _load_13f_history()
-    load_quota_from_cache()
+    load_quotas()
     load_col_data()
+    auto_refresh_if_stale()
 
     from services.backup import run_backup
     backup_result = run_backup()
