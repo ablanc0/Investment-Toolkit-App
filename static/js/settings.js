@@ -561,7 +561,8 @@ function renderApiHealthTable(data) {
         { key: 'yfinance', name: 'Yahoo Finance — no limit', icon: '📊' },
         { key: 'fred', name: 'FRED (AAA Bond Yield) — no limit', icon: '🏛' },
         { key: 'edgar', name: 'SEC EDGAR — no limit', icon: '📋' },
-        { key: 'rapidapi', name: 'RapidAPI (Cost of Living) — 5 calls/month', icon: '🏙' },
+        { key: 'rapidapi', name: 'RapidAPI (ditno COL) — 5 calls/month', icon: '🏙' },
+        { key: 'resettle', name: 'Resettle (COL Search) — 100 calls/month', icon: '🔍' },
         { key: 'elbstream', name: 'Elbstream (Logos) — no limit', icon: '🖼' },
     ];
 

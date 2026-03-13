@@ -83,12 +83,19 @@ def get_col_metadata():
     """Return metadata about the stored COL data."""
     global_list = _col_data.get("globalCityList", [])
     countries = set(c.get("country", "") for c in global_list if isinstance(c, dict))
+    cities = _col_data.get("cities", [])
+    # Last updated = most recent lastUpdated across all cities (includes Resettle/manual)
+    last_updated = _col_data.get("fetchedAt")
+    for c in cities:
+        lu = c.get("lastUpdated", "")
+        if lu and (not last_updated or lu > last_updated):
+            last_updated = lu
     return {
-        "cityCount": len(_col_data.get("cities", [])),
+        "cityCount": len(cities),
         "totalKnownCities": len(global_list),
         "totalCountries": len(countries),
         "usCityCount": len(_col_data.get("cityNames", [])),
-        "fetchedAt": _col_data.get("fetchedAt"),
+        "fetchedAt": last_updated,
         "newCitiesAdded": _col_data.get("newCitiesAdded", 0),
     }
 
@@ -467,3 +474,191 @@ def _parse_value(val_str):
         return round(float(str(val_str).replace(",", "")), 2)
     except (ValueError, TypeError):
         return 0.0
+
+
+# ── On-demand city lookup (Resettle) ──────────────────────────────────
+
+def _find_city(city_name):
+    """Find a city in stored data by name (case-insensitive, exact then partial).
+
+    Prefers non-manual (API/resettle) entries so that having a manual entry
+    doesn't prevent API lookups or shadow the API data.
+    """
+    cities = _col_data.get("cities", [])
+    name_lower = city_name.lower().strip()
+    # Exact match — prefer non-manual
+    for c in cities:
+        if c["name"].lower() == name_lower and c.get("source") != "manual":
+            return c
+    for c in cities:
+        if c["name"].lower() == name_lower:
+            return c
+    # Partial match — prefer non-manual
+    for c in cities:
+        if name_lower in c["name"].lower() and c.get("source") != "manual":
+            return c
+    for c in cities:
+        if name_lower in c["name"].lower():
+            return c
+    return None
+
+
+def _get_nyc_reference():
+    """Get New York city data for index computation."""
+    cities = _col_data.get("cities", [])
+    for c in cities:
+        if c["name"].lower() == "new york":
+            return c
+    return None
+
+
+def compute_indices(city, nyc):
+    """Compute relative indices (NYC = 100) for a city entry."""
+    if not nyc:
+        return
+
+    # COL index from monthly costs
+    nyc_costs = float(nyc.get("monthlyCostsNoRent", 0))
+    city_costs = float(city.get("monthlyCostsNoRent", 0))
+    if nyc_costs > 0 and city_costs > 0:
+        city["colIndex"] = round((city_costs / nyc_costs) * 100, 1)
+
+    # Rent index from 1BR city rent
+    nyc_rent = float(nyc.get("rent1brCity", 0))
+    city_rent = float(city.get("rent1brCity", 0))
+    if nyc_rent > 0 and city_rent > 0:
+        city["rentIndex"] = round((city_rent / nyc_rent) * 100, 1)
+
+    # COL + Rent combined index
+    col_idx = float(city.get("colIndex", 0))
+    rent_idx = float(city.get("rentIndex", 0))
+    if col_idx > 0 and rent_idx > 0:
+        city["colPlusRentIndex"] = round((col_idx + rent_idx) / 2, 1)
+
+    # Purchasing power index
+    nyc_salary = float(nyc.get("avgNetSalary", 0))
+    city_salary = float(city.get("avgNetSalary", 0))
+    cpr_idx = float(city.get("colPlusRentIndex", 0))
+    if nyc_salary > 0 and city_salary > 0 and cpr_idx > 0:
+        city["purchasingPowerIndex"] = round(
+            (city_salary / cpr_idx) / (nyc_salary / 100) * 100, 1
+        )
+
+
+def _upsert_city(city):
+    """Insert or update a city in the stored data.
+
+    Rules:
+    1. source='manual' entries are never overwritten
+    2. New city → always insert
+    3. Existing city → inflation heuristic: compare rent1brCity,
+       higher rent = more recent data (update); otherwise keep existing
+    """
+    cities = _col_data.get("cities", [])
+    name_lower = city["name"].lower().strip()
+
+    for i, existing in enumerate(cities):
+        if existing["name"].lower() == name_lower:
+            # Skip manual entries — they coexist with API entries
+            if existing.get("source") == "manual":
+                continue
+
+            # Inflation heuristic: compare rent1brCity
+            existing_rent = float(existing.get("rent1brCity", 0))
+            new_rent = float(city.get("rent1brCity", 0))
+
+            if new_rent > 0 and existing_rent > 0:
+                if new_rent > existing_rent:
+                    # New data is likely more recent — update
+                    cities[i] = city
+                    _col_data["cities"] = cities
+                    _save_col_data()
+                    return city
+                else:
+                    # Existing data is likely more current — keep it
+                    return existing
+            elif new_rent > 0 and existing_rent == 0:
+                # New data has rent info, existing doesn't — update
+                cities[i] = city
+                _col_data["cities"] = cities
+                _save_col_data()
+                return city
+            else:
+                # Compare completeness
+                new_nonnull = sum(1 for v in city.values() if v and v != 0)
+                old_nonnull = sum(1 for v in existing.values() if v and v != 0)
+                if new_nonnull > old_nonnull:
+                    cities[i] = city
+                    _col_data["cities"] = cities
+                    _save_col_data()
+                    return city
+                return existing
+
+    # New city — insert
+    cities.append(city)
+    cities.sort(key=lambda c: c["name"])
+    _col_data["cities"] = cities
+    _col_data["cityCount"] = len(cities)
+    _save_col_data()
+    return city
+
+
+def lookup_or_fetch(city_name, country=None, force=False):
+    """Look up a city locally, or fetch from Resettle API if not found.
+
+    Args:
+        force: If True, skip local DB check and always fetch from Resettle.
+               Used when user explicitly clicks "Search Online".
+
+    Returns city dict on success, or dict with 'error' key on failure.
+    """
+    # 1. Check local DB (skip if force=True — user wants fresh data)
+    if not force:
+        existing = _find_city(city_name)
+        if existing:
+            return existing
+
+    # 2. Check Resettle quota
+    from services.col_quota import check_quota, record_call
+    quota = check_quota("resettle")
+    if not quota["allowed"]:
+        return {
+            "error": "quota_exhausted",
+            "message": "Resettle API monthly quota exhausted",
+            "remaining": 0,
+            "limit": quota["limit"],
+        }
+
+    # 3. Search Resettle for place_id
+    from services.resettle_svc import search_place, fetch_cost_of_living, normalize_resettle
+    place = search_place(city_name, country_code=country)
+    record_call("resettle")  # search uses 1 call
+
+    if not place:
+        return {"error": "city_not_found", "message": f"'{city_name}' not found on Resettle"}
+
+    # 4. Fetch COL data
+    raw = fetch_cost_of_living(place["place_id"])
+    record_call("resettle")  # COL fetch uses 1 call
+
+    if not raw:
+        return {"error": "fetch_failed", "message": f"Failed to fetch COL data for '{city_name}'"}
+
+    # 5. Normalize + compute indices + upsert
+    city = normalize_resettle(city_name, raw, country_code=place.get("country_code", ""))
+    # Use the canonical name from the API if available
+    if place.get("name"):
+        city["name"] = place["name"]
+
+    nyc = _get_nyc_reference()
+    if nyc:
+        compute_indices(city, nyc)
+
+    result = _upsert_city(city)
+    print(f"[COL] Fetched '{city['name']}' from Resettle: rent1br=${city.get('rent1brCity', 0)}, "
+          f"salary=${city.get('avgNetSalary', 0)}, completeness={city.get('dataCompleteness', 0)}")
+    return result
+
+
+# Backward compatibility alias
+lookup_or_scrape = lookup_or_fetch

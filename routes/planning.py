@@ -79,6 +79,44 @@ def _resolve_home_col(config, api_cities):
     return None, None
 
 
+def _compute_home_ppi(config, api_cities):
+    """Compute Purchasing Power Index for the home city."""
+    home_col = float(config.get("homeColIndex") or 0)
+    if home_col <= 0 or not api_cities:
+        return None
+    nyc = next((c for c in api_cities if c["name"].lower() == "new york"), None)
+    nyc_salary = float(nyc.get("avgNetSalary", 5159)) if nyc else 5159.0
+    home_name = (config.get("homeCityName") or "").lower().strip()
+    home_match = next((c for c in api_cities if c["name"].lower() == home_name), None)
+    if home_match and home_match.get("purchasingPowerIndex"):
+        return round(float(home_match["purchasingPowerIndex"]), 1)
+    if nyc_salary <= 0:
+        return None
+    stored_salary = float(home_match.get("avgNetSalary", 0)) if home_match else 0
+    if stored_salary > 0:
+        avg_salary = stored_salary
+    else:
+        home_state = (config.get("homeState") or "").lower()
+        home_country = (config.get("homeCountry") or "").lower()
+        state_cities = [c for c in api_cities
+                        if c.get("source") != "manual"
+                        and _state_match(c.get("state"), home_state)
+                        and (not home_country or (c.get("country") or "").lower() == home_country)
+                        and c.get("avgNetSalary", 0) > 0]
+        if state_cities:
+            avg_salary = sum(c["avgNetSalary"] for c in state_cities) / len(state_cities)
+        else:
+            avg_salary = config.get("referenceSalary", 140000) / 12
+    br = config.get("bedroomCount", 1)
+    loc = config.get("locationType", "city")
+    rent_key = f"rent{br}br{'City' if loc == 'city' else 'Suburb'}"
+    home_rent = float(config.get("currentRent") or 0)
+    nyc_rent = float(nyc.get(rent_key, 2697)) if nyc else 2697.0
+    rent_idx = (home_rent / nyc_rent * 100) if nyc_rent > 0 and home_rent > 0 else 0
+    cpr_idx = (home_col + rent_idx) / 2 if rent_idx > 0 else home_col
+    return round((avg_salary / cpr_idx) / (nyc_salary / 100) * 100, 1) if cpr_idx > 0 else None
+
+
 def _compute_col_entry(entry, config, api_cities=None):
     """Recompute all derived fields from rent, API data, and config."""
     hw = config.get("housingWeight", 0.30)
@@ -87,8 +125,8 @@ def _compute_col_entry(entry, config, api_cities=None):
     current_rent = config.get("currentRent", 1458)
     home_costs = float(config.get("homeMonthlyCosts") or 0)
 
-    # For API-sourced entries: derive rent from stored API data
-    if entry.get("source") == "api":
+    # For API/Resettle-sourced entries: derive rent from stored API data
+    if entry.get("source") in ("api", "resettle"):
         api_data = entry.get("apiData", {})
         # Select rent based on bedroomCount + locationType (unless user overrode)
         if not entry.get("rentOverride") and api_data:
@@ -110,15 +148,15 @@ def _compute_col_entry(entry, config, api_cities=None):
     city_rent = float(entry.get("rent", 0))
     city_costs = float(entry.get("monthlyCostsNoRent", 0))
 
-    # Auto-compute COL index for non-API entries from costs
-    if entry.get("source") != "api" and city_costs > 0 and api_cities:
+    # Auto-compute COL index for non-API/Resettle entries from costs
+    if entry.get("source") not in ("api", "resettle") and city_costs > 0 and api_cities:
         nyc = next((c for c in api_cities if c["name"].lower() == "new york"), None)
         nyc_costs = float(nyc.get("monthlyCostsNoRent", 1728)) if nyc else 1728.0
         if nyc_costs > 0:
             entry["colIndex"] = round((city_costs / nyc_costs) * 100, 1)
 
-    # Auto-compute PPI for non-API entries using colPlusRentIndex (Numbeo-compatible)
-    if entry.get("source") != "api" and api_cities:
+    # Auto-compute PPI for non-API/Resettle entries using colPlusRentIndex
+    if entry.get("source") not in ("api", "resettle") and api_cities:
         col_idx = float(entry.get("colIndex", 0))
         if col_idx > 0:
             nyc = next((c for c in api_cities if c["name"].lower() == "new york"), None)
@@ -160,7 +198,7 @@ def _compute_col_entry(entry, config, api_cities=None):
     # Non-housing multiplier for display
     if city_costs > 0 and home_costs > 0:
         entry["nonHousingMult"] = round(city_costs / home_costs, 2)
-    elif not entry.get("nhmOverride") and entry.get("source") == "api":
+    elif not entry.get("nhmOverride") and entry.get("source") in ("api", "resettle"):
         api_data = entry.get("apiData", {})
         col_index = float(api_data.get("colIndex", 100)) if api_data else 100
         home_col = float(config.get("homeColIndex") or 0)
@@ -227,44 +265,7 @@ def api_cost_of_living():
     # Compute home city PPI for KPI card
     from services.col_api import get_col_cities
     api_cities = get_col_cities()
-    home_col = float(config.get("homeColIndex") or 0)
-    home_ppi = None
-    if home_col > 0 and api_cities:
-        nyc = next((c for c in api_cities if c["name"].lower() == "new york"), None)
-        nyc_salary = float(nyc.get("avgNetSalary", 5159)) if nyc else 5159.0
-        # Check if home city is in DB (API or manual with stored data)
-        home_name = (config.get("homeCityName") or "").lower().strip()
-        home_match = next((c for c in api_cities if c["name"].lower() == home_name), None)
-        if home_match and home_match.get("purchasingPowerIndex"):
-            home_ppi = round(float(home_match["purchasingPowerIndex"]), 1)
-        elif nyc_salary > 0:
-            # Use stored avgNetSalary from manual DB entry if available
-            stored_salary = float(home_match.get("avgNetSalary", 0)) if home_match else 0
-            if stored_salary > 0:
-                avg_salary = stored_salary
-            else:
-                # Fallback: state avg salary, then user reference salary
-                home_state = (config.get("homeState") or "").lower()
-                home_country = (config.get("homeCountry") or "").lower()
-                state_cities = [c for c in api_cities
-                                if c.get("source") != "manual"
-                                and _state_match(c.get("state"), home_state)
-                                and (not home_country or (c.get("country") or "").lower() == home_country)
-                                and c.get("avgNetSalary", 0) > 0]
-                if state_cities:
-                    avg_salary = sum(c["avgNetSalary"] for c in state_cities) / len(state_cities)
-                else:
-                    avg_salary = config.get("referenceSalary", 140000) / 12
-            # Use colPlusRentIndex for Numbeo-compatible PPI
-            br = config.get("bedroomCount", 1)
-            loc = config.get("locationType", "city")
-            rent_key = f"rent{br}br{'City' if loc == 'city' else 'Suburb'}"
-            home_rent = float(config.get("currentRent") or 0)
-            nyc_rent = float(nyc.get(rent_key, 2697)) if nyc else 2697.0
-            rent_idx = (home_rent / nyc_rent * 100) if nyc_rent > 0 and home_rent > 0 else 0
-            cpr_idx = (home_col + rent_idx) / 2 if rent_idx > 0 else home_col
-            home_ppi = round((avg_salary / cpr_idx) / (nyc_salary / 100) * 100, 1) if cpr_idx > 0 else None
-    config["homePurchasingPower"] = home_ppi
+    config["homePurchasingPower"] = _compute_home_ppi(config, api_cities)
 
     # Ensure computed fields (colIndex, PPI) are populated for display
     col_entries = portfolio.get("costOfLiving", [])
@@ -335,8 +336,8 @@ def api_cost_of_living_update():
     index = int(b.get("index", -1))
     if metro:
         index = next((i for i, item in enumerate(items) if item.get("metro") == metro), -1)
-    # Track manual overrides on API-sourced entries
-    if 0 <= index < len(items) and items[index].get("source") == "api":
+    # Track manual overrides on API/Resettle-sourced entries
+    if 0 <= index < len(items) and items[index].get("source") in ("api", "resettle"):
         if "rent" in updates:
             updates["rentOverride"] = True
         if "nonHousingMult" in updates:
@@ -466,6 +467,8 @@ def api_col_config_update():
         _compute_col_entry(city, config, api_cities)
     portfolio["costOfLiving"] = cities
     save_portfolio(portfolio)
+    # Add computed home PPI for frontend display
+    config["homePurchasingPower"] = _compute_home_ppi(config, api_cities)
     return jsonify({"ok": True, "colConfig": config, "costOfLiving": cities})
 
 
@@ -480,6 +483,7 @@ def api_col_recompute():
         _compute_col_entry(city, config, api_cities)
     portfolio["costOfLiving"] = cities
     save_portfolio(portfolio)
+    config["homePurchasingPower"] = _compute_home_ppi(config, api_cities)
     return jsonify({"ok": True, "costOfLiving": cities, "colConfig": config})
 
 
@@ -650,7 +654,7 @@ def api_col_upgrade():
     upgraded = 0
     refreshed = 0
     for city in cities:
-        already_api = city.get("source") == "api"
+        already_api = city.get("source") in ("api", "resettle")
         if already_api and not refresh:
             continue
         metro_lower = city["metro"].lower()
@@ -662,7 +666,7 @@ def api_col_upgrade():
                     api_match = api_city
                     break
         if api_match and api_match.get("name"):
-            city["source"] = "api"
+            city["source"] = api_match.get("source", "api")
             city["rentOverride"] = False
             city["nhmOverride"] = False
             city["apiData"] = api_match
@@ -696,6 +700,37 @@ def api_col_dedup():
     portfolio["costOfLiving"] = unique
     save_portfolio(portfolio)
     return jsonify({"ok": True, "removed": removed, "remaining": len(unique), "costOfLiving": unique})
+
+
+@bp.route("/api/cost-of-living/fetch-city", methods=["POST"])
+@bp.route("/api/cost-of-living/scrape-city", methods=["POST"])  # backward compat alias
+def api_col_fetch_city():
+    """Fetch a single city's COL data on-demand via Resettle API."""
+    from services.col_api import lookup_or_fetch
+    from services.col_quota import check_quota
+    b = request.get_json()
+    city_name = (b.get("city") or b.get("name") or "").strip()
+    country = b.get("country") or b.get("country_code")
+    if not city_name:
+        return jsonify({"ok": False, "error": "City name is required"}), 400
+
+    force = b.get("force", False)
+    result = lookup_or_fetch(city_name, country=country, force=force)
+    if result.get("error"):
+        quota = check_quota("resettle")
+        return jsonify({"ok": False, "error": result["error"],
+                        "message": result.get("message", ""),
+                        "quota": quota}), 400
+
+    quota = check_quota("resettle")
+    return jsonify({"ok": True, "city": result, "quota": quota})
+
+
+@bp.route("/api/cost-of-living/quota")
+def api_col_quota():
+    """Return quota status for all COL providers."""
+    from services.col_quota import get_all_quotas
+    return jsonify({"ok": True, "quotas": get_all_quotas()})
 
 
 @bp.route("/api/cost-of-living/api-cities")

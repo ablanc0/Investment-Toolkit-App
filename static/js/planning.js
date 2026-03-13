@@ -8,9 +8,10 @@ let colGlobalCities = []; // Global cities (all countries)
 
 async function fetchCostOfLiving() {
     try {
-        const [colResp, apiResp] = await Promise.all([
+        const [colResp, apiResp, quotaResp] = await Promise.all([
             fetch('/api/cost-of-living').then(r => r.json()),
             fetch('/api/cost-of-living/api-cities?include_global=1').then(r => r.json()).catch(() => ({ cities: [], meta: {} })),
+            fetch('/api/cost-of-living/quota').then(r => r.json()).catch(() => ({ quotas: {} })),
         ]);
         allCOLData = colResp.costOfLiving || [];
         colConfig = colResp.colConfig || {};
@@ -18,6 +19,9 @@ async function fetchCostOfLiving() {
         colApiCities = apiResp.cities || [];
         colApiMeta = apiResp.meta || {};
         colGlobalCities = apiResp.globalCities || [];
+        // Update quota display
+        const rq = (quotaResp.quotas || {}).resettle;
+        if (rq) updateQuotaDisplay({ remaining: Math.max(0, rq.limit - rq.used), limit: rq.limit });
         renderCOLConfig();
         renderCOLKpis();
         renderCOLChart();
@@ -30,7 +34,10 @@ function renderCOLConfig() {
     if (!div) return;
 
     const homeName = colConfig.homeCityName || '';
-    const matchedCity = colApiCities.find(c => c.name.toLowerCase() === homeName.toLowerCase().trim());
+    const _matchName = homeName.toLowerCase().trim();
+    const _matchedAll = colApiCities.filter(c => c.name.toLowerCase() === _matchName);
+    const apiMatch = _matchedAll.find(c => c.source !== 'manual');
+    const manualMatch = _matchedAll.find(c => c.source === 'manual');
 
     // ── Salary section ──
     const source = colConfig.referenceSalarySource || 'manual';
@@ -68,7 +75,7 @@ function renderCOLConfig() {
                         ${renderStateSelector()}
                     </div>
                 </div>
-                <div id="homeDataSourceLine">${renderDataSourceLine(matchedCity)}</div>
+                <div id="homeDataSourceLine">${renderDataSourceLine(apiMatch, manualMatch)}</div>
                 <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:10px;">
                     <div><label class="form-label" style="font-size:0.72rem;">Your Rent/mo</label>
                         <input type="number" value="${colConfig.currentRent || 0}" class="form-input"
@@ -111,7 +118,7 @@ function renderCOLConfig() {
         </div>
         <div style="margin-top:8px; font-size:0.75rem; color:var(--text-dim);">
             ${colApiMeta.fetchedAt
-                ? `<span style="color:#4ade80;">&#9679;</span> ${colApiMeta.cityCount} cities in database${colApiMeta.totalKnownCities ? ' / ' + colApiMeta.totalKnownCities + ' global' : ''} (updated ${new Date(colApiMeta.fetchedAt).toLocaleDateString()})`
+                ? `<span style="color:#4ade80;">&#9679;</span> ${colApiMeta.cityCount} cities in database (updated ${new Date(colApiMeta.fetchedAt).toLocaleDateString()})`
                 : '<span style="color:#64748b;">&#9679;</span> No API data — click "Refresh API Data" to fetch'}
         </div>`;
 }
@@ -255,24 +262,40 @@ function renderStateSelector() {
 }
 
 // ── Data source line + selector ──
-function renderDataSourceLine(matchedCity) {
+function renderDataSourceLine(apiMatch, manualMatch) {
     const resolvedCosts = colConfig.homeMonthlyCosts;
     const resolvedCol = colConfig.homeColIndex;
     const colSource = colConfig.homeColSource || 'manual';
 
-    // City found in DB — green status
-    if (matchedCity) {
-        const loc = matchedCity.state && matchedCity.state !== 'N/A'
-            ? `${matchedCity.state}, ${matchedCity.country}` : matchedCity.country || '';
-        const srcTag = matchedCity.source === 'manual'
-            ? ' <span style="color:#f59e0b;">(manual)</span>' : '';
-        const editLabel = matchedCity.source === 'manual' ? 'edit' : 'edit (creates manual entry)';
-        let html = `<div style="padding:6px 8px; background:#22c55e10; border:1px solid #22c55e30; border-radius:6px; font-size:0.75rem;">
-            <span style="color:#4ade80; font-weight:600;">✓ ${matchedCity.name}, ${loc}</span>${srcTag}
-            <span style="color:var(--text-dim);"> — COL ${matchedCity.colIndex} · $${matchedCity.monthlyCostsNoRent?.toLocaleString()}/mo · Salary $${(matchedCity.avgNetSalary || 0).toLocaleString()}/mo</span>
-            <a href="#" onclick="toggleEditManualCity(); return false;" style="color:var(--accent); font-size:0.7rem; margin-left:6px;">${editLabel}</a>
-        </div>`;
-        // Compute state avg salary for the selector
+    // City found in DB — show entry line(s)
+    if (apiMatch || manualMatch) {
+        let html = '';
+        const _loc = (c) => c.state && c.state !== 'N/A' ? `${c.state}, ${c.country}` : c.country || '';
+
+        // API/Resettle entry — green, edit only (creates manual copy)
+        if (apiMatch) {
+            const srcLabel = apiMatch.source === 'resettle' ? 'Resettle' : 'API';
+            html += `<div style="padding:6px 8px; background:#22c55e10; border:1px solid #22c55e30; border-radius:6px; font-size:0.75rem;">
+                <span style="color:#4ade80; font-weight:600;">✓ ${apiMatch.name}, ${_loc(apiMatch)}</span>
+                <span style="font-size:0.65rem; color:#60a5fa; margin-left:4px;">(${srcLabel})</span>
+                <span style="color:var(--text-dim);"> — COL ${apiMatch.colIndex} · $${apiMatch.monthlyCostsNoRent?.toLocaleString()}/mo · Salary $${(apiMatch.avgNetSalary || 0).toLocaleString()}/mo</span>
+                <a href="#" onclick="toggleEditManualCity(); return false;" style="color:var(--accent); font-size:0.7rem; margin-left:6px;">edit (creates manual entry)</a>
+            </div>`;
+        }
+
+        // Manual entry — amber, edit + delete
+        if (manualMatch) {
+            html += `<div style="padding:6px 8px; background:#f59e0b10; border:1px solid #f59e0b30; border-radius:6px; font-size:0.75rem;${apiMatch ? ' margin-top:4px;' : ''}">
+                <span style="color:#f59e0b; font-weight:600;">✎ ${manualMatch.name}, ${_loc(manualMatch)}</span>
+                <span style="font-size:0.65rem; color:#f59e0b; margin-left:4px;">(manual)</span>
+                <span style="color:var(--text-dim);"> — COL ${manualMatch.colIndex} · $${manualMatch.monthlyCostsNoRent?.toLocaleString()}/mo · Salary $${(manualMatch.avgNetSalary || 0).toLocaleString()}/mo</span>
+                <a href="#" onclick="toggleEditManualCity(); return false;" style="color:var(--accent); font-size:0.7rem; margin-left:6px;">edit</a>
+                <a href="#" onclick="deleteHomeCityManual('${manualMatch.name.replace(/'/g, "\\'")}'); return false;" style="color:#f87171; font-size:0.7rem; margin-left:6px;">delete</a>
+            </div>`;
+        }
+
+        // Edit form — pre-fill from manual entry if exists, else API entry
+        const editCity = manualMatch || apiMatch;
         const homeState = (colConfig.homeState || '').toLowerCase();
         const homeCountry = (colConfig.homeCountry || '').toLowerCase();
         const stateSalaryCities = colApiCities.filter(c =>
@@ -284,11 +307,11 @@ function renderDataSourceLine(matchedCity) {
             ? Math.round(stateSalaryCities.reduce((s, c) => s + c.avgNetSalary, 0) / stateSalaryCities.length)
             : 0;
         const userMonthlySalary = Math.round((colConfig.referenceSalary || 0) / 12);
-        const currentSalary = matchedCity.avgNetSalary || stateAvgSalary || userMonthlySalary || 0;
+        const currentSalary = editCity.avgNetSalary || stateAvgSalary || userMonthlySalary || 0;
         html += `<div id="editManualCityFields" style="display:none; margin-top:6px; padding:8px; background:var(--card-hover); border-radius:6px;">
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
                 <div><label class="form-label" style="font-size:0.68rem;">Costs/mo (no rent)</label>
-                    <input type="number" id="editManualCosts" value="${matchedCity.monthlyCostsNoRent || ''}" class="form-input"
+                    <input type="number" id="editManualCosts" value="${editCity.monthlyCostsNoRent || ''}" class="form-input"
                         style="width:100%; font-size:0.78rem; padding:4px 8px;" oninput="updateEditPreview()"></div>
                 <div><label class="form-label" style="font-size:0.68rem;">Avg Net Salary/mo (for PPI)</label>
                     <select id="editManualSalarySource" class="form-input" style="width:100%; font-size:0.72rem; padding:4px 8px; margin-bottom:4px;"
@@ -312,40 +335,54 @@ function renderDataSourceLine(matchedCity) {
     // City NOT in DB — show data source selector
     const homeState = (colConfig.homeState || '').toLowerCase();
     const homeCountry = (colConfig.homeCountry || '').toLowerCase();
-    // Filter by country first, then exact state match
-    const countryCities = homeCountry
+    // All cities matching country/state (for individual options — includes manual)
+    const allCountryCities = homeCountry
         ? colApiCities.filter(c => (c.country || '').toLowerCase() === homeCountry)
-        : colApiCities;
-    const stateCities = homeState
-        ? countryCities.filter(c => (c.state || '').toLowerCase() === homeState).sort((a, b) => a.name.localeCompare(b.name))
+        : [...colApiCities];
+    const allStateCities = homeState
+        ? allCountryCities.filter(c => (c.state || '').toLowerCase() === homeState).sort((a, b) => a.name.localeCompare(b.name))
         : [];
-    // If no state match but we have country cities, offer all country cities as proxies
-    const proxyCities = stateCities.length > 0 ? stateCities : countryCities.sort((a, b) => a.name.localeCompare(b.name));
+    const proxyCities = allStateCities.length > 0 ? allStateCities : allCountryCities.sort((a, b) => a.name.localeCompare(b.name));
+    // API-only cities for average calculation (exclude manual)
+    const apiProxyCities = proxyCities.filter(c => c.source !== 'manual');
 
-    // Build <select> options: proxy cities + average + manual
+    // "Not found" hint
+    const homeName = (colConfig.homeCityName || '').trim();
+    let html = '';
+    if (homeName) {
+        html += `<div style="padding:6px 8px; margin-bottom:6px; background:#f8717110; border:1px solid #f8717130; border-radius:6px; font-size:0.72rem; color:#f87171;">
+            "${homeName}" not found in database — select a data source below: use a nearby city as proxy, search online, or enter costs manually.
+        </div>`;
+    }
+
+    // Build <select> options: proxy cities + average + search + manual
     let opts = '';
     const proxyCity = (colConfig.homeProxyCity || '').toLowerCase();
 
-    // Proxy city options
+    // Proxy city options (all sources, label manual ones)
     proxyCities.forEach(c => {
         const sel = colSource === 'proxy' && c.name.toLowerCase() === proxyCity ? 'selected' : '';
-        opts += `<option value="proxy:${c.name}" ${sel}>${c.name} — COL ${c.colIndex}, $${c.monthlyCostsNoRent?.toLocaleString()}/mo</option>`;
+        const tag = c.source === 'manual' ? ' (manual)' : '';
+        opts += `<option value="proxy:${c.name}" ${sel}>${c.name}${tag} — COL ${c.colIndex}, $${c.monthlyCostsNoRent?.toLocaleString()}/mo</option>`;
     });
 
-    // Average option (only if multiple proxy cities)
-    if (proxyCities.length > 1) {
-        const avgCol = (proxyCities.reduce((s, c) => s + (c.colIndex || 0), 0) / proxyCities.length).toFixed(1);
-        const avgCosts = Math.round(proxyCities.reduce((s, c) => s + (c.monthlyCostsNoRent || 0), 0) / proxyCities.length);
+    // Average option (API cities only — exclude manual)
+    if (apiProxyCities.length > 1) {
+        const avgCol = (apiProxyCities.reduce((s, c) => s + (c.colIndex || 0), 0) / apiProxyCities.length).toFixed(1);
+        const avgCosts = Math.round(apiProxyCities.reduce((s, c) => s + (c.monthlyCostsNoRent || 0), 0) / apiProxyCities.length);
         const sel = colSource === 'stateAvg' ? 'selected' : '';
-        const label = stateCities.length > 0 ? `Average (${proxyCities.length} cities)` : `Country average (${proxyCities.length} cities)`;
+        const label = allStateCities.length > 0 ? `API average (${apiProxyCities.length} cities)` : `Country API average (${apiProxyCities.length} cities)`;
         opts += `<option value="stateAvg" ${sel}>${label} — COL ${avgCol}, $${avgCosts.toLocaleString()}/mo</option>`;
     }
+
+    // Search Online option
+    opts += `<option value="searchOnline">Search Online</option>`;
 
     // Manual option
     const manualSel = colSource === 'manual' ? 'selected' : '';
     opts += `<option value="manual" ${manualSel}>Enter manually</option>`;
 
-    let html = `<div style="margin-bottom:4px;">
+    html += `<div style="margin-bottom:4px;">
         <label class="form-label" style="font-size:0.72rem;">Data Source</label>
         <select class="form-input" style="width:100%; font-size:0.78rem;" onchange="onDataSourceChange(this.value)">
             ${opts}
@@ -367,9 +404,11 @@ function renderDataSourceLine(matchedCity) {
 
     // Resolved footer
     if (resolvedCosts != null) {
+        const resolvedPpi = colConfig.homePurchasingPower;
         html += `<div style="margin-top:4px; font-size:0.72rem; color:var(--text-dim);">
             Resolved: <strong style="color:#4ade80;">$${resolvedCosts.toLocaleString()}/mo</strong>
             ${resolvedCol != null ? ` · COL <strong style="color:#4ade80;">${resolvedCol}</strong>` : ''}
+            ${resolvedPpi != null ? ` · PPI <strong style="color:#f59e0b;">${resolvedPpi}</strong>` : ''}
         </div>`;
     }
 
@@ -493,8 +532,30 @@ async function saveEditManualCity() {
     } catch(e) { showAlert('Save failed: ' + e.message, 'error'); }
 }
 
+async function deleteHomeCityManual(cityName) {
+    try {
+        const resp = await fetch('/api/cost-of-living/delete-manual-city', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name: cityName })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            showSaveToast(`Manual entry for ${cityName} deleted`);
+            const apiResp = await fetch('/api/cost-of-living/api-cities?include_global=1').then(r => r.json()).catch(() => ({ cities: [] }));
+            colApiCities = apiResp.cities || [];
+            colApiMeta = apiResp.meta || {};
+            fetchCostOfLiving();
+        } else {
+            showAlert(data.error || 'Delete failed', 'error');
+        }
+    } catch(e) { showAlert('Delete failed: ' + e.message, 'error'); }
+}
+
 function onDataSourceChange(value) {
-    if (value === 'manual') {
+    if (value === 'searchOnline') {
+        searchHomeCity();
+        return;
+    } else if (value === 'manual') {
         updateCOLConfig('homeColSource', 'manual');
     } else if (value === 'stateAvg') {
         updateCOLConfig('homeColSource', 'stateAvg');
@@ -515,6 +576,57 @@ function onDataSourceChange(value) {
                 showSaveToast('Data source: ' + cityName);
             }
         }).catch(e => console.error(e));
+    }
+}
+
+async function searchHomeCity() {
+    const cityName = (colConfig.homeCityName || '').trim();
+    if (!cityName) { showAlert('Enter a city name first', 'error'); renderCOLConfig(); return; }
+    const country = colConfig.homeCountry || '';
+    // Show searching state in the config area
+    const configArea = document.getElementById('homeDataSourceLine');
+    if (configArea) {
+        configArea.innerHTML = `<div style="padding:8px; font-size:0.82rem; color:var(--text-muted);"><span class="spinner" style="display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.6s linear infinite; vertical-align:middle; margin-right:6px;"></span>Searching online for "${cityName}"...</div>`;
+    }
+    try {
+        const resp = await fetch('/api/cost-of-living/fetch-city', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ city: cityName, country_code: country, force: true })
+        });
+        const data = await resp.json();
+        if (data.quota) updateQuotaDisplay(data.quota);
+        if (data.ok && data.city) {
+            const city = data.city;
+            // Update local cache
+            const idx = colApiCities.findIndex(c => c.name.toLowerCase() === city.name.toLowerCase());
+            if (idx >= 0) colApiCities[idx] = city; else colApiCities.push(city);
+            // Set as proxy source
+            const cfgResp = await fetch('/api/cost-of-living/config/update', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ homeProxyCity: city.name, homeColSource: 'proxy' })
+            }).then(r => r.json());
+            if (cfgResp.ok) {
+                colConfig = cfgResp.colConfig;
+                allCOLData = cfgResp.costOfLiving;
+                renderCOLConfig(); renderCOLKpis(); renderCOLChart();
+                const activeType = document.querySelector('#colFilters .filter-btn.active');
+                filterCOL(activeType?.dataset?.type || 'all');
+            }
+            showSaveToast(`${city.name} found — COL ${city.colIndex || '?'}, $${(city.monthlyCostsNoRent || 0).toLocaleString()}/mo`);
+        } else {
+            const msg = data.message || 'City not found online';
+            if (configArea) {
+                configArea.innerHTML = `<div style="padding:8px; font-size:0.82rem; color:#f87171;">${msg}</div>`;
+                setTimeout(() => renderCOLConfig(), 3000);
+            } else {
+                showAlert(msg, 'error');
+                renderCOLConfig();
+            }
+        }
+    } catch(e) {
+        console.error('[COL] Home city search failed:', e);
+        showAlert('Search failed — try again', 'error');
+        renderCOLConfig();
     }
 }
 
@@ -720,8 +832,11 @@ function filterCOL(type, btn) {
         return dir * (va - vb);
     }).map(c => {
         const metroEsc = c.metro.replace(/'/g, "\\'");
-        const isApi = c.source === 'api';
-        const apiBadge = isApi ? ' <span style="font-size:0.65rem; padding:1px 4px; border-radius:3px; background:#6366f120; color:#6366f1; vertical-align:middle;">API</span>' : '';
+        const isApi = c.source === 'api' || c.source === 'resettle';
+        const isResettle = c.source === 'resettle' || (c.apiData && c.apiData.source === 'resettle');
+        const apiBadge = isResettle
+            ? ' <span style="font-size:0.65rem; padding:1px 4px; border-radius:3px; background:#8b5cf620; color:#8b5cf6; vertical-align:middle;">Resettle</span>'
+            : isApi ? ' <span style="font-size:0.65rem; padding:1px 4px; border-radius:3px; background:#6366f120; color:#6366f1; vertical-align:middle;">API</span>' : '';
         const costs = c.monthlyCostsNoRent ? formatMoney(c.monthlyCostsNoRent) : '—';
         const totalCost = c.totalMonthlyCost ? formatMoney(c.totalMonthlyCost) : '—';
         const colIdx = c.colIndex ? c.colIndex.toFixed(0) : '—';
@@ -735,7 +850,7 @@ function filterCOL(type, btn) {
         return `<tr style="${rowStyle}">
             <td style="text-align:center;">${isHome ? '' : `<input type="checkbox" ${isPinned ? 'checked' : ''} onchange="toggleCOLCity('${metroEsc}', this.checked)" title="${isPinned ? 'Uncheck to remove' : 'Check to pin'}">`}</td>
             <td><strong>${c.metro}</strong>${apiBadge}${homeBadge}${!isPinned && !isHome ? ' <span style="font-size:0.6rem; color:#f59e0b;">TEMP</span>' : ''}</td>
-            <td>${c.area}</td>
+            <td>${c.area && c.area !== 'N/A' ? c.area : (colApiCities.find(x => x.name.toLowerCase() === (c.metro||'').toLowerCase()) || {}).country || ''}</td>
             <td><span style="padding:2px 6px; border-radius:4px; font-size:0.75rem; background:${c.type==='Downtown'?'#f59e0b20':'#22c55e20'}; color:${c.type==='Downtown'?'#f59e0b':'#22c55e'};">${c.type}</span></td>
             <td style="text-align:right; cursor:pointer;" class="editable"
                 onclick="editCOLCell(this, '${metroEsc}', 'rent', ${c.rent})">${formatMoney(c.rent)}</td>
@@ -816,7 +931,9 @@ function onCityInputSearch(query) {
         .filter(c => c.name.toLowerCase().includes(q) && !existing.has(c.name.toLowerCase()))
         .slice(0, 8);
     if (matches.length === 0) {
-        results.innerHTML = `<div style="padding:10px; font-size:0.82rem; color:var(--text-muted);">No match found — <a href="#" onclick="showManualFields('${q}'); return false;" style="color:var(--accent);">add manually</a></div>`;
+        const titleQ = q.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        const qEsc = titleQ.replace(/'/g, "\\'");
+        results.innerHTML = `<div style="padding:10px; font-size:0.82rem; color:var(--text-muted);">No local match — <a href="#" onclick="searchOnline('${qEsc}'); return false;" style="color:#8b5cf6; font-weight:500;">Search Online for "${titleQ}"</a> · <a href="#" onclick="showManualFields('${qEsc}'); return false;" style="color:var(--accent);">add manually</a></div>`;
         results.style.display = 'block';
         return;
     }
@@ -828,9 +945,10 @@ function onCityInputSearch(query) {
         return `<div style="padding:8px 12px; cursor:pointer; font-size:0.82rem; border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''" onclick="selectCityResult('${nameEsc}')">
             <strong>${c.name}</strong>, ${loc2}${srcTag} <span style="color:var(--text-muted); margin-left:8px;">$${rent.toLocaleString()}/mo · COL ${c.colIndex}</span></div>`;
     }).join('');
-    if (matches.length > 0) {
-        results.innerHTML += `<div style="padding:8px 12px; cursor:pointer; font-size:0.82rem; color:var(--text-muted);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''" onclick="showManualFields('${q}')">Enter manually...</div>`;
-    }
+    const titleQ = q.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    const qEsc = titleQ.replace(/'/g, "\\'");
+    results.innerHTML += `<div style="padding:8px 12px; cursor:pointer; font-size:0.82rem; border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''" onclick="searchOnline('${qEsc}')"><span style="color:#8b5cf6;">Search Online for "${titleQ}"</span> <span style="color:var(--text-muted);">— Resettle API</span></div>`;
+    results.innerHTML += `<div style="padding:8px 12px; cursor:pointer; font-size:0.82rem; color:var(--text-muted);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''" onclick="showManualFields('${qEsc}')">Enter manually...</div>`;
     results.style.display = 'block';
 }
 
@@ -843,7 +961,57 @@ function selectCityResult(name) {
     const rent = city[rentKey] || 0;
     const type = loc === 'city' ? 'Downtown' : 'Suburban';
     hideAddCityResults();
-    addCOLApiCity(city.name, city.state || '', type, rent, 1.0, city);
+    const area = city.state && city.state !== 'N/A' ? city.state : city.country || city.countryCode || '';
+    addCOLApiCity(city.name, area, type, rent, 1.0, city);
+}
+
+async function searchOnline(query) {
+    const results = document.getElementById('addCityResults');
+    if (results) {
+        results.innerHTML = `<div style="padding:12px; font-size:0.82rem; color:var(--text-muted);"><span class="spinner" style="display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.6s linear infinite; vertical-align:middle; margin-right:6px;"></span>Searching Resettle API...</div>`;
+        results.style.display = 'block';
+    }
+    try {
+        const resp = await fetch('/api/cost-of-living/fetch-city', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ city: query, force: true })
+        });
+        const data = await resp.json();
+        if (data.ok && data.city) {
+            const city = data.city;
+            // Update local cache so city appears in future searches
+            const existingIdx = colApiCities.findIndex(c => c.name.toLowerCase() === city.name.toLowerCase());
+            if (existingIdx >= 0) colApiCities[existingIdx] = city;
+            else colApiCities.push(city);
+            const br = colConfig.bedroomCount || 1;
+            const loc = colConfig.locationType || 'city';
+            const rentKey = `rent${br}br${loc === 'city' ? 'City' : 'Suburb'}`;
+            const rent = city[rentKey] || 0;
+            const type = loc === 'city' ? 'Downtown' : 'Suburban';
+            hideAddCityResults();
+            updateQuotaDisplay(data.quota);
+            const area = city.state && city.state !== 'N/A' ? city.state : city.country || city.countryCode || '';
+            addCOLApiCity(city.name, area, type, rent, 1.0, city);
+            showSaveToast(`${city.name} fetched from Resettle (check to keep)`);
+        } else {
+            const msg = data.message || data.error || 'City not found';
+            if (results) {
+                const qEsc = query.replace(/'/g, "\\'");
+                results.innerHTML = `<div style="padding:10px; font-size:0.82rem; color:#f87171;">${msg}</div><div style="padding:8px 12px; font-size:0.82rem; color:var(--text-muted); cursor:pointer;" onclick="showManualFields('${qEsc}')">Enter manually instead...</div>`;
+            }
+            if (data.quota) updateQuotaDisplay(data.quota);
+        }
+    } catch(e) {
+        console.error('[COL] Online search failed:', e);
+        if (results) results.innerHTML = `<div style="padding:10px; font-size:0.82rem; color:#f87171;">Search failed — try again or add manually</div>`;
+    }
+}
+
+function updateQuotaDisplay(quota) {
+    const el = document.getElementById('colQuotaDisplay');
+    if (!el || !quota) return;
+    el.textContent = `API: ${quota.remaining}/${quota.limit} remaining`;
+    el.style.color = quota.remaining <= 10 ? '#f59e0b' : 'var(--text-dim)';
 }
 
 function showManualFields(prefill) {

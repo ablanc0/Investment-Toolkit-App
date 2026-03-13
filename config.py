@@ -68,6 +68,7 @@ ANALYZER_FILE      = DATA_DIR / "analyzer.json"
 _13F_HISTORY_FILE  = DATA_DIR / "13f_history.json"
 COL_DATA_FILE      = DATA_DIR / "col_data.json"
 COL_RAW_FILE       = DATA_DIR / "col_raw.json"
+COL_QUOTA_FILE     = DATA_DIR / "col_quota.json"
 
 # ── Provider Defaults ──────────────────────────────────────────────────
 # Cascade order per data domain. Override in user settings under "providerConfig".
@@ -202,6 +203,10 @@ FMP_BASE    = "https://financialmodelingprep.com/stable"
 RAPIDAPI_COL_HOST       = "cities-cost-of-living1.p.rapidapi.com"
 RAPIDAPI_COL_URL        = f"https://{RAPIDAPI_COL_HOST}/dev/get_cities_details_by_name"
 RAPIDAPI_COL_CITIES_URL = f"https://{RAPIDAPI_COL_HOST}/dev/get_cities_list"
+
+# Resettle Place API (on-demand city lookup)
+RESETTLE_API_HOST = "resettle-place-api.p.rapidapi.com"
+RESETTLE_API_BASE = f"https://{RESETTLE_API_HOST}"
 
 # ── Tax Constants ───────────────────────────────────────────────────────
 

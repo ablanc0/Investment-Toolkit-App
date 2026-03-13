@@ -14,6 +14,7 @@ _api_health = {
     "fred": dict(_DEFAULT_API),
     "edgar": dict(_DEFAULT_API),
     "rapidapi": dict(_DEFAULT_API),
+    "resettle": dict(_DEFAULT_API),
     "elbstream": dict(_DEFAULT_API),
 }
 
