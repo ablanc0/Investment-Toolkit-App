@@ -123,6 +123,17 @@ EDGAR XBRL → FMP API → yfinance (fallback chain for financial data)
 - Month format mismatch: monthlyData="January 24", dividendLog="January" — server splits on space
 - Annual data is computed, never stored
 
+## Documentation
+
+Two separate Sphinx sites — each with its own `conf.py`, `index.rst`, and build:
+
+| Site | Root | Content |
+|------|------|---------|
+| User Guide | `docs/user/` | Features, formulas, setup, sync, changelog |
+| Developer Guide | `docs/dev/` | Subsystem architecture, infrastructure, API internals |
+
+**Routing rule**: if it references source files or function names → `docs/dev/`. If a user can understand it without reading code → `docs/user/`. No cross-references between sites (`:doc:` links are site-local only).
+
 ## Verification
 
 After modifying code, verify before committing:
@@ -139,6 +150,10 @@ node -c static/js/*.js
 curl -s -o /dev/null -w "%{http_code}" http://localhost:5050/api/status
 
 # Browser test: open http://localhost:5050, check console for errors
+
+# Docs build (after modifying docs/)
+python -m sphinx docs/user docs/_build/user -b html -W
+python -m sphinx docs/dev docs/_build/dev -b html -W
 ```
 
 ## Git Rules
@@ -217,7 +232,7 @@ When working on complex tasks, dispatch specialized sub-agents for parallel work
 - Backend implementation → invt-engineer
 - Frontend implementation → invt-frontend
 - Code review before PR → invt-reviewer
-- Developer docs update → invt-docs
+- Documentation update (user + dev sites) → invt-docs
 - CI/validation checks → invt-ci
 - Browser testing → invt-browser-tester
 
