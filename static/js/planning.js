@@ -22,6 +22,19 @@ async function fetchCostOfLiving() {
         // Update quota display
         const rq = (quotaResp.quotas || {}).resettle;
         if (rq) updateQuotaDisplay({ remaining: Math.max(0, rq.limit - rq.used), limit: rq.limit });
+        // Gate global refresh button on ditno quota
+        const dq = (quotaResp.quotas || {}).rapidapi;
+        const globalBtn = document.getElementById('colRefreshGlobalBtn');
+        if (globalBtn && dq) {
+            const ditnoRemaining = Math.max(0, dq.limit - dq.used);
+            if (ditnoRemaining >= 17) {
+                globalBtn.disabled = false;
+                globalBtn.title = `Refresh all ${colApiMeta.totalKnownCities || 767} global cities (${ditnoRemaining} calls remaining)`;
+            } else {
+                globalBtn.disabled = true;
+                globalBtn.title = `Requires ~17 API calls (${ditnoRemaining}/${dq.limit} remaining — upgrade to Pro)`;
+            }
+        }
         renderCOLConfig();
         renderCOLKpis();
         renderCOLChart();
@@ -1177,7 +1190,51 @@ async function refreshCOLData() {
         showAlert('Refresh failed: ' + e.message, 'error');
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Refresh API Data';
+        btn.textContent = 'Refresh US Data';
+    }
+}
+
+async function refreshCOLGlobal() {
+    const btn = document.getElementById('colRefreshGlobalBtn');
+    if (!btn) return;
+
+    const cityCount = colApiMeta.totalKnownCities || 767;
+    const batches = Math.ceil(cityCount / 50);
+    if (!confirm(`This will fetch all ${cityCount} global cities in ${batches + 1} API calls.\n\nRequires Pro plan. Continue?`)) return;
+
+    btn.disabled = true;
+    try {
+        // Phase 1: check cities first
+        btn.textContent = 'Checking cities...';
+        await fetch('/api/cost-of-living/check-cities', { method: 'POST' });
+
+        // Wait for rate limit
+        btn.textContent = 'Waiting (rate limit)...';
+        let seconds = 62;
+        await new Promise(resolve => {
+            const timer = setInterval(() => {
+                seconds--;
+                btn.textContent = `Fetching in ${seconds}s...`;
+                if (seconds <= 0) { clearInterval(timer); resolve(); }
+            }, 1000);
+        });
+
+        // Global fetch
+        btn.textContent = `Fetching ${cityCount} cities...`;
+        const resp = await fetch('/api/cost-of-living/fetch-all-global', { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            showSaveToast(`Updated ${data.cityCount} global cities`);
+            await fetch('/api/cost-of-living/recompute', { method: 'POST' });
+            fetchCostOfLiving();
+        } else {
+            showAlert(data.error || 'Global fetch failed', 'error');
+        }
+    } catch(e) {
+        showAlert('Global refresh failed: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Refresh Global';
     }
 }
 

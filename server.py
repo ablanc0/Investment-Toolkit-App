@@ -67,12 +67,13 @@ if __name__ == "__main__":
     from services.cache import load_disk_cache
     from services.edgar_13f import _load_13f_history
     from services.quota_svc import load_quotas
-    from services.col_api import load_col_data
+    from services.col_api import load_col_data, auto_refresh_if_stale
 
     load_disk_cache()
     _load_13f_history()
     load_quotas()
     load_col_data()
+    auto_refresh_if_stale()
 
     from services.backup import run_backup
     backup_result = run_backup()
