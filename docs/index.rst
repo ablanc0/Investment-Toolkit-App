@@ -7,10 +7,6 @@ positions, dividends, watchlists, intrinsic valuations, and retirement
 projections — all backed by a single ``portfolio.json`` file stored in
 Google Drive.
 
-This documentation covers every formula, metric, and configuration option
-so that calculations can be audited, reproduced, and maintained
-independently of the source code.
-
 .. toctree::
    :maxdepth: 1
    :caption: Project
@@ -19,12 +15,20 @@ independently of the source code.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents
+   :caption: User Guide
 
    user/index
    formulas/index
+   configuration/setup
+   data-management/sync
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Developer Guide
+
+   dev/index
    architecture/api-abstraction
    architecture/api-quotas
-   dev/index
-   configuration/index
-   data-management/index
+   configuration/cache
+   data-management/portfolio-json
+   data-management/crud
