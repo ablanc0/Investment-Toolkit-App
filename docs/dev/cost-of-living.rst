@@ -400,6 +400,17 @@ as a complement to the ditno bulk data.  The flow:
 The ``force`` parameter lets users explicitly request fresh data from
 the API even when the city exists locally (e.g., to get updated prices).
 
+Override Flags for User Edits
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When a user edits rent or non-housing costs on an API-sourced city,
+the tracked entry (in ``portfolio.json`` ``colEntries``) stores
+``rentOverride: true`` or ``nhmOverride: true``.  During recomputation
+(``_compute_col_entry``), overridden fields skip the API data lookup
+and use the user-provided value instead.  This mechanism is separate
+from manual entry protection — it applies to API/Resettle entries that
+the user has customized.
+
 Manual Entry Protection
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
