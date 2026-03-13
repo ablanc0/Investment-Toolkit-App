@@ -140,7 +140,13 @@ The COL database has two refresh operations:
    - ``POST /bulk-fetch`` in batches of **50 cities** (16 calls) — sends
      all 767 global cities.  ``ceil(767/50) = 16 requests``.
 
-**Trigger:** User-initiated only (Planning > Cost of Living tab buttons).
+**Triggers:**
+
+- **Manual:** "Refresh US Data" / "Refresh Global" buttons (Planning > Cost of Living).
+- **Auto-refresh on startup:** If US data is >30 days old AND ditno quota has
+  ≥2 calls remaining, a background thread runs the US refresh automatically.
+  Self-limiting: after refresh, ``fetchedAt`` updates → won't trigger again
+  for 30 days.
 
 **Refresh strategy (Basic plan, 5 calls/month, $0):**
 
@@ -166,6 +172,10 @@ shift gradually.  An annual refresh is sufficient.
 **Supplementary lookups:** For individual cities not in the ditno dataset,
 use **Resettle** (100 calls/month, free) via the "Search Online" button.
 This covers on-demand needs without touching the ditno quota.
+
+**Global refresh button:** Disabled in the UI when ditno quota has <17 calls
+remaining.  Tooltip reads "Requires Pro plan (17 API calls)".  When enabled,
+a confirmation dialog warns the user about the call cost before proceeding.
 
 
 Resettle Place API
@@ -362,6 +372,36 @@ Quota Enforcement Architecture
 - Rate limit sleep is capped at **5 seconds** to avoid blocking the user.
 - ``QuotaExhaustedError`` propagates up to the route handler, which returns
   a user-friendly error with remaining quota and reset time.
+
+----
+
+COL Data Merge Strategy
+-----------------------
+
+The COL database (``col_data.json``) holds 766+ cities from three sources:
+**ditno** (bulk API), **Resettle** (on-demand), and **manual** entries.
+All write paths use a single merge function: ``_should_update(existing, incoming)``.
+
+**Merge rules (in priority order):**
+
+1. **Manual entries → never overwritten** regardless of timestamps.
+2. Both have ``lastUpdated`` → **newer timestamp wins**.
+3. Only incoming has ``lastUpdated`` → **update** (existing is undated).
+4. Only existing has ``lastUpdated`` → **keep existing** (conservative).
+5. Neither has timestamps → **more complete data wins** (non-empty field count).
+6. Tie → **keep existing** (conservative).
+
+**Where it's applied:**
+
+- ``fetch_city_details()`` — ditno US/global bulk refresh: each incoming city
+  checked individually against existing data.
+- ``fetch_all_global_details()`` — ditno global batch refresh: same per-city
+  check.
+- ``_upsert_city()`` — Resettle on-demand insert/update: replaces the old
+  inflation heuristic (rent comparison) with timestamp comparison.
+
+This ensures a Resettle entry updated 2 days ago is never overwritten by a
+ditno bulk fetch with 6-month-old data, regardless of which refresh runs first.
 
 ----
 
