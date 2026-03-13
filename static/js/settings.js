@@ -592,7 +592,7 @@ function renderApiHealthTable(data) {
         const tdBorder = 'border-bottom:1px solid var(--border);';
 
         // Quota cell
-        let quotaHtml = '<span style="color:var(--text-dim);">—</span>';
+        let quotaHtml = '<span style="color:var(--text-dim);">No limit</span>';
         if (q.type === 'daily' || q.type === 'monthly') {
             const pct = q.limit > 0 ? (q.used / q.limit) * 100 : 0;
             const barColor = pct > 90 ? '#ef4444' : pct > 75 ? '#f59e0b' : '#22c55e';

@@ -24,5 +24,6 @@ independently of the source code.
    user/index
    formulas/index
    architecture/api-abstraction
+   architecture/api-quotas
    configuration/index
    data-management/index
