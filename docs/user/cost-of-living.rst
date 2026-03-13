@@ -5,8 +5,6 @@ Compare the cost of living across cities relative to your home city.
 The tab answers the question: *"If I moved to City X, what salary would
 I need to maintain the same standard of living?"*
 
-Source: ``routes/planning.py``, ``services/col_api.py``, ``static/js/planning.js``
-
 .. contents::
    :local:
    :depth: 2
@@ -95,8 +93,7 @@ Cost of Living index on a scale where **New York City = 100**.
 A lower value means a cheaper city; a higher value means a more
 expensive one.
 
-**API cities** -- sourced directly from the Numbeo dataset via
-``col_data.json``.
+**API cities** -- sourced directly from the Numbeo dataset.
 
 **Manual entries** -- auto-computed from the city's non-housing monthly
 costs:
@@ -106,8 +103,8 @@ costs:
    \text{colIndex} = \frac{\text{monthlyCostsNoRent}}
                           {\text{NYC\_monthlyCostsNoRent}} \times 100
 
-where ``NYC_monthlyCostsNoRent`` is looked up from the API dataset
-(fallback: $1,728).
+where NYC monthly costs are looked up from the API dataset
+(fallback: $1,728 if NYC is not present).
 
 $/mo (Average Net Monthly Salary)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -189,33 +186,26 @@ API Cities
 ^^^^^^^^^^
 
 City-level cost data is sourced from Numbeo via the ditno Cities Cost of
-Living API (RapidAPI).  Data is stored locally in ``col_data.json`` and
-contains approximately 768 cities globally.
+Living API (RapidAPI).  Data is stored locally and contains
+approximately 768 cities globally.
 
-Each API city record includes:
+Each API city provides: cost-of-living indices, rent variants (1 BR and
+3 BR, city centre and outside), average net salary, purchasing power
+index, monthly costs, and utilities.
 
-- ``colIndex``, ``rentIndex``, ``colPlusRentIndex``
-- ``avgNetSalary``, ``purchasingPowerIndex``
-- ``groceriesIndex``, ``restaurantIndex``
-- Rent variants: ``rent1brCity``, ``rent1brSuburb``, ``rent3brCity``,
-  ``rent3brSuburb``
-- ``monthlyCostsNoRent``, ``utilities``
-
-Refresh is a two-phase process to conserve the API budget (5 calls per
-month):
-
-1. **Check cities** -- fetches the city list and detects new cities.
-2. **Fetch details** -- bulk-fetches detailed cost data for all cities.
+Data can be refreshed from the API management panel — first check for
+new cities, then fetch detailed data.  See the Developer Guide for the
+refresh mechanism internals.
 
 Manual Entries
 ^^^^^^^^^^^^^^
 
 Users can add cities not in the API dataset by providing rent and
-monthly costs.  The server auto-computes ``colIndex`` and ``PPI`` from
-these inputs using NYC as the baseline.
+monthly costs.  The server auto-computes COL index and PPI from these
+inputs using NYC as the baseline.
 
-Manual entries are stored in ``col_data.json`` alongside API entries
-with ``"source": "manual"``.
+Manual entries are stored alongside API entries and are never
+overwritten by API refreshes.
 
 NYC Baseline
 ^^^^^^^^^^^^
@@ -224,11 +214,10 @@ New York City is always the reference point for index calculations:
 
 - COL Index: NYC = 100
 - PPI: NYC = 100
-- Default ``NYC_monthlyCostsNoRent``: $1,728
-- Default ``NYC_avgNetSalary``: $5,159/mo
-- Default ``NYC_rent1brCity``: $2,697/mo
 
-These defaults are used only when NYC is not present in the API dataset.
+When NYC is present in the API dataset, its actual values are used.
+Otherwise, the following defaults apply: monthly costs $1,728,
+net salary $5,159/mo, 1 BR city rent $2,697/mo.
 
 ----
 
@@ -256,9 +245,9 @@ Click any editable cell (e.g. rent) in the comparison table to inline-
 edit the value.  After saving, the server recomputes all derived metrics
 (factor, equivalent salary, COL index, PPI) automatically.
 
-For API-sourced cities, manual edits to rent or non-housing costs set
-override flags (``rentOverride``, ``nhmOverride``) so that future API
-refreshes do not overwrite user customizations.
+For API-sourced cities, manual edits to rent or non-housing costs are
+preserved across API refreshes — your customizations are never
+overwritten.
 
 Pinning and Unpinning
 ^^^^^^^^^^^^^^^^^^^^^
@@ -311,8 +300,8 @@ Home City COL Resolution
 The home city's COL index and monthly costs are resolved using a
 cascade:
 
-1. **API city** -- if the home city name matches an entry in
-   ``col_data.json``, values are used directly.
+1. **API city** -- if the home city name matches an entry in the
+   API dataset, values are used directly.
 2. **Proxy city** -- a nearby API city in the same state is selected as
    a proxy.
 3. **State average** -- the mean COL and costs of all API cities in the
@@ -412,5 +401,6 @@ Combined with bedroom count, this produces four possible rent lookups:
 See Also
 --------
 
-* :doc:`/formulas/taxes` -- Salary and tax computation used by salary profiles
-* :doc:`/formulas/rule4` -- Retirement simulation on the same Planning tab
+* :doc:`formulas/taxes` -- Salary and tax computation used by salary profiles
+* :doc:`formulas/rule4` -- Retirement simulation on the same Planning tab
+* See the Developer Guide for developer architecture (data model, data flow, API endpoints)

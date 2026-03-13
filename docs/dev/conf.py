@@ -1,6 +1,6 @@
-# InvToolkit Documentation — Sphinx Configuration
+# InvToolkit Developer Guide — Sphinx Configuration
 
-project = "InvToolkit"
+project = "InvToolkit — Developer Guide"
 copyright = "2024, Alejandro Blanco"
 author = "Alejandro Blanco"
 
