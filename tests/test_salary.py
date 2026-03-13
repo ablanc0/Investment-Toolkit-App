@@ -13,57 +13,62 @@ from models.salary_calc import (
     compute_salary_breakdown,
     migrate_salary_data,
 )
+from config import FEDERAL_TAX_DATA
 
 
 # ── compute_federal_tax tests ───────────────────────────────────────────
-# Brackets from config.py:
-# (12400, 0.10), (50400, 0.12), (105700, 0.22),
-# (201775, 0.24), (256225, 0.32), (640600, 0.35),
+# Use explicit 2023 Single brackets (IRS Rev. Proc. 2022-38) for deterministic tests:
+# (11000, 0.10), (44725, 0.12), (95375, 0.22),
+# (182100, 0.24), (231250, 0.32), (578125, 0.35),
 # (inf, 0.37)
+
+BRACKETS_2023 = FEDERAL_TAX_DATA[2023]["single"]["brackets"]
 
 
 class TestComputeFederalTax:
     def test_zero_income(self):
-        assert compute_federal_tax(0) == 0
+        assert compute_federal_tax(0, BRACKETS_2023) == 0
 
     def test_negative_income(self):
-        assert compute_federal_tax(-5000) == 0
+        assert compute_federal_tax(-5000, BRACKETS_2023) == 0
 
     def test_first_bracket_only(self):
         # $10,000 at 10% = $1,000
-        assert compute_federal_tax(10000) == 1000.0
+        assert compute_federal_tax(10000, BRACKETS_2023) == 1000.0
 
     def test_50000_income(self):
-        # Bracket 1: 12400 * 0.10 = 1240
-        # Bracket 2: (50000 - 12400) * 0.12 = 37600 * 0.12 = 4512
-        # Total: 1240 + 4512 = 5752
-        assert compute_federal_tax(50000) == 5752.0
+        # Bracket 1: 11000 * 0.10 = 1100
+        # Bracket 2: (44725 - 11000) * 0.12 = 33725 * 0.12 = 4047
+        # Bracket 3: (50000 - 44725) * 0.22 = 5275 * 0.22 = 1160.50
+        # Total: 1100 + 4047 + 1160.50 = 6307.50
+        assert compute_federal_tax(50000, BRACKETS_2023) == 6307.5
 
     def test_200000_income(self):
-        # Bracket 1: 12400 * 0.10 = 1240
-        # Bracket 2: (50400 - 12400) * 0.12 = 38000 * 0.12 = 4560
-        # Bracket 3: (105700 - 50400) * 0.22 = 55300 * 0.22 = 12166
-        # Bracket 4: (200000 - 105700) * 0.24 = 94300 * 0.24 = 22632
-        # Total: 1240 + 4560 + 12166 + 22632 = 40598
-        assert compute_federal_tax(200000) == 40598.0
+        # Bracket 1: 11000 * 0.10 = 1100
+        # Bracket 2: (44725 - 11000) * 0.12 = 33725 * 0.12 = 4047
+        # Bracket 3: (95375 - 44725) * 0.22 = 50650 * 0.22 = 11143
+        # Bracket 4: (182100 - 95375) * 0.24 = 86725 * 0.24 = 20814
+        # Bracket 5: (200000 - 182100) * 0.32 = 17900 * 0.32 = 5728
+        # Total: 1100 + 4047 + 11143 + 20814 + 5728 = 42832
+        assert compute_federal_tax(200000, BRACKETS_2023) == 42832.0
 
     def test_high_income(self):
-        # $700,000 touches 6 brackets
-        result = compute_federal_tax(700000)
+        # $700,000 touches all 7 brackets
+        result = compute_federal_tax(700000, BRACKETS_2023)
         assert result > 0
-        # Bracket 1: 12400*0.10 = 1240
-        # Bracket 2: 38000*0.12 = 4560
-        # Bracket 3: 55300*0.22 = 12166
-        # Bracket 4: 96075*0.24 = 23058
-        # Bracket 5: 54450*0.32 = 17424
-        # Bracket 6: 384375*0.35 = 134531.25
-        # Bracket 7: 59400*0.37 = 21978
-        # Total: 214957.25
-        assert abs(result - 214957.25) < 0.01
+        # Bracket 1: 11000*0.10 = 1100
+        # Bracket 2: 33725*0.12 = 4047
+        # Bracket 3: 50650*0.22 = 11143
+        # Bracket 4: 86725*0.24 = 20814
+        # Bracket 5: 49150*0.32 = 15728
+        # Bracket 6: 346875*0.35 = 121406.25
+        # Bracket 7: 121875*0.37 = 45093.75
+        # Total: 219332.0
+        assert abs(result - 219332.0) < 0.01
 
     def test_exact_bracket_boundary(self):
-        # Exactly at first bracket boundary: $12,400
-        assert compute_federal_tax(12400) == 1240.0
+        # Exactly at first bracket boundary: $11,000
+        assert compute_federal_tax(11000, BRACKETS_2023) == 1100.0
 
 
 # ── compute_salary_breakdown tests ──────────────────────────────────────
