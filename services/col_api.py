@@ -618,8 +618,8 @@ def lookup_or_fetch(city_name, country=None, force=False):
         if existing:
             return existing
 
-    # 2. Check Resettle quota
-    from services.col_quota import check_quota, record_call
+    # 2. Check Resettle quota (early exit before constructing API calls)
+    from services.quota_svc import check_quota
     quota = check_quota("resettle")
     if not quota["allowed"]:
         return {
@@ -630,16 +630,15 @@ def lookup_or_fetch(city_name, country=None, force=False):
         }
 
     # 3. Search Resettle for place_id
+    #    (quota recording happens automatically inside resilient_get)
     from services.resettle_svc import search_place, fetch_cost_of_living, normalize_resettle
     place = search_place(city_name, country_code=country)
-    record_call("resettle")  # search uses 1 call
 
     if not place:
         return {"error": "city_not_found", "message": f"'{city_name}' not found on Resettle"}
 
     # 4. Fetch COL data
     raw = fetch_cost_of_living(place["place_id"])
-    record_call("resettle")  # COL fetch uses 1 call
 
     if not raw:
         return {"error": "fetch_failed", "message": f"Failed to fetch COL data for '{city_name}'"}

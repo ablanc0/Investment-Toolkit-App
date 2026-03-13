@@ -190,6 +190,19 @@ def api_health_check():
 
 @bp.route("/api/health/fmp-quota")
 def api_fmp_quota():
-    """Return current FMP API quota state."""
-    from services.api_health import get_fmp_quota
-    return jsonify(get_fmp_quota())
+    """Return current FMP API quota state (backward compat — delegates to quota_svc)."""
+    from services.quota_svc import check_quota
+    q = check_quota("fmp")
+    return jsonify({
+        "used": q["used"],
+        "limit": q["limit"],
+        "remaining": q["remaining"],
+        "date": q.get("resets_at", ""),
+    })
+
+
+@bp.route("/api/quotas")
+def api_quotas():
+    """Return unified quota status for all providers."""
+    from services.quota_svc import get_all_quotas
+    return jsonify(get_all_quotas())

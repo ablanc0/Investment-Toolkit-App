@@ -33,7 +33,7 @@ def test_health_returns_200(client):
     assert resp.status_code == 200
     data = resp.get_json()
     assert "apis" in data
-    assert "fmpQuota" in data
+    assert "quotas" in data
 
 
 # ---------------------------------------------------------------------------

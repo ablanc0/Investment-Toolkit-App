@@ -557,47 +557,94 @@ function renderApiHealthTable(data) {
     if (!container) return;
 
     const apis = [
-        { key: 'fmp', name: 'FMP (Financial Modeling Prep) — 250 calls/day', icon: '📈' },
-        { key: 'yfinance', name: 'Yahoo Finance — no limit', icon: '📊' },
-        { key: 'fred', name: 'FRED (AAA Bond Yield) — no limit', icon: '🏛' },
-        { key: 'edgar', name: 'SEC EDGAR — no limit', icon: '📋' },
-        { key: 'rapidapi', name: 'RapidAPI (ditno COL) — 5 calls/month', icon: '🏙' },
-        { key: 'resettle', name: 'Resettle (COL Search) — 100 calls/month', icon: '🔍' },
-        { key: 'elbstream', name: 'Elbstream (Logos) — no limit', icon: '🖼' },
+        { key: 'fmp', icon: '📈' },
+        { key: 'yfinance', icon: '📊' },
+        { key: 'fred', icon: '🏛' },
+        { key: 'edgar', icon: '📋' },
+        { key: 'rapidapi', icon: '🏙' },
+        { key: 'resettle', icon: '🔍' },
+        { key: 'elbstream', icon: '🖼' },
     ];
+
+    const quotas = data.quotas || {};
 
     const dotColor = (status) => {
         const colors = { ok: '#22c55e', exhausted: '#f59e0b', degraded: '#a855f7', error: '#ef4444', unknown: '#6b7280' };
         return colors[status] || colors.unknown;
     };
 
+    const thStyle = 'padding:8px; border-bottom:2px solid var(--border); font-weight:600; font-size:12px; text-transform:uppercase;';
     let html = '<table style="width:100%; border-collapse:collapse; font-size:13px;">';
     html += '<thead><tr>';
-    html += '<th style="text-align:left; padding:8px; border-bottom:2px solid var(--border); font-weight:600; font-size:12px; text-transform:uppercase;">API</th>';
-    html += '<th style="text-align:center; padding:8px; border-bottom:2px solid var(--border); font-weight:600; font-size:12px; text-transform:uppercase;">Status</th>';
-    html += '<th style="text-align:right; padding:8px; border-bottom:2px solid var(--border); font-weight:600; font-size:12px; text-transform:uppercase;">Latency</th>';
-    html += '<th style="text-align:right; padding:8px; border-bottom:2px solid var(--border); font-weight:600; font-size:12px; text-transform:uppercase;">Last Success</th>';
+    html += `<th style="text-align:left; ${thStyle}">API</th>`;
+    html += `<th style="text-align:center; ${thStyle}">Status</th>`;
+    html += `<th style="text-align:center; ${thStyle}">Quota</th>`;
+    html += `<th style="text-align:right; ${thStyle}">Latency</th>`;
+    html += `<th style="text-align:right; ${thStyle}">Last Success</th>`;
     html += '</tr></thead><tbody>';
 
     for (const api of apis) {
         const h = (data.apis || {})[api.key] || {};
+        const q = quotas[api.key] || {};
         const latency = h.latencyMs != null ? h.latencyMs + 'ms' : '—';
         const lastSuccess = h.lastSuccess ? new Date(h.lastSuccess).toLocaleTimeString() : 'Never';
         const color = dotColor(h.status);
+        const tdBorder = 'border-bottom:1px solid var(--border);';
+
+        // Quota cell
+        let quotaHtml = '<span style="color:var(--text-dim);">—</span>';
+        if (q.type === 'daily' || q.type === 'monthly') {
+            const pct = q.limit > 0 ? (q.used / q.limit) * 100 : 0;
+            const barColor = pct > 90 ? '#ef4444' : pct > 75 ? '#f59e0b' : '#22c55e';
+            const resetLabel = _formatResetTime(q.resets_at);
+            quotaHtml = `<div style="display:flex; align-items:center; gap:6px;">
+                <div style="flex:1; height:6px; background:var(--border); border-radius:3px; min-width:50px;">
+                    <div style="height:100%; width:${Math.min(pct, 100)}%; background:${barColor}; border-radius:3px;"></div>
+                </div>
+                <span style="font-size:11px; white-space:nowrap;">${q.used}/${q.limit}</span>
+            </div>
+            <div style="font-size:10px; color:var(--text-dim);">${q.type === 'daily' ? 'per day' : 'per month'} — resets ${resetLabel}</div>`;
+        }
+        if (q.rate_limits && q.rate_limits.length > 0) {
+            const rlHtml = q.rate_limits.map(rl =>
+                `<span style="font-size:10px; color:var(--text-dim);">${rl.label} (${rl.current}/${rl.limit})</span>`
+            ).join(' ');
+            if (q.type === 'daily' || q.type === 'monthly') {
+                quotaHtml += '<div>' + rlHtml + '</div>';
+            } else {
+                quotaHtml = rlHtml;
+            }
+        }
+
+        const apiLabel = q.label || api.key;
         html += '<tr>';
-        html += `<td style="padding:8px; border-bottom:1px solid var(--border);">${api.icon} ${api.name}</td>`;
-        html += `<td style="padding:8px; text-align:center; border-bottom:1px solid var(--border);"><span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${color}; margin-right:6px; vertical-align:middle;"></span><span style="font-size:12px; color:${color}; text-transform:uppercase;">${h.status || 'unknown'}</span></td>`;
-        html += `<td style="padding:8px; text-align:right; border-bottom:1px solid var(--border); color:var(--text-dim);">${latency}</td>`;
-        html += `<td style="padding:8px; text-align:right; border-bottom:1px solid var(--border); color:var(--text-dim);">${lastSuccess}</td>`;
+        html += `<td style="padding:8px; ${tdBorder}">${api.icon} ${apiLabel}</td>`;
+        html += `<td style="padding:8px; text-align:center; ${tdBorder}"><span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${color}; margin-right:6px; vertical-align:middle;"></span><span style="font-size:12px; color:${color}; text-transform:uppercase;">${h.status || 'unknown'}</span></td>`;
+        html += `<td style="padding:8px; text-align:center; ${tdBorder}">${quotaHtml}</td>`;
+        html += `<td style="padding:8px; text-align:right; ${tdBorder} color:var(--text-dim);">${latency}</td>`;
+        html += `<td style="padding:8px; text-align:right; ${tdBorder} color:var(--text-dim);">${lastSuccess}</td>`;
         html += '</tr>';
-        if (h.lastErrorMsg && h.status === 'error') {
-            html += `<tr><td colspan="4" style="padding:2px 8px 8px 32px; font-size:11px; color:#ef4444; border-bottom:1px solid var(--border);">Last error: ${h.lastErrorMsg}</td></tr>`;
+        if (h.lastErrorMsg && (h.status === 'error' || h.status === 'exhausted')) {
+            html += `<tr><td colspan="5" style="padding:2px 8px 8px 32px; font-size:11px; color:#ef4444; border-bottom:1px solid var(--border);">Last error: ${h.lastErrorMsg}</td></tr>`;
         }
     }
     html += '</tbody></table>';
 
     container.innerHTML = html;
     updateHealthBadge(data);
+}
+
+function _formatResetTime(isoStr) {
+    if (!isoStr) return 'auto';
+    const d = new Date(isoStr);
+    const now = new Date();
+    const diffMs = d - now;
+    if (diffMs <= 0) return 'now';
+    const hours = Math.floor(diffMs / 3600000);
+    if (hours < 1) return `in ${Math.ceil(diffMs / 60000)}m`;
+    if (hours < 24) return `in ${hours}h`;
+    const days = Math.floor(hours / 24);
+    return `in ${days}d`;
 }
 
 async function runHealthCheck() {

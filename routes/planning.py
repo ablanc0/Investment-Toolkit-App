@@ -707,7 +707,7 @@ def api_col_dedup():
 def api_col_fetch_city():
     """Fetch a single city's COL data on-demand via Resettle API."""
     from services.col_api import lookup_or_fetch
-    from services.col_quota import check_quota
+    from services.quota_svc import check_quota
     b = request.get_json()
     city_name = (b.get("city") or b.get("name") or "").strip()
     country = b.get("country") or b.get("country_code")
@@ -728,9 +728,12 @@ def api_col_fetch_city():
 
 @bp.route("/api/cost-of-living/quota")
 def api_col_quota():
-    """Return quota status for all COL providers."""
-    from services.col_quota import get_all_quotas
-    return jsonify({"ok": True, "quotas": get_all_quotas()})
+    """Return quota status for COL providers (backward compat — delegates to quota_svc)."""
+    from services.quota_svc import check_quota
+    return jsonify({"ok": True, "quotas": {
+        "resettle": check_quota("resettle"),
+        "ditno": check_quota("rapidapi"),
+    }})
 
 
 @bp.route("/api/cost-of-living/api-cities")
