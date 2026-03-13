@@ -5,17 +5,19 @@ Federal tax calculation, salary breakdown, and data migration helpers.
 
 from datetime import datetime
 
-from config import FEDERAL_BRACKETS, _TAX_NAME_MAP
+from config import FEDERAL_BRACKETS, FEDERAL_TAX_DATA, FILING_STATUSES, _TAX_NAME_MAP, get_tax_config
 from services.data_store import save_portfolio
 
 
-def compute_federal_tax(taxable_income):
-    """Progressive federal tax using standard brackets."""
+def compute_federal_tax(taxable_income, brackets=None):
+    """Progressive federal tax using provided or default brackets."""
     if taxable_income <= 0:
         return 0
+    if brackets is None:
+        brackets = FEDERAL_BRACKETS
     tax = 0
     prev = 0
-    for limit, rate in FEDERAL_BRACKETS:
+    for limit, rate in brackets:
         amt = min(taxable_income, limit) - prev
         if amt <= 0:
             break
@@ -27,7 +29,7 @@ def compute_federal_tax(taxable_income):
 def _default_taxes():
     return {
         "iraContributionPct": 0.03,
-        "standardDeduction": 16100,
+        "standardDeduction": None,
         "cityResidentTax": {"name": "City Tax (Resident)", "rate": 0.01, "enabled": True},
         "cityNonResidentTax": {"name": "City Tax (Non-Resident)", "rate": 0.003, "enabled": True},
         "stateTax": {"name": "State Tax", "rate": 0.0425, "enabled": True},
@@ -87,12 +89,16 @@ def get_marginal_rates(profile):
     """
     streams = profile.get("incomeStreams", [])
     taxes = profile.get("taxes", _default_taxes())
+    year = profile.get("year")
+    filing_status = profile.get("filingStatus", "single")
+    brackets, default_std_deduction = get_tax_config(year, filing_status)
 
     w2 = sum(s["amount"] for s in streams if s.get("type") == "W2")
     t1099 = sum(s["amount"] for s in streams if s.get("type") in ("1099", "Other"))
 
     ira_pct = taxes.get("iraContributionPct", 0.03)
-    std_deduction = taxes.get("standardDeduction", 16100)
+    user_std = taxes.get("standardDeduction")
+    std_deduction = user_std if user_std is not None else default_std_deduction
     se_factor = 0.9235
     ss_pct = 0.062
     medicare_pct = 0.0145
@@ -104,7 +110,7 @@ def get_marginal_rates(profile):
     total_fed_taxable = w2_fed_taxable + t1099_fed_taxable
 
     marginal_fed_rate = 0
-    for limit, rate in FEDERAL_BRACKETS:
+    for limit, rate in brackets:
         if total_fed_taxable <= limit:
             marginal_fed_rate = rate
             break
@@ -128,6 +134,9 @@ def compute_salary_breakdown(profile):
     """Compute full tax breakdown for a salary profile."""
     streams = profile.get("incomeStreams", [])
     taxes = profile.get("taxes", _default_taxes())
+    year = profile.get("year")
+    filing_status = profile.get("filingStatus", "single")
+    brackets, default_std_deduction = get_tax_config(year, filing_status)
 
     w2 = sum(s["amount"] for s in streams if s.get("type") == "W2")
     t1099 = sum(s["amount"] for s in streams if s.get("type") in ("1099", "Other"))
@@ -136,7 +145,8 @@ def compute_salary_breakdown(profile):
         total = 0.01  # avoid division by zero
 
     ira_pct = taxes.get("iraContributionPct", 0.03)
-    std_deduction = taxes.get("standardDeduction", 16100)
+    user_std = taxes.get("standardDeduction")
+    std_deduction = user_std if user_std is not None else default_std_deduction
     se_factor = 0.9235
     ss_pct = 0.062
     medicare_pct = 0.0145
@@ -192,8 +202,8 @@ def compute_salary_breakdown(profile):
     # 1099: deduct half of SE tax from federal taxable income
     t1099_se_tax = t1099 * se_factor * (ss_pct + medicare_pct) * 2
     t1099_fed_taxable = max(0, t1099 - round(t1099_se_tax / 2, 2))
-    w2_federal = compute_federal_tax(w2_fed_taxable)
-    t1099_federal = compute_federal_tax(t1099_fed_taxable)
+    w2_federal = compute_federal_tax(w2_fed_taxable, brackets)
+    t1099_federal = compute_federal_tax(t1099_fed_taxable, brackets)
     total_federal = round(w2_federal + t1099_federal, 2)
     # Compute effective federal rate for display
     fed_base = w2_fed_taxable + t1099_fed_taxable
@@ -313,6 +323,8 @@ def compute_salary_breakdown(profile):
         proj_profile = {
             "incomeStreams": [{"type": "W2", "amount": proj_amount, "label": "Projected"}],
             "taxes": taxes,
+            "year": year,
+            "filingStatus": filing_status,
         }
         proj_bd = compute_salary_breakdown(proj_profile)
         projected = {
@@ -333,11 +345,44 @@ def compute_salary_breakdown(profile):
             "takeHomePay": total_takehome, "totalWithhold": total_withheld,
             "effectiveTaxRate": total_eff, "hourlyRate": total_hourly,
             "monthlySalary": round(total_takehome/12, 2),
+            "filingStatus": filing_status, "standardDeduction": std_deduction,
+            "taxYear": year or datetime.now().year,
         },
         "employer": employer,
         "projected": projected,
         "hsa": hsa,
     }
+
+
+def compute_filing_status_comparison(profile):
+    """Compute tax under all 4 filing statuses for comparison."""
+    results = []
+    status_labels = {
+        "single": "Single",
+        "mfj": "Married Filing Jointly",
+        "mfs": "Married Filing Separately",
+        "hoh": "Head of Household",
+    }
+    for status in FILING_STATUSES:
+        test_profile = {**profile, "filingStatus": status}
+        test_taxes = {**(profile.get("taxes") or _default_taxes())}
+        test_taxes["standardDeduction"] = None  # use status default
+        test_profile["taxes"] = test_taxes
+        bd = compute_salary_breakdown(test_profile)
+        summ = bd["summary"]
+        fed_row = next((r for r in bd["rows"] if r.get("isFederal")), {})
+        results.append({
+            "status": status,
+            "label": status_labels[status],
+            "takeHomePay": summ.get("takeHomePay", 0),
+            "totalWithhold": summ.get("totalWithhold", 0),
+            "effectiveTaxRate": summ.get("effectiveTaxRate", 0),
+            "federalTax": fed_row.get("total", 0),
+            "standardDeduction": summ.get("standardDeduction", 0),
+            "monthlySalary": summ.get("monthlySalary", 0),
+        })
+    results.sort(key=lambda r: r["takeHomePay"], reverse=True)
+    return results
 
 
 def _future_value(rate, nper, pmt, pv):
@@ -430,9 +475,18 @@ def _get_salary_data(portfolio):
         portfolio["salary"] = salary
         save_portfolio(portfolio)
     # Fix legacy tax names + backfill missing effectiveTaxRate in history
+    # + backfill filingStatus + convert hardcoded standardDeduction to None
     changed = False
     for pid, profile in salary.get("profiles", {}).items():
+        # Backfill filingStatus on profiles missing it
+        if "filingStatus" not in profile:
+            profile["filingStatus"] = "single"
+            changed = True
         taxes = profile.get("taxes", {})
+        # Convert legacy hardcoded standardDeduction (16100) to None
+        if taxes.get("standardDeduction") == 16100:
+            taxes["standardDeduction"] = None
+            changed = True
         for tkey in ("cityResidentTax", "cityNonResidentTax", "stateTax"):
             cfg = taxes.get(tkey, {})
             if cfg.get("name") in _TAX_NAME_MAP:

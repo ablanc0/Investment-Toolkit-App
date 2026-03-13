@@ -3,7 +3,7 @@
 from datetime import datetime
 from flask import Blueprint, jsonify, request
 
-from models.salary_calc import _get_salary_data, compute_salary_breakdown, compute_retirement_plan, _default_taxes
+from models.salary_calc import _get_salary_data, compute_salary_breakdown, compute_retirement_plan, compute_filing_status_comparison, _default_taxes
 from services.data_store import load_portfolio, save_portfolio
 
 bp = Blueprint('salary', __name__)
@@ -16,6 +16,7 @@ def api_salary():
     profile_id = request.args.get("profile", salary.get("activeProfile", "alejandro"))
     profile = salary.get("profiles", {}).get(profile_id, {})
     breakdown = compute_salary_breakdown(profile)
+    status_comparison = compute_filing_status_comparison(profile)
     # Household summary
     household = {"annualGross": 0, "takeHomePay": 0, "profileCount": 0}
     for pid, p in salary.get("profiles", {}).items():
@@ -41,6 +42,7 @@ def api_salary():
         "profile": profile,
         "profileId": profile_id,
         "breakdown": breakdown,
+        "statusComparison": status_comparison,
         "household": household,
         "retirement": retirement,
         "retirementConfig": retirement_config,
@@ -64,7 +66,7 @@ def api_salary_update():
     if "taxes" in b:
         profile["taxes"] = b["taxes"]
     # Update simple fields
-    for key in ("year", "projectedSalary", "hsaExtraIncome", "name"):
+    for key in ("year", "projectedSalary", "hsaExtraIncome", "name", "filingStatus"):
         if key in b:
             profile[key] = int(b[key]) if key == "year" else b[key]
     # Update shared fields
@@ -79,7 +81,8 @@ def api_salary_update():
     portfolio["salary"] = salary
     save_portfolio(portfolio)
     breakdown = compute_salary_breakdown(profile)
-    return jsonify({"ok": True, "profile": profile, "breakdown": breakdown})
+    status_comparison = compute_filing_status_comparison(profile)
+    return jsonify({"ok": True, "profile": profile, "breakdown": breakdown, "statusComparison": status_comparison})
 
 
 @bp.route("/api/salary/profile", methods=["POST"])
@@ -98,6 +101,7 @@ def api_salary_profile_create():
     salary.setdefault("profiles", {})[pid] = {
         "name": name,
         "year": datetime.now().year,
+        "filingStatus": "single",
         "incomeStreams": [{"type": "W2", "amount": 0, "label": "Main Job"}],
         "taxes": _default_taxes(),
         "projectedSalary": 0,
