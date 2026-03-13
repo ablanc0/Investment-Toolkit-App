@@ -28,6 +28,10 @@ function renderSalaryFull(data) {
         document.getElementById('delProfileBtn').style.display = Object.keys(profiles).length > 1 ? '' : 'none';
     }
 
+    // Filing status selector
+    const fsSelect = document.getElementById('filingStatusSelect');
+    if (fsSelect) fsSelect.value = (data.profile || {}).filingStatus || 'single';
+
     // Household bar
     const hbar = document.getElementById('householdBar');
     if (hbar && household.profileCount > 1) {
@@ -40,6 +44,7 @@ function renderSalaryFull(data) {
     renderEmployerCost(breakdown.employer || {});
     renderProjectedSalary(breakdown.projected, profile.projectedSalary || 0, breakdown.summary || {});
     renderSalaryHistory(profile);
+    renderFilingStatusComparison(data.statusComparison || []);
 }
 
 function renderSalaryKpis(summ) {
@@ -114,6 +119,20 @@ function renderTaxTable(breakdown) {
     if (yearInput) {
         const curYear = profile.year || new Date().getFullYear();
         yearInput.value = curYear;
+    }
+
+    // Update table title with filing status context
+    const salTableTitle = document.getElementById('salTableTitle');
+    if (salTableTitle) {
+        const summ = breakdown.summary || {};
+        const statusLabels = {single: 'Single', mfj: 'MFJ', mfs: 'MFS', hoh: 'HoH'};
+        const fs = summ.filingStatus || profile.filingStatus || 'single';
+        const yr = profile.year || new Date().getFullYear();
+        const stdDed = summ.standardDeduction;
+        const subtitle = stdDed != null
+            ? `Tax Filing — ${yr} ${statusLabels[fs] || fs} | Std. Deduction: ${formatMoney(stdDed)}`
+            : `Tax Filing — ${yr} ${statusLabels[fs] || fs}`;
+        salTableTitle.textContent = subtitle;
     }
 
     let html = `<div class="table-wrapper"><table style="width:100%; font-size:0.82rem; border-collapse:collapse;">
@@ -265,6 +284,80 @@ function renderSalaryHistory(profile) {
     }
     html += '</tbody></table></div>';
     histDiv.innerHTML = html;
+}
+
+function switchFilingStatus() {
+    const status = document.getElementById('filingStatusSelect').value;
+    if (!status) return;
+    saveSalaryUpdate({ filingStatus: status });
+}
+
+function renderFilingStatusComparison(comparison) {
+    const container = document.getElementById('filingStatusComparison');
+    if (!container) return;
+    if (!comparison || comparison.length === 0) {
+        container.innerHTML = '<p style="font-size:0.82rem; color:var(--text-dim);">No comparison data available.</p>';
+        return;
+    }
+
+    const statusLabels = {single: 'Single', mfj: 'MFJ', mfs: 'MFS', hoh: 'HoH'};
+    const best = comparison[0];
+    const bestTakeHome = best.takeHomePay || 0;
+
+    // KPI Cards
+    let cardsHtml = '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:16px;">';
+    comparison.forEach(c => {
+        const isBest = c.status === best.status;
+        const delta = c.takeHomePay - bestTakeHome;
+        const borderStyle = isBest ? 'border:2px solid #4ade80;' : '';
+        const badge = isBest ? '<span style="background:#4ade80; color:#000; font-size:0.65rem; font-weight:700; padding:1px 6px; border-radius:4px; margin-left:6px;">BEST</span>' : '';
+        const deltaLine = !isBest && delta !== 0
+            ? `<div class="kpi-sub" style="color:#f87171;">${formatMoney(delta)} vs best</div>`
+            : '';
+
+        cardsHtml += `<div class="kpi-card" style="${borderStyle}">
+            <div class="kpi-label">${statusLabels[c.status] || c.label || c.status}${badge}</div>
+            <div class="kpi-value" style="color:#4ade80;">${formatMoney(c.takeHomePay)}</div>
+            <div class="kpi-sub">Federal: ${formatMoney(c.federalTax)} | Eff: ${(c.effectiveTaxRate * 100).toFixed(1)}%</div>
+            <div class="kpi-sub">Std. Deduction: ${formatMoney(c.standardDeduction)}</div>
+            ${deltaLine}
+        </div>`;
+    });
+    cardsHtml += '</div>';
+
+    // Comparison table
+    let tableHtml = `<div class="table-wrapper"><table style="width:100%; font-size:0.82rem;">
+        <thead><tr style="border-bottom:2px solid var(--border);">
+            <th style="text-align:left; padding:6px;">Filing Status</th>
+            <th style="text-align:right; padding:6px;">Std. Deduction</th>
+            <th style="text-align:right; padding:6px;">Federal Tax</th>
+            <th style="text-align:right; padding:6px;">Total Withheld</th>
+            <th style="text-align:right; padding:6px;">Take-Home</th>
+            <th style="text-align:right; padding:6px;">Monthly</th>
+            <th style="text-align:right; padding:6px;">Eff. Rate</th>
+            <th style="text-align:right; padding:6px;">vs Best</th>
+        </tr></thead><tbody>`;
+
+    comparison.forEach(c => {
+        const isBest = c.status === best.status;
+        const delta = c.takeHomePay - bestTakeHome;
+        const bg = isBest ? 'background:rgba(74,222,128,0.08);' : '';
+        const vsBest = isBest ? '<span style="color:var(--text-dim);">—</span>' : `<span style="color:#f87171;">${formatMoney(delta)}</span>`;
+
+        tableHtml += `<tr style="${bg} border-bottom:1px solid var(--border);">
+            <td style="padding:6px; font-weight:${isBest ? '700' : '400'};">${statusLabels[c.status] || c.label || c.status}${isBest ? ' <span style="color:#4ade80; font-size:0.72rem;">BEST</span>' : ''}</td>
+            <td style="text-align:right; padding:6px;">${formatMoney(c.standardDeduction)}</td>
+            <td style="text-align:right; padding:6px; color:#f87171;">${formatMoney(c.federalTax)}</td>
+            <td style="text-align:right; padding:6px; color:#f87171;">${formatMoney(c.totalWithhold)}</td>
+            <td style="text-align:right; padding:6px; color:#4ade80; font-weight:600;">${formatMoney(c.takeHomePay)}</td>
+            <td style="text-align:right; padding:6px;">${formatMoney(c.monthlySalary)}</td>
+            <td style="text-align:right; padding:6px;">${(c.effectiveTaxRate * 100).toFixed(1)}%</td>
+            <td style="text-align:right; padding:6px;">${vsBest}</td>
+        </tr>`;
+    });
+
+    tableHtml += '</tbody></table></div>';
+    container.innerHTML = cardsHtml + tableHtml;
 }
 
 // ── Retirement Tab ──

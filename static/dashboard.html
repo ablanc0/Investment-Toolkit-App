@@ -51,6 +51,7 @@
         <button class="group-btn" data-group="dividends" style="--group-color: #6AA84F">💰 Dividends</button>
         <button class="group-btn" data-group="research" style="--group-color: #993333">🔍 Research</button>
         <button class="group-btn" data-group="planning" style="--group-color: #E69138">🏦 Planning</button>
+        <button class="group-btn" data-group="incometax" style="--group-color: #e8594a">🧾 Income Tax</button>
         <button class="group-btn" data-group="analytics" style="--group-color: #1BBC9D">📈 Analytics</button>
     </div>
 
@@ -82,11 +83,13 @@
             <button class="tab-btn" data-tab="projections">Projections</button>
         </div>
         <div class="tab-row" data-group="planning" style="display:none">
-            <button class="tab-btn" data-tab="salary">Salary</button>
             <button class="tab-btn" data-tab="retirement">Retirement</button>
             <button class="tab-btn" data-tab="passive">Passive Income</button>
             <button class="tab-btn" data-tab="rule4pct">Rule 4%</button>
             <button class="tab-btn" data-tab="costOfLiving">Cost of Living</button>
+        </div>
+        <div class="tab-row" data-group="incometax" style="display:none">
+            <button class="tab-btn" data-tab="salary">Income & Tax</button>
             <button class="tab-btn" data-tab="taxAccounts">Tax Accounts</button>
         </div>
         <div class="tab-row" data-group="analytics" style="display:none">
@@ -818,11 +821,25 @@
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <label class="form-label" style="margin-bottom: 0; font-size: 0.8rem;">Year:</label>
                         <input type="number" id="salaryYearInput" class="form-input" style="width: 80px; font-size: 0.85rem; text-align:center;" min="2020" max="2040" onchange="switchSalaryYear()">
+                        <label class="form-label" style="margin-bottom:0;font-size:0.8rem;">Filing Status:</label>
+                        <select id="filingStatusSelect" class="form-input" style="width:200px;font-size:0.85rem;" onchange="switchFilingStatus()">
+                            <option value="single">Single</option>
+                            <option value="mfj">Married Filing Jointly</option>
+                            <option value="mfs">Married Filing Separately</option>
+                            <option value="hoh">Head of Household</option>
+                        </select>
                         <button class="add-row-btn" onclick="saveHistoryYear()" style="font-size: 0.78rem; padding: 4px 10px;">Save</button>
                     </div>
                 </div>
                 <div id="salaryBreakdownTable"></div>
             </div>
+
+            <!-- Filing Status Comparison -->
+            <details class="card" style="margin-top:16px;" open>
+                <summary style="cursor:pointer;font-weight:700;font-size:0.95rem;padding:4px 0;">Filing Status Comparison</summary>
+                <p style="font-size:0.78rem;color:var(--text-dim);margin:8px 0 12px 0;">Side-by-side comparison of tax owed under each filing status for the current income.</p>
+                <div id="filingStatusComparison"></div>
+            </details>
 
             <!-- Employer Cost (collapsible) -->
             <details class="card" style="margin-top: 16px;">
