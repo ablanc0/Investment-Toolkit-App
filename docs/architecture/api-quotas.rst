@@ -45,7 +45,7 @@ need to check quotas manually.
      - 5 / month
      - Basic (free)
      - $0
-     - COL bulk city database (767 cities)
+     - COL database: US monthly (2 calls), global annually (17 calls)
    * - **Resettle**
      - 100 / month + 10/hr
      - Basic (free)
@@ -125,61 +125,47 @@ ditno / RapidAPI Cities Cost of Living
 
 **When it's called:**
 
-The COL database refresh is a 2-phase process, each phase = 1 API call:
+The COL database has two refresh operations:
 
-1. **Phase 1 -- Check Cities** (1 call):
-   ``GET /get_cities_list`` returns the full global city catalog.
-   Detects new cities added since last check.  Stores 767 known cities
-   and 111 US city names.
+1. **US Refresh** (2 calls):
 
-2. **Phase 2 -- Fetch US Details** (1 call):
-   ``POST /bulk-fetch`` sends all 111 US city names in a single request.
-   Returns full cost-of-living data per city.
+   - ``GET /get_cities_list`` (1 call) — fetches the full global city
+     catalog, detects new cities.  Stores 767 known cities + 111 US names.
+   - ``POST /bulk-fetch`` (1 call) — sends all 111 US city names in a
+     single request.  Returns full cost-of-living data per US city.
 
-3. **Global Fetch** (variable calls):
-   ``POST /bulk-fetch`` in batches of **50 cities** per call.
-   For 767 global cities: ``ceil(767/50) = 16 API calls``.
+2. **Global Refresh** (17 calls):
 
-**Budget breakdown (5 calls/month):**
-
-.. code-block:: text
-
-   Phase 1 + Phase 2          = 2 calls  (US data refresh)
-   Remaining for ad-hoc       = 3 calls
-   Global fetch (16 calls)    = IMPOSSIBLE on Basic plan
+   - ``GET /get_cities_list`` (1 call) — same as above.
+   - ``POST /bulk-fetch`` in batches of **50 cities** (16 calls) — sends
+     all 767 global cities.  ``ceil(767/50) = 16 requests``.
 
 **Trigger:** User-initiated only (Planning > Cost of Living tab buttons).
 
-**The global-fetch problem:**
+**Refresh strategy (Basic plan, 5 calls/month, $0):**
 
-The full 767-city global dataset requires 16 API calls to refresh.
-This exceeds the 5/month Basic quota.  Options:
+.. code-block:: text
 
-.. list-table::
-   :header-rows: 1
-   :widths: 30 70
+   Monthly — US Refresh       = 2 calls   (fits in 5/month Basic)
+   Remaining spare            = 3 calls
+   Annual  — Global Refresh   = 17 calls  (requires Pro for 1 month)
 
-   * - Option
-     - Details
-   * - **Pro plan once/year**
-     - Subscribe to Pro ($8/mo, 100 calls/month) for 1 month.  Run full
-       global fetch (16 calls).  Downgrade back to Basic.  COL data is
-       relatively stable -- annual refresh is sufficient.
-   * - **Spread over months**
-     - Not feasible: the API endpoint fetches ALL global cities or none.
-       Cannot select subsets.  Would need code changes to support partial
-       batching over multiple months.
-   * - **Accept stale global data**
-     - Current dataset (766 cities) is already populated.  Use Resettle
-       for individual city lookups when needed.  Only refresh global when
-       significant changes are expected.
-   * - **Resettle as supplement**
-     - Use Resettle (100/month) for on-demand lookups of specific cities
-       not in the ditno database.  2 calls per city = 50 cities/month.
+The US dataset (111 cities) is the most relevant for day-to-day
+comparisons and can be refreshed monthly at no cost.
 
-**Recommendation:** Keep Basic plan.  Data is already populated (766/767
-cities).  Use Resettle for on-demand lookups.  Subscribe to Pro ($8) for
-one month annually to refresh the full global dataset.
+The global dataset (767 cities) changes slowly — cost-of-living indices
+shift gradually.  An annual refresh is sufficient.
+
+**Annual global refresh workflow:**
+
+1. Upgrade ditno subscription to **Pro** ($8/month, 100 calls/month)
+2. Run global refresh from the COL tab (17 calls)
+3. Downgrade back to **Basic** ($0/month)
+4. Total cost: **$8/year** for full global dataset
+
+**Supplementary lookups:** For individual cities not in the ditno dataset,
+use **Resettle** (100 calls/month, free) via the "Search Online" button.
+This covers on-demand needs without touching the ditno quota.
 
 
 Resettle Place API
