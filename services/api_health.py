@@ -2,25 +2,50 @@
 
 Quota tracking is handled by services/quota_svc.py (unified system).
 This module only tracks health status (ok/error/exhausted) and latency.
+
+Health state is persisted to ``health.json`` in DATA_DIR so status
+survives server restarts (last known status from real usage).
 """
 
+import json
 import time
 import threading
 from datetime import datetime
 
+from config import DATA_DIR
+
 _health_lock = threading.Lock()
+_HEALTH_FILE = DATA_DIR / "health.json"
 
 _DEFAULT_API = {"status": "unknown", "lastSuccess": None, "lastError": None, "lastErrorMsg": "", "latencyMs": None}
 
-_api_health = {
-    "fmp": dict(_DEFAULT_API),
-    "yfinance": dict(_DEFAULT_API),
-    "fred": dict(_DEFAULT_API),
-    "edgar": dict(_DEFAULT_API),
-    "rapidapi": dict(_DEFAULT_API),
-    "resettle": dict(_DEFAULT_API),
-    "elbstream": dict(_DEFAULT_API),
-}
+_PROVIDERS = ("fmp", "yfinance", "fred", "edgar", "rapidapi", "resettle", "elbstream")
+
+
+def _load_health():
+    """Load persisted health state, falling back to defaults."""
+    defaults = {p: dict(_DEFAULT_API) for p in _PROVIDERS}
+    if not _HEALTH_FILE.exists():
+        return defaults
+    try:
+        saved = json.loads(_HEALTH_FILE.read_text())
+        for p in _PROVIDERS:
+            if p in saved:
+                defaults[p].update(saved[p])
+        return defaults
+    except Exception:
+        return defaults
+
+
+def _save_health():
+    """Persist current health state to disk (called under lock)."""
+    try:
+        _HEALTH_FILE.write_text(json.dumps(_api_health, indent=2))
+    except Exception:
+        pass
+
+
+_api_health = _load_health()
 
 
 def record_api_call(api_name, success, latency_ms=None, error_msg=None):
@@ -43,6 +68,7 @@ def record_api_call(api_name, success, latency_ms=None, error_msg=None):
                 h["status"] = "error"
             h["lastError"] = now
             h["lastErrorMsg"] = msg
+        _save_health()
 
 
 def get_health_summary():
