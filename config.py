@@ -213,7 +213,9 @@ RESETTLE_API_BASE = f"https://{RESETTLE_API_HOST}"
 
 FILING_STATUSES = ("single", "mfj", "mfs", "hoh")
 
-# Multi-year, multi-status federal tax data (IRS Revenue Procedures)
+# Multi-year, multi-status federal tax data (IRS Revenue Procedures).
+# Updated once per year — IRS publishes new thresholds each October.
+# Source: search "IRS Revenue Procedure <year>" for the Rev. Proc. cited below.
 FEDERAL_TAX_DATA = {
     # ── 2023 (Rev. Proc. 2022-38) ────────────────────────────────────
     2023: {
