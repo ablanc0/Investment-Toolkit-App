@@ -7,6 +7,8 @@ All notable changes to InvToolkit will be documented in this file.
 
 
 ## 2026-03-13
+- 🟩 Feature unified API quota and rate-limiting service
+- ⬜ Documentation update changelog
 - 🟩 Feature Resettle Place API as on-demand COL data source
 
 
