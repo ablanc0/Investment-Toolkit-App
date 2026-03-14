@@ -409,6 +409,7 @@ def compute_salary_breakdown(profile):
             "qbiDeduction": round(qbi_deduction, 2),
             "t1099Gross": round(t1099_gross, 2),
             "t1099Net": round(t1099, 2),
+            "marginalRates": get_marginal_rates(profile),
         },
         "employer": employer,
         "projected": projected,
@@ -416,8 +417,12 @@ def compute_salary_breakdown(profile):
     }
 
 
-def compute_filing_status_comparison(profile):
-    """Compute tax under all 4 filing statuses for comparison."""
+def compute_filing_status_comparison(profile, statuses=None):
+    """Compute tax under specified filing statuses for comparison.
+    Defaults to individual statuses (Single, HoH) since MFJ/MFS
+    are handled by compute_household_filing() with combined income."""
+    if statuses is None:
+        statuses = ("single", "hoh")
     results = []
     status_labels = {
         "single": "Single",
@@ -425,7 +430,7 @@ def compute_filing_status_comparison(profile):
         "mfs": "Married Filing Separately",
         "hoh": "Head of Household",
     }
-    for status in FILING_STATUSES:
+    for status in statuses:
         test_profile = {**profile, "filingStatus": status}
         test_taxes = {**(profile.get("taxes") or _default_taxes())}
         test_taxes["standardDeduction"] = None  # use status default
@@ -446,6 +451,147 @@ def compute_filing_status_comparison(profile):
         })
     results.sort(key=lambda r: r["takeHomePay"], reverse=True)
     return results
+
+
+def compute_tax_return(breakdown, withholding_info):
+    """Compute estimated tax return: refund or amount owed.
+
+    Takes the breakdown dict (from compute_salary_breakdown()) and a
+    withholding_info dict with federalWithheld, stateWithheld, estimatedPayments.
+    Returns a dict with tax liability, payments, and balances.
+    """
+    if not withholding_info:
+        withholding_info = {}
+
+    rows = breakdown.get("rows", [])
+
+    # Extract tax liability components from breakdown rows
+    federal_owed = 0
+    state_owed = 0
+    local_owed = 0
+    fica_owed = 0
+
+    for r in rows:
+        label = r.get("label", "").lower()
+        total = r.get("total", 0)
+
+        # Skip non-tax rows
+        if r.get("isRate") or r.get("isIncome") or r.get("isSummary") or r.get("isExpense") or r.get("isQBI"):
+            continue
+
+        if r.get("isFederal"):
+            federal_owed = total
+        elif r.get("taxKey") == "stateTax":
+            state_owed += total
+        elif r.get("taxKey") in ("cityResidentTax", "cityNonResidentTax"):
+            local_owed += total
+        elif "social security" in label:
+            fica_owed += total
+        elif "medicare" in label:
+            fica_owed += total
+
+    total_tax_liability = round(federal_owed + state_owed + local_owed + fica_owed, 2)
+
+    # Extract payments made
+    federal_withheld = withholding_info.get("federalWithheld", 0) or 0
+    state_withheld = withholding_info.get("stateWithheld", 0) or 0
+    estimated_payments = withholding_info.get("estimatedPayments", 0) or 0
+    total_payments = round(federal_withheld + state_withheld + estimated_payments, 2)
+
+    # Compute balances (positive = owed, negative = refund)
+    federal_balance = round(federal_owed - federal_withheld - estimated_payments, 2)
+    state_balance = round(state_owed - state_withheld, 2)
+    total_balance = round(total_tax_liability - total_payments, 2)
+
+    return {
+        "federalTaxOwed": federal_owed,
+        "stateTaxOwed": state_owed,
+        "localTaxOwed": local_owed,
+        "ficaOwed": fica_owed,
+        "totalTaxLiability": total_tax_liability,
+        "federalWithheld": federal_withheld,
+        "stateWithheld": state_withheld,
+        "estimatedPayments": estimated_payments,
+        "totalPayments": total_payments,
+        "federalBalance": federal_balance,
+        "stateBalance": state_balance,
+        "totalBalance": total_balance,
+        "isRefund": total_balance < 0,
+    }
+
+
+def compute_household_filing(primary_profile, spouse_profile):
+    """Compare filing jointly (MFJ) vs separately (MFS) for a household."""
+    # Merge income streams from both profiles
+    primary_streams = primary_profile.get("incomeStreams", [])
+    spouse_streams = spouse_profile.get("incomeStreams", [])
+    combined_streams = list(primary_streams) + list(spouse_streams)
+
+    # Build synthetic joint profile using primary's tax config
+    joint_profile = {
+        "incomeStreams": combined_streams,
+        "filingStatus": "mfj",
+        "taxes": {**(primary_profile.get("taxes") or _default_taxes()), "standardDeduction": None},
+        "year": primary_profile.get("year"),
+    }
+    joint_bd = compute_salary_breakdown(joint_profile)
+
+    # Combine withholdings from both profiles for joint tax return
+    pri_wh = primary_profile.get("withholdingInfo", {})
+    sp_wh = spouse_profile.get("withholdingInfo", {})
+    joint_withholdings = {
+        "federalWithheld": (pri_wh.get("federalWithheld", 0) or 0) + (sp_wh.get("federalWithheld", 0) or 0),
+        "stateWithheld": (pri_wh.get("stateWithheld", 0) or 0) + (sp_wh.get("stateWithheld", 0) or 0),
+        "estimatedPayments": (pri_wh.get("estimatedPayments", 0) or 0) + (sp_wh.get("estimatedPayments", 0) or 0),
+    }
+    joint_tax_return = compute_tax_return(joint_bd, joint_withholdings)
+
+    # Compute separate (MFS) breakdowns — each profile with its own taxes but forced MFS
+    primary_mfs_profile = {
+        **primary_profile,
+        "filingStatus": "mfs",
+        "taxes": {**(primary_profile.get("taxes") or _default_taxes()), "standardDeduction": None},
+    }
+    spouse_mfs_profile = {
+        **spouse_profile,
+        "filingStatus": "mfs",
+        "taxes": {**(spouse_profile.get("taxes") or _default_taxes()), "standardDeduction": None},
+    }
+    primary_mfs_bd = compute_salary_breakdown(primary_mfs_profile)
+    spouse_mfs_bd = compute_salary_breakdown(spouse_mfs_profile)
+
+    # Separate tax returns for MFS
+    primary_mfs_tr = compute_tax_return(primary_mfs_bd, pri_wh)
+    spouse_mfs_tr = compute_tax_return(spouse_mfs_bd, sp_wh)
+
+    # Extract take-home and tax totals
+    joint_take_home = joint_bd["summary"]["takeHomePay"]
+    primary_take_home = primary_mfs_bd["summary"]["takeHomePay"]
+    spouse_take_home = spouse_mfs_bd["summary"]["takeHomePay"]
+    separate_combined_take_home = round(primary_take_home + spouse_take_home, 2)
+
+    primary_tax = primary_mfs_bd["summary"]["totalWithhold"]
+    spouse_tax = spouse_mfs_bd["summary"]["totalWithhold"]
+    combined_tax = round(primary_tax + spouse_tax, 2)
+
+    savings = round(joint_take_home - separate_combined_take_home, 2)
+
+    return {
+        "joint": {
+            "summary": joint_bd["summary"],
+            "taxReturn": joint_tax_return,
+        },
+        "separate": {
+            "primary": primary_mfs_bd["summary"],
+            "spouse": spouse_mfs_bd["summary"],
+            "primaryTaxReturn": primary_mfs_tr,
+            "spouseTaxReturn": spouse_mfs_tr,
+            "combinedTakeHome": separate_combined_take_home,
+            "combinedTax": combined_tax,
+        },
+        "savings": savings,
+        "recommendation": "joint" if savings >= 0 else "separate",
+    }
 
 
 def _future_value(rate, nper, pmt, pv):

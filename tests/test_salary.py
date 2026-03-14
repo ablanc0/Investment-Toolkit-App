@@ -11,6 +11,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from models.salary_calc import (
     compute_federal_tax,
     compute_salary_breakdown,
+    compute_tax_return,
+    compute_household_filing,
     migrate_salary_data,
 )
 from config import FEDERAL_TAX_DATA
@@ -275,3 +277,110 @@ class TestBusinessExpensesAndQBI:
         assert summ["t1099Net"] == 85000
         # QBI = 20% of eligible net only: (60000 - 10000) = 50000 * 0.20 = 10000
         assert summ["qbiDeduction"] == 10000
+
+
+# ── Tax Return Estimator tests ─────────────────────────────────────
+
+
+class TestTaxReturnEstimator:
+    def _get_breakdown(self, streams=None, year=2025, filing_status="single"):
+        if streams is None:
+            streams = [{"type": "W2", "amount": 100000, "label": "Job"}]
+        profile = _make_profile(streams, year=year, filing_status=filing_status)
+        return compute_salary_breakdown(profile)
+
+    def test_refund_scenario(self):
+        """Withholdings exceed tax owed -> refund."""
+        bd = self._get_breakdown()
+        info = {"federalWithheld": 50000, "stateWithheld": 10000, "estimatedPayments": 0}
+        result = compute_tax_return(bd, info)
+        assert result["isRefund"] is True
+        assert result["totalBalance"] < 0
+
+    def test_owed_scenario(self):
+        """Withholdings less than tax -> owed."""
+        bd = self._get_breakdown()
+        info = {"federalWithheld": 1000, "stateWithheld": 0, "estimatedPayments": 0}
+        result = compute_tax_return(bd, info)
+        assert result["isRefund"] is False
+        assert result["totalBalance"] > 0
+
+    def test_zero_withholdings(self):
+        """No payments -> balance equals full tax liability."""
+        bd = self._get_breakdown()
+        result = compute_tax_return(bd, {})
+        assert result["totalBalance"] == result["totalTaxLiability"]
+        assert result["totalPayments"] == 0
+
+    def test_estimated_payments_reduce_balance(self):
+        """ES payments offset federal tax."""
+        bd = self._get_breakdown()
+        result_no_es = compute_tax_return(bd, {"federalWithheld": 5000, "stateWithheld": 0, "estimatedPayments": 0})
+        result_with_es = compute_tax_return(bd, {"federalWithheld": 5000, "stateWithheld": 0, "estimatedPayments": 3000})
+        assert result_with_es["totalBalance"] < result_no_es["totalBalance"]
+        assert result_with_es["totalPayments"] == 8000
+
+    def test_marginal_rates_in_summary(self):
+        """Marginal rates should be exposed in breakdown summary."""
+        bd = self._get_breakdown()
+        assert "marginalRates" in bd["summary"]
+        mr = bd["summary"]["marginalRates"]
+        assert "federalRate" in mr
+        assert "combinedRate" in mr
+        assert mr["federalRate"] > 0
+
+
+# ── Household Filing Comparison tests ────────────────────────────────
+
+
+class TestHouseholdFiling:
+    def _make_hh_profiles(self, w2_primary=60000, t1099_primary=20000, t1099_spouse=60000, year=2025):
+        primary = _make_profile([
+            {"type": "W2", "amount": w2_primary, "label": "Job"},
+            {"type": "1099", "amount": t1099_primary, "label": "Freelance"},
+        ], year=year)
+        primary["withholdingInfo"] = {"federalWithheld": 5000, "stateWithheld": 1000, "estimatedPayments": 2000}
+        spouse = _make_profile([
+            {"type": "1099", "amount": t1099_spouse, "label": "Business"},
+        ], year=year)
+        spouse["withholdingInfo"] = {"federalWithheld": 3000, "stateWithheld": 500, "estimatedPayments": 4000}
+        return primary, spouse
+
+    def test_joint_combines_income(self):
+        """Joint filing combines income from both profiles."""
+        primary, spouse = self._make_hh_profiles()
+        result = compute_household_filing(primary, spouse)
+        joint_gross = result["joint"]["summary"]["annualGross"]
+        assert joint_gross == 60000 + 20000 + 60000  # 140000
+
+    def test_joint_vs_separate(self):
+        """Joint and separate take-home should differ due to different brackets."""
+        primary, spouse = self._make_hh_profiles()
+        result = compute_household_filing(primary, spouse)
+        joint_take_home = result["joint"]["summary"]["takeHomePay"]
+        separate_take_home = result["separate"]["combinedTakeHome"]
+        assert joint_take_home != separate_take_home
+
+    def test_joint_uses_mfj_deduction(self):
+        """Joint filing should use MFJ standard deduction."""
+        primary, spouse = self._make_hh_profiles(year=2025)
+        result = compute_household_filing(primary, spouse)
+        # MFJ 2025 standard deduction is ~$30,000
+        assert result["joint"]["summary"]["standardDeduction"] >= 29200
+
+    def test_joint_withholdings_combined(self):
+        """Both profiles' withholdings should be summed for joint tax return."""
+        primary, spouse = self._make_hh_profiles()
+        result = compute_household_filing(primary, spouse)
+        tr = result["joint"]["taxReturn"]
+        # primary: 5000+1000+2000=8000, spouse: 3000+500+4000=7500 -> total=15500
+        assert tr["totalPayments"] == 15500
+
+    def test_savings_positive_when_joint_better(self):
+        """Savings should be positive when joint filing yields more take-home."""
+        primary, spouse = self._make_hh_profiles()
+        result = compute_household_filing(primary, spouse)
+        # For most income combos, MFJ is better than MFS
+        assert "savings" in result
+        assert "recommendation" in result
+        assert result["recommendation"] in ("joint", "separate")

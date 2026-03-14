@@ -46,6 +46,8 @@ function renderSalaryFull(data) {
     renderProjectedSalary(breakdown.projected, profile.projectedSalary || 0, breakdown.summary || {});
     renderSalaryHistory(profile);
     renderFilingStatusComparison(data.statusComparison || []);
+    renderTaxReturn(data.taxReturn, data.profile.withholdingInfo || {}, data.breakdown.summary);
+    renderHouseholdFiling(data);
 }
 
 function renderSalaryKpis(summ) {
@@ -741,4 +743,219 @@ async function deleteHistoryYear(year) {
         const data = await resp.json();
         if (data.ok) { loadedTabs['salary'] = false; fetchSalaryData(); }
     } catch(e) { console.error(e); }
+}
+
+function renderTaxReturn(taxReturn, withholdingInfo, summary) {
+    const el = document.getElementById('taxReturnEstimator');
+    if (!el) return;
+    if (!taxReturn) { el.innerHTML = ''; return; }
+
+    const fw = withholdingInfo.federalWithheld || 0;
+    const sw = withholdingInfo.stateWithheld || 0;
+    const ep = withholdingInfo.estimatedPayments || 0;
+    const bal = taxReturn.totalBalance;
+    const isRefund = taxReturn.isRefund;
+    const balColor = isRefund ? '#4ade80' : '#f87171';
+    const balLabel = isRefund ? 'Estimated Refund' : 'Amount Owed';
+    const fedBal = taxReturn.federalBalance;
+    const stBal = taxReturn.stateBalance;
+    const mr = (summary.marginalRates || {});
+
+    let html = '';
+
+    // Input fields
+    html += `<div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
+        <div style="flex:1; min-width:140px;">
+            <label style="font-size:0.78rem; color:var(--text-dim); display:block; margin-bottom:4px;">Federal Withheld YTD</label>
+            <input type="number" value="${fw}" class="form-input" style="width:100%; font-size:0.85rem; text-align:right;" onchange="updateWithholding()">
+        </div>
+        <div style="flex:1; min-width:140px;">
+            <label style="font-size:0.78rem; color:var(--text-dim); display:block; margin-bottom:4px;">State Withheld YTD</label>
+            <input type="number" value="${sw}" class="form-input" style="width:100%; font-size:0.85rem; text-align:right;" onchange="updateWithholding()">
+        </div>
+        <div style="flex:1; min-width:140px;">
+            <label style="font-size:0.78rem; color:var(--text-dim); display:block; margin-bottom:4px;">Estimated Payments</label>
+            <input type="number" value="${ep}" class="form-input" style="width:100%; font-size:0.85rem; text-align:right;" onchange="updateWithholding()">
+        </div>
+    </div>`;
+
+    // Result KPIs
+    html += `<div class="kpi-grid" style="margin-bottom:16px;">
+        <div class="kpi-card" style="border-left:3px solid ${balColor};">
+            <div class="kpi-label">${balLabel}</div>
+            <div class="kpi-value" style="color:${balColor}; font-size:1.4rem;">${formatMoney(Math.abs(bal))}</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Federal ${fedBal <= 0 ? 'Refund' : 'Owed'}</div>
+            <div class="kpi-value" style="color:${fedBal <= 0 ? '#4ade80' : '#f87171'};">${formatMoney(Math.abs(fedBal))}</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">State ${stBal <= 0 ? 'Refund' : 'Owed'}</div>
+            <div class="kpi-value" style="color:${stBal <= 0 ? '#4ade80' : '#f87171'};">${formatMoney(Math.abs(stBal))}</div>
+        </div>
+    </div>`;
+
+    // Summary table
+    const lines = [
+        ['Total Tax Liability', taxReturn.totalTaxLiability, ''],
+        ['Federal Withheld', -taxReturn.federalWithheld, '#4ade80'],
+        ['State Withheld', -taxReturn.stateWithheld, '#4ade80'],
+        ['Estimated Payments', -taxReturn.estimatedPayments, '#4ade80'],
+    ];
+    html += `<table class="data-table" style="font-size:0.85rem; margin-bottom:12px;">
+        <thead><tr><th style="text-align:left;">Component</th><th style="text-align:right;">Amount</th></tr></thead><tbody>`;
+    for (const [label, amt, clr] of lines) {
+        const style = clr ? `color:${clr};` : '';
+        html += `<tr><td>${label}</td><td style="text-align:right; ${style}">${amt < 0 ? '-' : ''}${formatMoney(Math.abs(amt))}</td></tr>`;
+    }
+    html += `<tr style="font-weight:700; border-top:2px solid var(--border);">
+        <td>Balance</td>
+        <td style="text-align:right; color:${balColor};">${isRefund ? '-' : ''}${formatMoney(Math.abs(bal))}</td>
+    </tr></tbody></table>`;
+
+    // Marginal rates
+    if (mr.federalRate != null) {
+        html += `<div style="font-size:0.82rem; color:var(--text-dim);">
+            Marginal Federal Rate: <span style="color:var(--text);">${(mr.federalRate * 100).toFixed(1)}%</span>
+            &nbsp;&middot;&nbsp; Combined Marginal Rate: <span style="color:var(--text);">${(mr.combinedRate * 100).toFixed(1)}%</span>
+        </div>`;
+    }
+
+    el.innerHTML = html;
+}
+
+function updateWithholding() {
+    const inputs = document.querySelectorAll('#taxReturnEstimator input[type="number"]');
+    if (inputs.length < 3) return;
+    const info = {
+        federalWithheld: parseFloat(inputs[0].value) || 0,
+        stateWithheld: parseFloat(inputs[1].value) || 0,
+        estimatedPayments: parseFloat(inputs[2].value) || 0,
+    };
+    saveSalaryUpdate({ withholdingInfo: info });
+}
+
+function renderHouseholdFiling(data) {
+    const container = document.getElementById('householdFilingSection');
+    if (!container) return;
+
+    const salary = data.salary || {};
+    const profiles = salary.profiles || {};
+    const profileIds = Object.keys(profiles);
+    const currentId = data.profileId;
+    const householdConfig = data.householdConfig || salary.householdConfig || {};
+    const selectedSpouse = householdConfig.spouseProfile || '';
+
+    // If only 1 profile, hide section
+    if (profileIds.length < 2) {
+        container.innerHTML = '<p style="color:var(--text-dim); font-size:0.85rem;">Add a second profile to compare joint vs separate filing.</p>';
+        return;
+    }
+
+    // Spouse selector
+    const otherProfiles = profileIds.filter(pid => pid !== currentId);
+    let html = `<div style="display:flex; gap:12px; align-items:center; margin-bottom:16px;">
+        <label style="font-size:0.85rem; color:var(--text-dim);">Spouse Profile:</label>
+        <select class="form-input" style="width:180px; font-size:0.85rem;" onchange="saveHouseholdConfig(this.value)">
+            <option value="">-- Select --</option>
+            ${otherProfiles.map(pid => `<option value="${pid}" ${pid === selectedSpouse ? 'selected' : ''}>${profiles[pid].name || pid}</option>`).join('')}
+        </select>
+    </div>`;
+
+    const hf = data.householdFiling;
+    if (!hf || !selectedSpouse) {
+        html += '<p style="color:var(--text-dim); font-size:0.85rem;">Select a spouse profile to compare joint vs separate filing.</p>';
+        container.innerHTML = html;
+        return;
+    }
+
+    const joint = hf.joint || {};
+    const separate = hf.separate || {};
+    const savings = hf.savings || 0;
+    const rec = hf.recommendation || 'joint';
+    const isJointBetter = rec === 'joint';
+
+    // KPI cards
+    html += `<div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
+        <div class="kpi-card" style="flex:1; min-width:180px; border-left:3px solid ${isJointBetter ? '#4ade80' : 'var(--border)'};">
+            <div class="kpi-label">Filing Jointly (MFJ)</div>
+            <div class="kpi-value" style="color:${isJointBetter ? '#4ade80' : 'var(--text)'};">${formatMoney(joint.summary?.takeHomePay || 0)}</div>
+            <div class="kpi-sub">Combined take-home${isJointBetter ? ' \u2605 BEST' : ''}</div>
+        </div>
+        <div class="kpi-card" style="flex:1; min-width:180px; border-left:3px solid ${!isJointBetter ? '#4ade80' : 'var(--border)'};">
+            <div class="kpi-label">Filing Separately (MFS)</div>
+            <div class="kpi-value" style="color:${!isJointBetter ? '#4ade80' : 'var(--text)'};">${formatMoney(separate.combinedTakeHome || 0)}</div>
+            <div class="kpi-sub">Combined take-home${!isJointBetter ? ' \u2605 BEST' : ''}</div>
+        </div>
+        <div class="kpi-card" style="flex:1; min-width:180px; border-left:3px solid ${savings >= 0 ? '#4ade80' : '#f87171'};">
+            <div class="kpi-label">${savings >= 0 ? 'Joint Savings' : 'Separate Savings'}</div>
+            <div class="kpi-value" style="color:${savings >= 0 ? '#4ade80' : '#f87171'};">${formatMoney(Math.abs(savings))}</div>
+            <div class="kpi-sub">${savings >= 0 ? 'saved by filing jointly' : 'saved by filing separately'}</div>
+        </div>
+    </div>`;
+
+    // Comparison table
+    const jointS = joint.summary || {};
+    const primS = separate.primary || {};
+    const spouseS = separate.spouse || {};
+
+    html += `<table class="data-table" style="font-size:0.82rem;">
+        <thead><tr>
+            <th>Metric</th>
+            <th style="text-align:right;">Joint (MFJ)</th>
+            <th style="text-align:right;">Primary (MFS)</th>
+            <th style="text-align:right;">Spouse (MFS)</th>
+            <th style="text-align:right;">Separate Combined</th>
+        </tr></thead>
+        <tbody>
+            <tr><td>Gross Income</td>
+                <td style="text-align:right;">${formatMoney(jointS.annualGross)}</td>
+                <td style="text-align:right;">${formatMoney(primS.annualGross)}</td>
+                <td style="text-align:right;">${formatMoney(spouseS.annualGross)}</td>
+                <td style="text-align:right;">${formatMoney((primS.annualGross||0) + (spouseS.annualGross||0))}</td></tr>
+            <tr><td>Standard Deduction</td>
+                <td style="text-align:right;">${formatMoney(jointS.standardDeduction)}</td>
+                <td style="text-align:right;">${formatMoney(primS.standardDeduction)}</td>
+                <td style="text-align:right;">${formatMoney(spouseS.standardDeduction)}</td>
+                <td style="text-align:right;">\u2014</td></tr>
+            <tr><td>Total Tax</td>
+                <td style="text-align:right; color:#f87171;">${formatMoney(jointS.totalWithhold)}</td>
+                <td style="text-align:right; color:#f87171;">${formatMoney(primS.totalWithhold)}</td>
+                <td style="text-align:right; color:#f87171;">${formatMoney(spouseS.totalWithhold)}</td>
+                <td style="text-align:right; color:#f87171;">${formatMoney(separate.combinedTax)}</td></tr>
+            <tr><td>Eff. Tax Rate</td>
+                <td style="text-align:right;">${((jointS.effectiveTaxRate||0)*100).toFixed(1)}%</td>
+                <td style="text-align:right;">${((primS.effectiveTaxRate||0)*100).toFixed(1)}%</td>
+                <td style="text-align:right;">${((spouseS.effectiveTaxRate||0)*100).toFixed(1)}%</td>
+                <td style="text-align:right;">\u2014</td></tr>
+            <tr style="font-weight:600;"><td>Take-Home Pay</td>
+                <td style="text-align:right; color:${isJointBetter ? '#4ade80' : 'var(--text)'};">${formatMoney(jointS.takeHomePay)}</td>
+                <td style="text-align:right;">${formatMoney(primS.takeHomePay)}</td>
+                <td style="text-align:right;">${formatMoney(spouseS.takeHomePay)}</td>
+                <td style="text-align:right; color:${!isJointBetter ? '#4ade80' : 'var(--text)'};">${formatMoney(separate.combinedTakeHome)}</td></tr>
+        </tbody>
+    </table>`;
+
+    // Tax return comparison line — joint vs separate refund/owed
+    const jtr = joint.taxReturn;
+    const pTr = separate.primaryTaxReturn;
+    const sTr = separate.spouseTaxReturn;
+    const hasPayments = (jtr && jtr.totalPayments > 0) || (pTr && pTr.totalPayments > 0) || (sTr && sTr.totalPayments > 0);
+    if (jtr && hasPayments) {
+        const jBal = jtr.totalBalance || 0;
+        const pBal = pTr ? (pTr.totalBalance || 0) : 0;
+        const sBal = sTr ? (sTr.totalBalance || 0) : 0;
+        const fmtBal = (b) => `<span style="color:${b <= 0 ? '#4ade80' : '#f87171'}; font-weight:600;">${b <= 0 ? 'Refund' : 'Owed'} ${formatMoney(Math.abs(b))}</span>`;
+        html += `<div style="margin-top:16px; padding:10px 14px; border-radius:8px; background:var(--card); border:1px solid var(--border); font-size:0.82rem;">
+            <span style="color:var(--text-dim);">Tax Return Estimate:</span>&nbsp;
+            If filing jointly: ${fmtBal(jBal)} &nbsp;|&nbsp;
+            If filing separately: ${fmtBal(pBal)} + ${fmtBal(sBal)}
+        </div>`;
+    }
+
+    container.innerHTML = html;
+}
+
+function saveHouseholdConfig(spouseId) {
+    saveSalaryUpdate({ householdConfig: { spouseProfile: spouseId || null } });
 }
