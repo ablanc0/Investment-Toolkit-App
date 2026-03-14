@@ -9,28 +9,20 @@ All notable changes to InvToolkit will be documented in this file.
 ## 2026-03-14
 - 🟩 Feature super investor key stats panel — sector breakdown, yield tiers, avg P/E, beta, payout ratio, 5Y avg yield
 - 🟩 Feature income tax phase 3 — tax return estimator + household filing
-- ⬜ Documentation update changelog
 - 🟩 Feature 1099 business expenses + QBI deduction (Phase 2)
 
 
 ## 2026-03-13
-- ⬜ Documentation update changelog
 - 🟩 Feature Income Tax — year selector fix + filing status (Phase 1)
-- ⬜ Documentation update changelog
-- ⬜ Documentation update changelog
 - 🟩 Feature unified API quota and rate-limiting service
-- ⬜ Documentation update changelog
 - 🟩 Feature Resettle Place API as on-demand COL data source
 
 
 ## 2026-03-11
 - 🟧 Fix exclude large/ephemeral files from git backup
 - 🟩 Feature add new company logos and data backups
-- ⬜ Documentation update changelog
 - 🟦 Enhancement API abstraction and resilience foundation
-- ⬜ Documentation update changelog
 - 🟧 Fix exclude quota-limited APIs from health check pings
-- ⬜ Documentation update changelog
 - 🟩 Feature bulk refresh IV list values and scores
 - 🟧 Fix grant write permissions to changelog workflow
 - 🟧 Fix use server-provided IV signal in watchlist and alerts
@@ -43,7 +35,6 @@ All notable changes to InvToolkit will be documented in this file.
 - ⬜ Documentation remove invt-changelog agent, replaced by GitHub Action
 - 🟧 Fix trigger changelog update on PR merge instead of push
 - 🟩 Feature add GitHub Action to auto-update changelog on push to main
-- ⬜ Documentation update changelog
 - 🟩 Feature automated changelog with git-cliff
 - 🟦 Enhancement toggle research/portfolio views in My Lab
 - 🟩 Feature add In Portfolio column to My Lab Most Held Tickers table
