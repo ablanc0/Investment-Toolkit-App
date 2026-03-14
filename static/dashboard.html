@@ -807,10 +807,11 @@
 
             <!-- Income Streams -->
             <div class="card" style="margin-bottom: 16px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <div class="card-title" style="margin-bottom:0;">Income Streams</div>
                     <button class="add-row-btn" onclick="addIncomeStream()" style="font-size: 0.78rem; padding: 4px 10px;">+ Add Stream</button>
                 </div>
+                <p style="font-size:0.78rem;color:var(--text-dim);margin:0 0 10px 0;">W2 = employer paycheck (taxes withheld). 1099 = freelance/contract (you pay self-employment tax). Add business expenses and QBI eligibility for 1099 income.</p>
                 <div id="incomeStreamsEditor"></div>
             </div>
             <div id="qbiInfoBar" style="display:none; margin-bottom:12px;"></div>
@@ -838,12 +839,14 @@
             <!-- Tax Return Estimator -->
             <details class="card" style="margin-top:12px;">
                 <summary style="cursor:pointer; font-weight:600;">Tax Return Estimator</summary>
+                <p style="font-size:0.78rem;color:var(--text-dim);margin:8px 0 4px 0;">Enter amounts already paid (paycheck withholdings + quarterly estimated payments) to see if you'll get a refund or owe more at tax time.</p>
                 <div id="taxReturnEstimator" style="padding:12px 0;"></div>
             </details>
 
             <!-- Household Filing Comparison -->
             <details class="card" style="margin-top:12px;">
                 <summary style="cursor:pointer; font-weight:600;">Household Filing Comparison</summary>
+                <p style="font-size:0.78rem;color:var(--text-dim);margin:8px 0 4px 0;">Compare filing one joint tax return (MFJ) vs two separate returns (MFS) to find the best strategy for your household.</p>
                 <div id="householdFilingSection" style="padding:12px 0;"></div>
             </details>
 
