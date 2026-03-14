@@ -417,8 +417,12 @@ def compute_salary_breakdown(profile):
     }
 
 
-def compute_filing_status_comparison(profile):
-    """Compute tax under all 4 filing statuses for comparison."""
+def compute_filing_status_comparison(profile, statuses=None):
+    """Compute tax under specified filing statuses for comparison.
+    Defaults to individual statuses (Single, HoH) since MFJ/MFS
+    are handled by compute_household_filing() with combined income."""
+    if statuses is None:
+        statuses = ("single", "hoh")
     results = []
     status_labels = {
         "single": "Single",
@@ -426,7 +430,7 @@ def compute_filing_status_comparison(profile):
         "mfs": "Married Filing Separately",
         "hoh": "Head of Household",
     }
-    for status in FILING_STATUSES:
+    for status in statuses:
         test_profile = {**profile, "filingStatus": status}
         test_taxes = {**(profile.get("taxes") or _default_taxes())}
         test_taxes["standardDeduction"] = None  # use status default
