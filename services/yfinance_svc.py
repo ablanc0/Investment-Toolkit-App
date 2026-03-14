@@ -42,6 +42,8 @@ def fetch_ticker_data(ticker):
             "fiftyTwoWeekHigh": info.get("fiftyTwoWeekHigh", 0),
             "fiftyTwoWeekLow": info.get("fiftyTwoWeekLow", 0),
             "targetMeanPrice": info.get("targetMeanPrice", 0),
+            "payoutRatio": round((info.get("payoutRatio") or 0) * 100, 1),
+            "fiveYearAvgDivYield": round(info.get("fiveYearAvgDividendYield") or 0, 2),
             "country": info.get("country", ""),
             "currency": info.get("currency", "USD"),
         }

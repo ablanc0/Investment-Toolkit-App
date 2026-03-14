@@ -258,6 +258,8 @@ def _compute_key_stats(enriched):
     pe_list = []
     beta_list = []
     mcap_list = []
+    payout_list = []
+    avg5y_list = []
     dividend_payers = 0
 
     for t in enriched:
@@ -281,6 +283,14 @@ def _compute_key_stats(enriched):
         if mc and mc > 0:
             mcap_list.append(mc)
 
+        pr = t.get("payoutRatio")
+        if pr and 0 < pr <= 200:
+            payout_list.append(pr)
+
+        a5 = t.get("fiveYearAvgDivYield")
+        if a5 and a5 > 0:
+            avg5y_list.append(a5)
+
     # Sector counts sorted descending
     sorted_sectors = sorted(sectors.items(), key=lambda x: x[1], reverse=True)
 
@@ -303,6 +313,10 @@ def _compute_key_stats(enriched):
         "medianPE": round(statistics.median(pe_list), 1) if pe_list else 0,
         "avgBeta": round(statistics.mean(beta_list), 2) if beta_list else 0,
         "avgMarketCap": round(statistics.mean(mcap_list)) if mcap_list else 0,
+        "avgPayoutRatio": round(statistics.mean(payout_list), 1) if payout_list else 0,
+        "medianPayoutRatio": round(statistics.median(payout_list), 1) if payout_list else 0,
+        "avgFiveYearDivYield": round(statistics.mean(avg5y_list), 2) if avg5y_list else 0,
+        "medianFiveYearDivYield": round(statistics.median(avg5y_list), 2) if avg5y_list else 0,
         "dividendPayers": dividend_payers,
         "totalStocks": total,
     }
@@ -327,6 +341,8 @@ def api_super_investor_key_stats():
                 "pe": data.get("pe", 0),
                 "beta": data.get("beta", 0),
                 "marketCap": data.get("marketCap", 0),
+                "payoutRatio": data.get("payoutRatio", 0),
+                "fiveYearAvgDivYield": data.get("fiveYearAvgDivYield", 0),
             })
     return jsonify({"stats": _compute_key_stats(enriched), "tickerCount": len(enriched)})
 

@@ -434,8 +434,10 @@ async function fetchKeyStats(tickers) {
             {label: '🏢 Sectors', value: s.sectorCount || 0, sub: `across ${s.totalStocks} stocks`},
             {label: '💰 Div Payers', value: s.dividendPayers || 0, sub: `of ${s.totalStocks} stocks`},
             {label: '📊 Avg P/E', value: s.avgPE || '—', sub: `Median: ${s.medianPE || '—'}`},
-            {label: '⚡ Avg Beta', value: s.avgBeta || '—', sub: `market sensitivity`},
             {label: '📈 Avg Yield', value: s.avgDivYield ? s.avgDivYield + '%' : '—', sub: `Median: ${s.medianDivYield ? s.medianDivYield + '%' : '—'}`},
+            {label: '💸 Avg Payout', value: s.avgPayoutRatio ? s.avgPayoutRatio + '%' : '—', sub: `Median: ${s.medianPayoutRatio ? s.medianPayoutRatio + '%' : '—'}`},
+            {label: '📅 5Y Avg Yield', value: s.avgFiveYearDivYield ? s.avgFiveYearDivYield + '%' : '—', sub: `Median: ${s.medianFiveYearDivYield ? s.medianFiveYearDivYield + '%' : '—'}`},
+            {label: '⚡ Avg Beta', value: s.avgBeta || '—', sub: `market sensitivity`},
         ]);
         // Sector doughnut chart
         const sectorCanvas = document.getElementById('siSectorChart');
