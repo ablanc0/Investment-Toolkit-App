@@ -936,20 +936,20 @@ function renderHouseholdFiling(data) {
         </tbody>
     </table>`;
 
-    // Joint tax return (if available)
+    // Tax return comparison line — joint vs separate refund/owed
     const jtr = joint.taxReturn;
-    if (jtr) {
-        const bal = jtr.totalBalance || 0;
-        const isRefund = jtr.isRefund;
-        html += `<div style="margin-top:16px; padding:12px; border-radius:8px; border:1px solid ${isRefund ? '#4ade80' : '#f87171'}33; background:${isRefund ? '#4ade8010' : '#f8717110'};">
-            <div style="font-size:0.85rem; font-weight:600; margin-bottom:4px;">Joint Tax Return Estimate</div>
-            <div style="display:flex; gap:16px; flex-wrap:wrap; font-size:0.82rem;">
-                <span>Total Liability: <strong>${formatMoney(jtr.totalTaxLiability)}</strong></span>
-                <span>Combined Payments: <strong>${formatMoney(jtr.totalPayments)}</strong></span>
-                <span style="color:${isRefund ? '#4ade80' : '#f87171'}; font-weight:600;">
-                    ${isRefund ? 'Refund' : 'Owed'}: ${formatMoney(Math.abs(bal))}
-                </span>
-            </div>
+    const pTr = separate.primaryTaxReturn;
+    const sTr = separate.spouseTaxReturn;
+    const hasPayments = (jtr && jtr.totalPayments > 0) || (pTr && pTr.totalPayments > 0) || (sTr && sTr.totalPayments > 0);
+    if (jtr && hasPayments) {
+        const jBal = jtr.totalBalance || 0;
+        const pBal = pTr ? (pTr.totalBalance || 0) : 0;
+        const sBal = sTr ? (sTr.totalBalance || 0) : 0;
+        const fmtBal = (b) => `<span style="color:${b <= 0 ? '#4ade80' : '#f87171'}; font-weight:600;">${b <= 0 ? 'Refund' : 'Owed'} ${formatMoney(Math.abs(b))}</span>`;
+        html += `<div style="margin-top:16px; padding:10px 14px; border-radius:8px; background:var(--card); border:1px solid var(--border); font-size:0.82rem;">
+            <span style="color:var(--text-dim);">Tax Return Estimate:</span>&nbsp;
+            If filing jointly: ${fmtBal(jBal)} &nbsp;|&nbsp;
+            If filing separately: ${fmtBal(pBal)} + ${fmtBal(sBal)}
         </div>`;
     }
 

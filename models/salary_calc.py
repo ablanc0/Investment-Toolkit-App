@@ -556,6 +556,10 @@ def compute_household_filing(primary_profile, spouse_profile):
     primary_mfs_bd = compute_salary_breakdown(primary_mfs_profile)
     spouse_mfs_bd = compute_salary_breakdown(spouse_mfs_profile)
 
+    # Separate tax returns for MFS
+    primary_mfs_tr = compute_tax_return(primary_mfs_bd, pri_wh)
+    spouse_mfs_tr = compute_tax_return(spouse_mfs_bd, sp_wh)
+
     # Extract take-home and tax totals
     joint_take_home = joint_bd["summary"]["takeHomePay"]
     primary_take_home = primary_mfs_bd["summary"]["takeHomePay"]
@@ -576,6 +580,8 @@ def compute_household_filing(primary_profile, spouse_profile):
         "separate": {
             "primary": primary_mfs_bd["summary"],
             "spouse": spouse_mfs_bd["summary"],
+            "primaryTaxReturn": primary_mfs_tr,
+            "spouseTaxReturn": spouse_mfs_tr,
             "combinedTakeHome": separate_combined_take_home,
             "combinedTax": combined_tax,
         },
