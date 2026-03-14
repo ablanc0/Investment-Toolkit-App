@@ -7,6 +7,7 @@ All notable changes to InvToolkit will be documented in this file.
 
 
 ## 2026-03-14
+- 🟩 Feature super investor key stats panel — sector breakdown, yield tiers, avg P/E, beta, payout ratio, 5Y avg yield
 - 🟩 Feature income tax phase 3 — tax return estimator + household filing
 - ⬜ Documentation update changelog
 - 🟩 Feature 1099 business expenses + QBI deduction (Phase 2)
