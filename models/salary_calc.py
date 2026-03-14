@@ -5,7 +5,7 @@ Federal tax calculation, salary breakdown, and data migration helpers.
 
 from datetime import datetime
 
-from config import FEDERAL_BRACKETS, FEDERAL_TAX_DATA, FILING_STATUSES, _TAX_NAME_MAP, get_tax_config
+from config import FEDERAL_BRACKETS, FEDERAL_TAX_DATA, FILING_STATUSES, _TAX_NAME_MAP, get_tax_config, get_qbi_thresholds
 from services.data_store import save_portfolio
 
 
@@ -94,7 +94,9 @@ def get_marginal_rates(profile):
     brackets, default_std_deduction = get_tax_config(year, filing_status)
 
     w2 = sum(s["amount"] for s in streams if s.get("type") == "W2")
-    t1099 = sum(s["amount"] for s in streams if s.get("type") in ("1099", "Other"))
+    t1099_gross = sum(s["amount"] for s in streams if s.get("type") in ("1099", "Other"))
+    t1099_expenses = sum(s.get("businessExpenses", 0) for s in streams if s.get("type") in ("1099", "Other"))
+    t1099 = max(0, t1099_gross - t1099_expenses)
 
     ira_pct = taxes.get("iraContributionPct", 0.03)
     user_std = taxes.get("standardDeduction")
@@ -107,6 +109,22 @@ def get_marginal_rates(profile):
     w2_fed_taxable = max(0, w2 - w2_ira - std_deduction)
     t1099_se_tax = t1099 * se_factor * (ss_pct + medicare_pct) * 2
     t1099_fed_taxable = max(0, t1099 - round(t1099_se_tax / 2, 2))
+
+    # QBI deduction (Section 199A)
+    qbi_deduction = 0
+    if t1099 > 0:
+        qbi_thresh = get_qbi_thresholds(year, filing_status)
+        total_pre_qbi = w2_fed_taxable + t1099_fed_taxable
+        raw_qbi = round(t1099 * 0.20, 2)
+        if total_pre_qbi <= qbi_thresh["lower"]:
+            qbi_deduction = raw_qbi
+        elif total_pre_qbi >= qbi_thresh["upper"]:
+            qbi_deduction = 0
+        else:
+            phase_pct = (total_pre_qbi - qbi_thresh["lower"]) / (qbi_thresh["upper"] - qbi_thresh["lower"])
+            qbi_deduction = round(raw_qbi * (1 - phase_pct), 2)
+        t1099_fed_taxable = max(0, t1099_fed_taxable - qbi_deduction)
+
     total_fed_taxable = w2_fed_taxable + t1099_fed_taxable
 
     marginal_fed_rate = 0
@@ -139,8 +157,10 @@ def compute_salary_breakdown(profile):
     brackets, default_std_deduction = get_tax_config(year, filing_status)
 
     w2 = sum(s["amount"] for s in streams if s.get("type") == "W2")
-    t1099 = sum(s["amount"] for s in streams if s.get("type") in ("1099", "Other"))
-    total = w2 + t1099
+    t1099_gross = sum(s["amount"] for s in streams if s.get("type") in ("1099", "Other"))
+    t1099_expenses = sum(s.get("businessExpenses", 0) for s in streams if s.get("type") in ("1099", "Other"))
+    t1099 = max(0, t1099_gross - t1099_expenses)
+    total = w2 + t1099_gross
     if total == 0:
         total = 0.01  # avoid division by zero
 
@@ -165,7 +185,15 @@ def compute_salary_breakdown(profile):
 
     # Row: Annual Salary
     rows.append({"label": "Annual Salary", "total": round(total, 2), "totalMo": round(total/12, 2),
-                 "w2": round(w2, 2), "w2Mo": round(w2/12, 2), "t1099": round(t1099, 2), "t1099Mo": round(t1099/12, 2), "isIncome": True})
+                 "w2": round(w2, 2), "w2Mo": round(w2/12, 2), "t1099": round(t1099_gross, 2), "t1099Mo": round(t1099_gross/12, 2), "isIncome": True})
+
+    # Row: Business Expenses (if any)
+    if t1099_expenses > 0:
+        rows.append({"label": "Business Expenses (1099)", "total": round(t1099_expenses, 2),
+                     "totalMo": round(t1099_expenses / 12, 2),
+                     "w2": 0, "w2Mo": 0,
+                     "t1099": round(t1099_expenses, 2), "t1099Mo": round(t1099_expenses / 12, 2),
+                     "isExpense": True})
 
     # Row: Pre-Tax Deductions (IRA)
     rows.append({"label": "Pre-Tax Deductions (IRA)", "total": round(w2_ira, 2), "totalMo": round(w2_ira/12, 2),
@@ -202,6 +230,30 @@ def compute_salary_breakdown(profile):
     # 1099: deduct half of SE tax from federal taxable income
     t1099_se_tax = t1099 * se_factor * (ss_pct + medicare_pct) * 2
     t1099_fed_taxable = max(0, t1099 - round(t1099_se_tax / 2, 2))
+
+    # QBI deduction (Section 199A)
+    qbi_deduction = 0
+    if t1099 > 0:
+        qbi_thresh = get_qbi_thresholds(year, filing_status)
+        total_pre_qbi = w2_fed_taxable + t1099_fed_taxable
+        raw_qbi = round(t1099 * 0.20, 2)
+        if total_pre_qbi <= qbi_thresh["lower"]:
+            qbi_deduction = raw_qbi
+        elif total_pre_qbi >= qbi_thresh["upper"]:
+            qbi_deduction = 0
+        else:
+            phase_pct = (total_pre_qbi - qbi_thresh["lower"]) / (qbi_thresh["upper"] - qbi_thresh["lower"])
+            qbi_deduction = round(raw_qbi * (1 - phase_pct), 2)
+        t1099_fed_taxable = max(0, t1099_fed_taxable - qbi_deduction)
+
+    # QBI Deduction row (before Federal Tax)
+    if qbi_deduction > 0:
+        rows.append({"label": "QBI Deduction (Sec. 199A)", "total": round(qbi_deduction, 2),
+                     "totalMo": round(qbi_deduction / 12, 2),
+                     "w2": 0, "w2Mo": 0,
+                     "t1099": round(qbi_deduction, 2), "t1099Mo": round(qbi_deduction / 12, 2),
+                     "isQBI": True})
+
     w2_federal = compute_federal_tax(w2_fed_taxable, brackets)
     t1099_federal = compute_federal_tax(t1099_fed_taxable, brackets)
     total_federal = round(w2_federal + t1099_federal, 2)
@@ -248,7 +300,7 @@ def compute_salary_breakdown(profile):
                  "t1099": t1099_takehome, "t1099Mo": round(t1099_takehome/12, 2), "isSummary": True, "isPositive": True})
 
     # Hourly / Eff Tax
-    real_total = w2 + t1099  # use actual total, not the 0.01 guard
+    real_total = w2 + t1099_gross  # use actual total, not the 0.01 guard
     total_hourly = round(real_total / (52 * 40), 2) if real_total > 0 else 0
     w2_hourly = round(w2 / (52 * 40), 2) if w2 > 0 else 0
     t1099_hourly = round(t1099 / (52 * 40), 2) if t1099 > 0 else 0
@@ -347,6 +399,10 @@ def compute_salary_breakdown(profile):
             "monthlySalary": round(total_takehome/12, 2),
             "filingStatus": filing_status, "standardDeduction": std_deduction,
             "taxYear": year or datetime.now().year,
+            "businessExpenses": round(t1099_expenses, 2),
+            "qbiDeduction": round(qbi_deduction, 2),
+            "t1099Gross": round(t1099_gross, 2),
+            "t1099Net": round(t1099, 2),
         },
         "employer": employer,
         "projected": projected,
@@ -380,6 +436,7 @@ def compute_filing_status_comparison(profile):
             "federalTax": fed_row.get("total", 0),
             "standardDeduction": summ.get("standardDeduction", 0),
             "monthlySalary": summ.get("monthlySalary", 0),
+            "qbiDeduction": summ.get("qbiDeduction", 0),
         })
     results.sort(key=lambda r: r["takeHomePay"], reverse=True)
     return results
