@@ -409,6 +409,7 @@ def compute_salary_breakdown(profile):
             "qbiDeduction": round(qbi_deduction, 2),
             "t1099Gross": round(t1099_gross, 2),
             "t1099Net": round(t1099, 2),
+            "marginalRates": get_marginal_rates(profile),
         },
         "employer": employer,
         "projected": projected,
@@ -446,6 +447,73 @@ def compute_filing_status_comparison(profile):
         })
     results.sort(key=lambda r: r["takeHomePay"], reverse=True)
     return results
+
+
+def compute_tax_return(breakdown, withholding_info):
+    """Compute estimated tax return: refund or amount owed.
+
+    Takes the breakdown dict (from compute_salary_breakdown()) and a
+    withholding_info dict with federalWithheld, stateWithheld, estimatedPayments.
+    Returns a dict with tax liability, payments, and balances.
+    """
+    if not withholding_info:
+        withholding_info = {}
+
+    rows = breakdown.get("rows", [])
+
+    # Extract tax liability components from breakdown rows
+    federal_owed = 0
+    state_owed = 0
+    local_owed = 0
+    fica_owed = 0
+
+    for r in rows:
+        label = r.get("label", "").lower()
+        total = r.get("total", 0)
+
+        # Skip non-tax rows
+        if r.get("isRate") or r.get("isIncome") or r.get("isSummary") or r.get("isExpense") or r.get("isQBI"):
+            continue
+
+        if r.get("isFederal"):
+            federal_owed = total
+        elif r.get("taxKey") == "stateTax":
+            state_owed += total
+        elif r.get("taxKey") in ("cityResidentTax", "cityNonResidentTax"):
+            local_owed += total
+        elif "social security" in label:
+            fica_owed += total
+        elif "medicare" in label:
+            fica_owed += total
+
+    total_tax_liability = round(federal_owed + state_owed + local_owed + fica_owed, 2)
+
+    # Extract payments made
+    federal_withheld = withholding_info.get("federalWithheld", 0) or 0
+    state_withheld = withholding_info.get("stateWithheld", 0) or 0
+    estimated_payments = withholding_info.get("estimatedPayments", 0) or 0
+    total_payments = round(federal_withheld + state_withheld + estimated_payments, 2)
+
+    # Compute balances (positive = owed, negative = refund)
+    federal_balance = round(federal_owed - federal_withheld - estimated_payments, 2)
+    state_balance = round(state_owed - state_withheld, 2)
+    total_balance = round(total_tax_liability - total_payments, 2)
+
+    return {
+        "federalTaxOwed": federal_owed,
+        "stateTaxOwed": state_owed,
+        "localTaxOwed": local_owed,
+        "ficaOwed": fica_owed,
+        "totalTaxLiability": total_tax_liability,
+        "federalWithheld": federal_withheld,
+        "stateWithheld": state_withheld,
+        "estimatedPayments": estimated_payments,
+        "totalPayments": total_payments,
+        "federalBalance": federal_balance,
+        "stateBalance": state_balance,
+        "totalBalance": total_balance,
+        "isRefund": total_balance < 0,
+    }
 
 
 def _future_value(rate, nper, pmt, pv):

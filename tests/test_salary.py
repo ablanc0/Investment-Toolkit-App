@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from models.salary_calc import (
     compute_federal_tax,
     compute_salary_breakdown,
+    compute_tax_return,
     migrate_salary_data,
 )
 from config import FEDERAL_TAX_DATA
@@ -275,3 +276,54 @@ class TestBusinessExpensesAndQBI:
         assert summ["t1099Net"] == 85000
         # QBI = 20% of eligible net only: (60000 - 10000) = 50000 * 0.20 = 10000
         assert summ["qbiDeduction"] == 10000
+
+
+# ── Tax Return Estimator tests ─────────────────────────────────────
+
+
+class TestTaxReturnEstimator:
+    def _get_breakdown(self, streams=None, year=2025, filing_status="single"):
+        if streams is None:
+            streams = [{"type": "W2", "amount": 100000, "label": "Job"}]
+        profile = _make_profile(streams, year=year, filing_status=filing_status)
+        return compute_salary_breakdown(profile)
+
+    def test_refund_scenario(self):
+        """Withholdings exceed tax owed -> refund."""
+        bd = self._get_breakdown()
+        info = {"federalWithheld": 50000, "stateWithheld": 10000, "estimatedPayments": 0}
+        result = compute_tax_return(bd, info)
+        assert result["isRefund"] is True
+        assert result["totalBalance"] < 0
+
+    def test_owed_scenario(self):
+        """Withholdings less than tax -> owed."""
+        bd = self._get_breakdown()
+        info = {"federalWithheld": 1000, "stateWithheld": 0, "estimatedPayments": 0}
+        result = compute_tax_return(bd, info)
+        assert result["isRefund"] is False
+        assert result["totalBalance"] > 0
+
+    def test_zero_withholdings(self):
+        """No payments -> balance equals full tax liability."""
+        bd = self._get_breakdown()
+        result = compute_tax_return(bd, {})
+        assert result["totalBalance"] == result["totalTaxLiability"]
+        assert result["totalPayments"] == 0
+
+    def test_estimated_payments_reduce_balance(self):
+        """ES payments offset federal tax."""
+        bd = self._get_breakdown()
+        result_no_es = compute_tax_return(bd, {"federalWithheld": 5000, "stateWithheld": 0, "estimatedPayments": 0})
+        result_with_es = compute_tax_return(bd, {"federalWithheld": 5000, "stateWithheld": 0, "estimatedPayments": 3000})
+        assert result_with_es["totalBalance"] < result_no_es["totalBalance"]
+        assert result_with_es["totalPayments"] == 8000
+
+    def test_marginal_rates_in_summary(self):
+        """Marginal rates should be exposed in breakdown summary."""
+        bd = self._get_breakdown()
+        assert "marginalRates" in bd["summary"]
+        mr = bd["summary"]["marginalRates"]
+        assert "federalRate" in mr
+        assert "combinedRate" in mr
+        assert mr["federalRate"] > 0
