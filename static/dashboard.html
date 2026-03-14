@@ -739,12 +739,12 @@
                         <span style="font-size:0.9rem; font-weight:600;">Key Stats</span>
                         <span id="siKeyStatsLoading" style="font-size:0.75rem; color:var(--text-dim);">Loading stats...</span>
                     </div>
-                    <div id="siKeyStatsKpis" class="kpi-grid" style="margin-bottom:16px;"></div>
-                    <div style="display:flex; gap:20px; flex-wrap:wrap;">
-                        <div style="flex:1; min-width:280px; max-width:400px;">
-                            <canvas id="siSectorChart" height="220"></canvas>
+                    <div style="display:flex; gap:24px; flex-wrap:wrap;">
+                        <div style="flex:0 0 auto; width:320px; display:flex; flex-direction:column; gap:16px;">
+                            <div><canvas id="siSectorChart" height="220"></canvas></div>
+                            <div id="siYieldTiersWrap"></div>
                         </div>
-                        <div id="siYieldTiersWrap" style="flex:1; min-width:200px; max-width:300px;"></div>
+                        <div id="siKeyStatsKpis" class="kpi-grid" style="flex:1; min-width:300px; grid-template-columns:repeat(3,1fr);"></div>
                     </div>
                 </div>
                 <div class="table-wrapper"><table style="font-size: 0.82rem;">
