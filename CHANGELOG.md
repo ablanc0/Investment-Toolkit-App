@@ -6,7 +6,12 @@ All notable changes to InvToolkit will be documented in this file.
 
 
 
+## 2026-03-14
+- 🟩 Feature 1099 business expenses + QBI deduction (Phase 2)
+
+
 ## 2026-03-13
+- ⬜ Documentation update changelog
 - 🟩 Feature Income Tax — year selector fix + filing status (Phase 1)
 - ⬜ Documentation update changelog
 - ⬜ Documentation update changelog
