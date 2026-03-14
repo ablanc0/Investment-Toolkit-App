@@ -605,6 +605,55 @@ const INVT_SCORE_DESC = {
     'Insufficient Data': 'Relatively new company and/or not enough data reported.',
 };
 
+function _generateQualityDesc(data) {
+    if (!data || !data.categories || data.label === 'Insufficient Data') {
+        return INVT_SCORE_DESC[data?.label] || '';
+    }
+    const SCORED_CATS = ['growth', 'profitability', 'debt', 'efficiency'];
+    const CAT_LABELS = {growth: 'growth', profitability: 'profitability', debt: 'debt management', efficiency: 'capital efficiency'};
+    const TREND_THRESHOLD = 1.5;
+
+    const strengths = [], weaknesses = [];
+    let validCount = 0;
+    for (const key of SCORED_CATS) {
+        const cat = data.categories[key];
+        if (!cat || cat.score == null) continue;
+        validCount++;
+        const entry = {label: CAT_LABELS[key], score: cat.score, score5yr: cat.score5yr, score10yr: cat.score10yr};
+        if (cat.score >= 8.0) strengths.push(entry);
+        else if (cat.score < 5.0) weaknesses.push(entry);
+    }
+    if (validCount === 0) return INVT_SCORE_DESC[data.label] || '';
+
+    strengths.sort((a, b) => b.score - a.score);
+    weaknesses.sort((a, b) => a.score - b.score);
+
+    const fmt = (e) => `<b style="color:${_invtScoreColor(e.score)};">${e.score.toFixed(1)}</b>&nbsp;${e.label}`;
+    const joinNatural = (arr) => arr.length <= 2 ? arr.join(' and ') : arr.slice(0, -1).join(', ') + ', and ' + arr[arr.length - 1];
+
+    let sentence1;
+    const sFmt = strengths.map(fmt), wFmt = weaknesses.map(fmt);
+    if (strengths.length > 0 && weaknesses.length > 0) sentence1 = `Stands out in ${joinNatural(sFmt)}, but faces challenges in ${joinNatural(wFmt)}.`;
+    else if (strengths.length > 0) sentence1 = `Stands out in ${joinNatural(sFmt)}.`;
+    else if (weaknesses.length > 0) sentence1 = `Faces challenges in ${joinNatural(wFmt)}.`;
+    else sentence1 = 'Balanced fundamentals across all categories, without standout strengths or major concerns.';
+
+    const improving = [], declining = [];
+    for (const key of SCORED_CATS) {
+        const cat = data.categories[key];
+        if (!cat || cat.score5yr == null || cat.score10yr == null) continue;
+        const diff = cat.score5yr - cat.score10yr;
+        if (diff >= TREND_THRESHOLD) improving.push(CAT_LABELS[key]);
+        else if (diff <= -TREND_THRESHOLD) declining.push(CAT_LABELS[key]);
+    }
+    let sentence2 = '';
+    if (improving.length > 0 && declining.length > 0) sentence2 = ` Recent trend improving in ${joinNatural(improving)}, but declining in ${joinNatural(declining)}.`;
+    else if (improving.length > 0) sentence2 = ` Recent trend improving in ${joinNatural(improving)}.`;
+    else if (declining.length > 0) sentence2 = ` Recent trend declining in ${joinNatural(declining)}.`;
+
+    return sentence1 + sentence2;
+}
+
 // Metric descriptions for tooltips
 const INVT_METRIC_DESC = {
     revenue_cagr: 'Measures how fast total sales are increasing or decreasing over time.',
@@ -736,7 +785,7 @@ function renderInvtScore(data) {
             </div>
         </div>
         <div style="flex:1; min-width:240px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px; padding:12px 16px;">
-            <div style="font-size:0.78rem; color:var(--text-dim); line-height:1.5;">${INVT_SCORE_DESC[data.label] || ''}</div>
+            <div style="font-size:0.78rem; color:var(--text-dim); line-height:1.5;">${_generateQualityDesc(data)}</div>
         </div>
     </div>`;
 
