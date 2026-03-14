@@ -374,6 +374,49 @@ def get_tax_config(year=None, filing_status="single"):
     status_data = FEDERAL_TAX_DATA[chosen].get(filing_status, FEDERAL_TAX_DATA[chosen]["single"])
     return status_data["brackets"], status_data["standardDeduction"]
 
+
+# ── QBI Deduction Thresholds (Section 199A) ──────────────────────────
+# Below lower: full 20% deduction. Between lower-upper: linear phase-out.
+# Above upper: zero (simplified — no W-2 wages/UBIA limitation).
+QBI_THRESHOLDS = {
+    2023: {
+        "single": {"lower": 182100, "upper": 232100},
+        "mfj":    {"lower": 364200, "upper": 464200},
+        "mfs":    {"lower": 182100, "upper": 232100},
+        "hoh":    {"lower": 182100, "upper": 232100},
+    },
+    2024: {
+        "single": {"lower": 191950, "upper": 241950},
+        "mfj":    {"lower": 383900, "upper": 483900},
+        "mfs":    {"lower": 191950, "upper": 241950},
+        "hoh":    {"lower": 191950, "upper": 241950},
+    },
+    2025: {
+        "single": {"lower": 197300, "upper": 247300},
+        "mfj":    {"lower": 394600, "upper": 494600},
+        "mfs":    {"lower": 197300, "upper": 247300},
+        "hoh":    {"lower": 197300, "upper": 247300},
+    },
+    2026: {
+        "single": {"lower": 197300, "upper": 247300},
+        "mfj":    {"lower": 394600, "upper": 494600},
+        "mfs":    {"lower": 197300, "upper": 247300},
+        "hoh":    {"lower": 197300, "upper": 247300},
+    },
+}
+
+
+def get_qbi_thresholds(year=None, filing_status="single"):
+    """Return QBI phase-out thresholds {lower, upper} for year + status.
+    Falls back to most recent available year if year not found."""
+    from datetime import datetime
+    if year is None:
+        year = datetime.now().year
+    available = sorted(QBI_THRESHOLDS.keys())
+    chosen = max((y for y in available if y <= year), default=available[-1])
+    return QBI_THRESHOLDS[chosen].get(filing_status, QBI_THRESHOLDS[chosen]["single"])
+
+
 _TAX_NAME_MAP = {
     "Lansing Resident Tax": "City Tax (Resident)",
     "E Lansing Nonresident Tax": "City Tax (Non-Resident)",

@@ -41,6 +41,7 @@ function renderSalaryFull(data) {
     renderSalaryKpis(breakdown.summary || {});
     renderIncomeStreams(profile.incomeStreams || []);
     renderTaxTable(breakdown);
+    renderQbiInfo(breakdown.summary || {});
     renderEmployerCost(breakdown.employer || {});
     renderProjectedSalary(breakdown.projected, profile.projectedSalary || 0, breakdown.summary || {});
     renderSalaryHistory(profile);
@@ -57,8 +58,8 @@ function renderSalaryKpis(summ) {
             <div class="kpi-value positive">${formatMoney(summ.takeHomePay)}</div><div class="kpi-sub">${formatMoney(summ.monthlySalary)}/mo</div></div>
         <div class="kpi-card"><div class="kpi-label">W-2</div>
             <div class="kpi-value" style="color:#60a5fa;">${formatMoney(summ.w2Total)}</div><div class="kpi-sub">${formatMoney((summ.w2Total||0)/12)}/mo</div></div>
-        <div class="kpi-card"><div class="kpi-label">1099</div>
-            <div class="kpi-value" style="color:#facc15;">${formatMoney(summ.t1099Total)}</div><div class="kpi-sub">${formatMoney((summ.t1099Total||0)/12)}/mo</div></div>
+        <div class="kpi-card"><div class="kpi-label">${(summ.businessExpenses || 0) > 0 ? '1099 (Net)' : '1099'}</div>
+            <div class="kpi-value" style="color:#facc15;">${formatMoney((summ.businessExpenses || 0) > 0 ? (summ.t1099Net || summ.t1099Total) : summ.t1099Total)}</div><div class="kpi-sub">${(summ.businessExpenses || 0) > 0 ? `Gross: ${formatMoney(summ.t1099Gross)} | Exp: -${formatMoney(summ.businessExpenses)}` : `${formatMoney((summ.t1099Total||0)/12)}/mo`}</div></div>
         <div class="kpi-card"><div class="kpi-label">Eff. Tax Rate</div>
             <div class="kpi-value" style="color:#f87171;">${(summ.effectiveTaxRate*100).toFixed(1)}%</div><div class="kpi-sub">${formatMoney(summ.totalWithhold)} withheld</div></div>
         <div class="kpi-card"><div class="kpi-label">Hourly Rate</div>
@@ -70,6 +71,7 @@ function renderIncomeStreams(streams) {
     if (!ed) return;
     let html = '';
     streams.forEach((s, i) => {
+        const is1099 = s.type === '1099' || s.type === 'Other';
         html += `<div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
             <select class="form-input" style="width:80px; font-size:0.82rem;" onchange="updateIncomeStream(${i}, 'type', this.value)">
                 <option value="W2" ${s.type==='W2'?'selected':''}>W2</option>
@@ -78,8 +80,15 @@ function renderIncomeStreams(streams) {
             </select>
             <input type="text" value="${s.label||''}" class="form-input" style="width:140px; font-size:0.82rem;" placeholder="Label" onchange="updateIncomeStream(${i}, 'label', this.value)">
             <span style="color:var(--text-dim); font-size:0.82rem;">$</span>
-            <input type="number" value="${s.amount||0}" class="form-input" style="width:120px; font-size:0.82rem; text-align:right;" onchange="updateIncomeStream(${i}, 'amount', parseFloat(this.value)||0)">
-            <button onclick="removeIncomeStream(${i})" style="background:none; border:none; color:#f87171; cursor:pointer; font-size:1rem; padding:2px 6px;" title="Remove">&times;</button>
+            <input type="number" value="${s.amount||0}" class="form-input" style="width:120px; font-size:0.82rem; text-align:right;" onchange="updateIncomeStream(${i}, 'amount', parseFloat(this.value)||0)">`;
+        if (is1099) {
+            html += `<span style="color:var(--text-dim); font-size:0.78rem; margin-left:4px;">Expenses:</span>
+                <span style="color:var(--text-dim); font-size:0.82rem;">$</span>
+                <input type="number" value="${s.businessExpenses||0}" class="form-input" style="width:100px; font-size:0.82rem; text-align:right;" placeholder="0" title="Business expenses deducted before SE tax" onchange="updateIncomeStream(${i}, 'businessExpenses', parseFloat(this.value)||0)">
+                <label style="color:var(--text-dim); font-size:0.78rem; margin-left:4px; cursor:pointer;" title="Qualified Business Income — enables 20% Section 199A deduction">
+                    <input type="checkbox" ${s.qbiEligible ? 'checked' : ''} onchange="updateIncomeStream(${i}, 'qbiEligible', this.checked)" style="margin-right:2px;">QBI</label>`;
+        }
+        html += `<button onclick="removeIncomeStream(${i})" style="background:none; border:none; color:#f87171; cursor:pointer; font-size:1rem; padding:2px 6px;" title="Remove">&times;</button>
         </div>`;
     });
     ed.innerHTML = html;
@@ -105,6 +114,19 @@ async function removeIncomeStream(idx) {
     if (streams.length <= 1) return;
     streams.splice(idx, 1);
     await saveSalaryUpdate({incomeStreams: streams});
+}
+
+function renderQbiInfo(summary) {
+    const bar = document.getElementById('qbiInfoBar');
+    if (!bar) return;
+    const qbi = summary.qbiDeduction || 0;
+    const expenses = summary.businessExpenses || 0;
+    if (qbi <= 0 && expenses <= 0) { bar.style.display = 'none'; return; }
+    bar.style.display = 'block';
+    let parts = [];
+    if (expenses > 0) parts.push(`<span style="color:#a78bfa;">Business Expenses:</span> ${formatMoney(expenses)} deducted from 1099 gross`);
+    if (qbi > 0) parts.push(`<span style="color:#22d3ee;">QBI Deduction:</span> ${formatMoney(qbi)} (20% of net 1099) reduces federal taxable income`);
+    bar.innerHTML = '<div class="card" style="padding:10px 14px; font-size:0.82rem;">' + parts.join(' &middot; ') + '</div>';
 }
 
 function renderTaxTable(breakdown) {
@@ -147,11 +169,11 @@ function renderTaxTable(breakdown) {
         </tr></thead><tbody>`;
 
     rows.forEach((r, i) => {
-        const isTax = !r.isIncome && !r.isSummary && !r.isRate && i > 1;
+        const isTax = !r.isIncome && !r.isSummary && !r.isRate && !r.isExpense && !r.isQBI && i > 1;
         const summaryClass = r.isSummary ? 'summary-row' : '';
         const fw = r.isSummary ? 'font-weight:700;' : '';
-        const clr = r.isPositive ? 'color:#4ade80;' : isTax ? 'color:#f87171;' : '';
-        const sign = isTax ? '-' : '';
+        const clr = r.isExpense ? 'color:#a78bfa;' : r.isQBI ? 'color:#22d3ee;' : r.isPositive ? 'color:#4ade80;' : isTax ? 'color:#f87171;' : '';
+        const sign = isTax || r.isExpense || r.isQBI ? '-' : '';
 
         const fmtVal = (v, isMo) => {
             if (r.isRate) return isMo ? (v*100).toFixed(1)+'%' : '$'+v.toFixed(2);
@@ -303,6 +325,7 @@ function renderFilingStatusComparison(comparison) {
     const statusLabels = {single: 'Single', mfj: 'MFJ', mfs: 'MFS', hoh: 'HoH'};
     const best = comparison[0];
     const bestTakeHome = best.takeHomePay || 0;
+    const hasQbi = comparison.some(c => (c.qbiDeduction || 0) > 0);
 
     // KPI Cards
     let cardsHtml = '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:16px;">';
@@ -314,12 +337,16 @@ function renderFilingStatusComparison(comparison) {
         const deltaLine = !isBest && delta !== 0
             ? `<div class="kpi-sub" style="color:#f87171;">${formatMoney(delta)} vs best</div>`
             : '';
+        const qbiLine = (c.qbiDeduction || 0) > 0
+            ? `<div class="kpi-sub" style="color:#22d3ee;">QBI: -${formatMoney(c.qbiDeduction)}</div>`
+            : '';
 
         cardsHtml += `<div class="kpi-card" style="${borderStyle}">
             <div class="kpi-label">${statusLabels[c.status] || c.label || c.status}${badge}</div>
             <div class="kpi-value" style="color:#4ade80;">${formatMoney(c.takeHomePay)}</div>
             <div class="kpi-sub">Federal: ${formatMoney(c.federalTax)} | Eff: ${(c.effectiveTaxRate * 100).toFixed(1)}%</div>
             <div class="kpi-sub">Std. Deduction: ${formatMoney(c.standardDeduction)}</div>
+            ${qbiLine}
             ${deltaLine}
         </div>`;
     });
@@ -330,6 +357,7 @@ function renderFilingStatusComparison(comparison) {
         <thead><tr style="border-bottom:2px solid var(--border);">
             <th style="text-align:left; padding:6px;">Filing Status</th>
             <th style="text-align:right; padding:6px;">Std. Deduction</th>
+            ${hasQbi ? '<th style="text-align:right; padding:6px; color:#22d3ee;">QBI</th>' : ''}
             <th style="text-align:right; padding:6px;">Federal Tax</th>
             <th style="text-align:right; padding:6px;">Total Withheld</th>
             <th style="text-align:right; padding:6px;">Take-Home</th>
@@ -347,6 +375,7 @@ function renderFilingStatusComparison(comparison) {
         tableHtml += `<tr style="${bg} border-bottom:1px solid var(--border);">
             <td style="padding:6px; font-weight:${isBest ? '700' : '400'};">${statusLabels[c.status] || c.label || c.status}${isBest ? ' <span style="color:#4ade80; font-size:0.72rem;">BEST</span>' : ''}</td>
             <td style="text-align:right; padding:6px;">${formatMoney(c.standardDeduction)}</td>
+            ${hasQbi ? `<td style="text-align:right; padding:6px; color:#22d3ee;">${formatMoney(c.qbiDeduction || 0)}</td>` : ''}
             <td style="text-align:right; padding:6px; color:#f87171;">${formatMoney(c.federalTax)}</td>
             <td style="text-align:right; padding:6px; color:#f87171;">${formatMoney(c.totalWithhold)}</td>
             <td style="text-align:right; padding:6px; color:#4ade80; font-weight:600;">${formatMoney(c.takeHomePay)}</td>

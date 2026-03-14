@@ -47,7 +47,7 @@ def _make_price_series(length, start=100.0, trend=0.1):
     np.random.seed(42)
     dates = pd.bdate_range(end=pd.Timestamp.now(), periods=length)
     prices = [start]
-    for i in range(1, length):
+    for i in range(1, len(dates)):
         change = np.random.normal(trend, 1.5)
         prices.append(max(prices[-1] + change, 1.0))
     return pd.Series(prices, index=dates, name="Close")
