@@ -1,5 +1,6 @@
 """Super Investors Blueprint — SEC EDGAR 13F holdings routes."""
 
+import statistics
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
@@ -248,6 +249,86 @@ def api_super_investor_prices():
         if data and data.get("price"):
             prices[ticker] = {"price": data["price"], "changePercent": data.get("changePercent", 0)}
     return jsonify({"prices": prices})
+
+
+def _compute_key_stats(enriched):
+    """Compute aggregate stats from enriched ticker data."""
+    sectors = {}
+    yields_list = []
+    pe_list = []
+    beta_list = []
+    mcap_list = []
+    dividend_payers = 0
+
+    for t in enriched:
+        sector = t.get("sector") or "Unknown"
+        sectors[sector] = sectors.get(sector, 0) + 1
+
+        dy = t.get("divYield")
+        if dy and dy > 0:
+            yields_list.append(dy)
+            dividend_payers += 1
+
+        pe = t.get("pe")
+        if pe and pe > 0:
+            pe_list.append(pe)
+
+        b = t.get("beta")
+        if b and b > 0:
+            beta_list.append(b)
+
+        mc = t.get("marketCap")
+        if mc and mc > 0:
+            mcap_list.append(mc)
+
+    # Sector counts sorted descending
+    sorted_sectors = sorted(sectors.items(), key=lambda x: x[1], reverse=True)
+
+    # Yield tiers
+    total = len(enriched)
+    yield_tiers = {
+        "1pct": len([y for y in yields_list if y >= 1]),
+        "2pct": len([y for y in yields_list if y >= 2]),
+        "3pct": len([y for y in yields_list if y >= 3]),
+        "4pct": len([y for y in yields_list if y >= 4]),
+    }
+
+    return {
+        "sectors": sorted_sectors,
+        "sectorCount": len(sectors),
+        "yieldTiers": yield_tiers,
+        "avgDivYield": round(statistics.mean(yields_list), 2) if yields_list else 0,
+        "medianDivYield": round(statistics.median(yields_list), 2) if yields_list else 0,
+        "avgPE": round(statistics.mean(pe_list), 1) if pe_list else 0,
+        "medianPE": round(statistics.median(pe_list), 1) if pe_list else 0,
+        "avgBeta": round(statistics.mean(beta_list), 2) if beta_list else 0,
+        "avgMarketCap": round(statistics.mean(mcap_list)) if mcap_list else 0,
+        "dividendPayers": dividend_payers,
+        "totalStocks": total,
+    }
+
+
+@bp.route("/api/super-investors/key-stats", methods=["POST"])
+def api_super_investor_key_stats():
+    """Fetch enrichment data for tickers and compute aggregate key stats."""
+    body = request.get_json(force=True) or {}
+    tickers = body.get("tickers", [])[:50]
+    if not tickers:
+        return jsonify({"stats": _compute_key_stats([]), "tickerCount": 0})
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(fetch_ticker_data, tickers))
+    enriched = []
+    for ticker, data in zip(tickers, results):
+        if data:
+            enriched.append({
+                "ticker": ticker,
+                "sector": data.get("sector", ""),
+                "divYield": data.get("divYield", 0),
+                "pe": data.get("pe", 0),
+                "beta": data.get("beta", 0),
+                "marketCap": data.get("marketCap", 0),
+            })
+    return jsonify({"stats": _compute_key_stats(enriched), "tickerCount": len(enriched)})
 
 
 @bp.route("/api/super-investors/holding-history/<investor_key>/<ticker>")

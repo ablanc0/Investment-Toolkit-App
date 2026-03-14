@@ -734,6 +734,19 @@
                 </div>
                 <div id="siActivityRow" style="display: none; margin-bottom: 16px; gap: 12px; flex-wrap: wrap;"></div>
                 <p id="siTableMeta" style="display: none; color: var(--text-dim); font-size: 0.82rem; margin-bottom: 12px;"></p>
+                <div id="siKeyStatsPanel" style="display:none; margin-bottom:20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <span style="font-size:0.9rem; font-weight:600;">Key Stats</span>
+                        <span id="siKeyStatsLoading" style="font-size:0.75rem; color:var(--text-dim);">Loading stats...</span>
+                    </div>
+                    <div id="siKeyStatsKpis" class="kpi-grid" style="margin-bottom:16px;"></div>
+                    <div style="display:flex; gap:20px; flex-wrap:wrap;">
+                        <div style="flex:1; min-width:280px; max-width:400px;">
+                            <canvas id="siSectorChart" height="220"></canvas>
+                        </div>
+                        <div id="siYieldTiersWrap" style="flex:1; min-width:200px; max-width:300px;"></div>
+                    </div>
+                </div>
                 <div class="table-wrapper"><table style="font-size: 0.82rem;">
                     <thead id="siTableHead"><tr>
                         <th style="width:40px;">#</th><th>Ticker</th><th>Company</th>

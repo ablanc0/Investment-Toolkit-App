@@ -29,9 +29,11 @@ async function fetch13F(investorKey) {
     const meta = document.getElementById('si13fMeta');
     const noteEl = document.getElementById('siInvestorNote');
     const chartRow = document.getElementById('siChartRow');
+    const keyStatsPanel = document.getElementById('siKeyStatsPanel');
     if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--text-dim); padding:30px;">Loading 13F data from SEC EDGAR...</td></tr>';
     if (meta) { meta.style.display = 'none'; meta.innerHTML = ''; }
     if (chartRow) chartRow.style.display = 'none';
+    if (keyStatsPanel) keyStatsPanel.style.display = 'none';
     // Show investor bio note
     const note = _siInvestorNotes[investorKey] || '';
     if (noteEl) { noteEl.textContent = note; noteEl.style.display = note ? 'block' : 'none'; }
@@ -373,6 +375,8 @@ function showMostPopular() {
     if (meta) { meta.style.display = 'none'; meta.innerHTML = ''; }
     if (chartRow) chartRow.style.display = 'none';
     if (activityRow) activityRow.style.display = 'none';
+    const keyStatsPanel = document.getElementById('siKeyStatsPanel');
+    if (keyStatsPanel) keyStatsPanel.style.display = 'none';
     _si13fCurrentData = null;
     fetchMostPopular();
 }
@@ -404,7 +408,89 @@ async function fetchMostPopular() {
                 <td style="text-align:right; font-family:monospace;">${valStr}</td>
             </tr>`;
         }).join('');
+        // Kick off key stats enrichment
+        const tickers = data.popular.map(s => s.ticker);
+        if (tickers.length) fetchKeyStats(tickers);
     } catch(e) { console.error(e); }
+}
+
+async function fetchKeyStats(tickers) {
+    const panel = document.getElementById('siKeyStatsPanel');
+    const loadingEl = document.getElementById('siKeyStatsLoading');
+    if (!panel) return;
+    panel.style.display = 'block';
+    if (loadingEl) loadingEl.textContent = 'Loading stats...';
+    try {
+        const res = await fetch('/api/super-investors/key-stats', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({tickers})
+        }).then(r => r.json());
+        const s = res.stats || {};
+        if (loadingEl) loadingEl.textContent = `${res.tickerCount} stocks enriched`;
+        // KPI cards
+        const avgMcapStr = s.avgMarketCap >= 1e12 ? '$' + (s.avgMarketCap/1e12).toFixed(1) + 'T'
+            : s.avgMarketCap >= 1e9 ? '$' + (s.avgMarketCap/1e9).toFixed(0) + 'B' : '$' + (s.avgMarketCap/1e6).toFixed(0) + 'M';
+        renderKpiGrid('siKeyStatsKpis', [
+            {label: '🏢 Sectors', value: s.sectorCount || 0, sub: `across ${s.totalStocks} stocks`},
+            {label: '💰 Div Payers', value: s.dividendPayers || 0, sub: `of ${s.totalStocks} stocks`},
+            {label: '📊 Avg P/E', value: s.avgPE || '—', sub: `Median: ${s.medianPE || '—'}`},
+            {label: '⚡ Avg Beta', value: s.avgBeta || '—', sub: `market sensitivity`},
+            {label: '📈 Avg Yield', value: s.avgDivYield ? s.avgDivYield + '%' : '—', sub: `Median: ${s.medianDivYield ? s.medianDivYield + '%' : '—'}`},
+        ]);
+        // Sector doughnut chart
+        const sectorCanvas = document.getElementById('siSectorChart');
+        if (sectorCanvas && s.sectors && s.sectors.length) {
+            if (charts['siSectorChart']) charts['siSectorChart'].destroy();
+            const sectorColors = ['#6366f1','#8b5cf6','#ec4899','#f43f5e','#f59e0b','#84cc16','#22c55e','#06b6d4','#14b8a6','#a78bfa','#94a3b8','#e879f9'];
+            charts['siSectorChart'] = new Chart(sectorCanvas.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: s.sectors.map(x => x[0]),
+                    datasets: [{
+                        data: s.sectors.map(x => x[1]),
+                        backgroundColor: sectorColors.slice(0, s.sectors.length),
+                        borderColor: '#0f1117', borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false, cutout: '55%',
+                    plugins: {
+                        legend: {position: 'right', labels: {color: '#e0e6ed', usePointStyle: true, padding: 8, font: {size: 10}}},
+                        tooltip: {callbacks: {label: ctx => `${ctx.label}: ${ctx.parsed} stocks`}}
+                    }
+                }
+            });
+        }
+        // Yield tiers
+        const tiersWrap = document.getElementById('siYieldTiersWrap');
+        if (tiersWrap && s.yieldTiers) renderYieldTiers(tiersWrap, s.yieldTiers, s.totalStocks);
+    } catch(e) {
+        console.error('Key stats error:', e);
+        if (loadingEl) loadingEl.textContent = 'Failed to load stats';
+    }
+}
+
+function renderYieldTiers(container, tiers, total) {
+    const items = [
+        {label: '1%+', count: tiers['1pct'] || 0, color: '#22d3ee'},
+        {label: '2%+', count: tiers['2pct'] || 0, color: '#4ade80'},
+        {label: '3%+', count: tiers['3pct'] || 0, color: '#f59e0b'},
+        {label: '4%+', count: tiers['4pct'] || 0, color: '#f87171'},
+    ];
+    const max = Math.max(...items.map(i => i.count), 1);
+    container.innerHTML = '<div style="font-size:0.82rem; font-weight:600; margin-bottom:10px;">Dividend Yield Tiers</div>' +
+        items.map(i => {
+            const pct = Math.round(i.count / max * 100);
+            return `<div style="margin-bottom:8px;">
+                <div style="display:flex; justify-content:space-between; font-size:0.78rem; margin-bottom:3px;">
+                    <span style="color:${i.color}; font-weight:600;">${i.label}</span>
+                    <span style="color:var(--text-dim);">${i.count} of ${total}</span>
+                </div>
+                <div style="background:var(--card-hover); border-radius:4px; height:8px; overflow:hidden;">
+                    <div style="width:${pct}%; height:100%; background:${i.color}; border-radius:4px; transition:width 0.3s;"></div>
+                </div>
+            </div>`;
+        }).join('');
 }
 
 function exportSuperInvCSV() {
