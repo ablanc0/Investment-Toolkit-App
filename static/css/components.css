@@ -59,6 +59,24 @@
             color: var(--text-dim);
         }
 
+        .si-kpi-compact .kpi-card {
+            padding: 14px;
+        }
+        .si-kpi-compact .kpi-value {
+            font-size: 20px;
+            margin-bottom: 4px;
+        }
+        .si-kpi-compact .kpi-label {
+            font-size: 10px;
+            margin-bottom: 6px;
+        }
+        .si-kpi-compact .kpi-sub {
+            font-size: 11px;
+        }
+        .si-kpi-compact .kpi-emoji {
+            font-size: 16px;
+        }
+
         /* Cards */
         .card {
             background: var(--card);
