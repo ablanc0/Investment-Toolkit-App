@@ -46,6 +46,7 @@ function renderSalaryFull(data) {
     renderProjectedSalary(breakdown.projected, profile.projectedSalary || 0, breakdown.summary || {});
     renderSalaryHistory(profile);
     renderFilingStatusComparison(data.statusComparison || []);
+    renderTaxReturn(data.taxReturn, data.profile.withholdingInfo || {}, data.breakdown.summary);
 }
 
 function renderSalaryKpis(summ) {
@@ -741,4 +742,94 @@ async function deleteHistoryYear(year) {
         const data = await resp.json();
         if (data.ok) { loadedTabs['salary'] = false; fetchSalaryData(); }
     } catch(e) { console.error(e); }
+}
+
+function renderTaxReturn(taxReturn, withholdingInfo, summary) {
+    const el = document.getElementById('taxReturnEstimator');
+    if (!el) return;
+    if (!taxReturn) { el.innerHTML = ''; return; }
+
+    const fw = withholdingInfo.federalWithheld || 0;
+    const sw = withholdingInfo.stateWithheld || 0;
+    const ep = withholdingInfo.estimatedPayments || 0;
+    const bal = taxReturn.totalBalance;
+    const isRefund = taxReturn.isRefund;
+    const balColor = isRefund ? '#4ade80' : '#f87171';
+    const balLabel = isRefund ? 'Estimated Refund' : 'Amount Owed';
+    const fedBal = taxReturn.federalBalance;
+    const stBal = taxReturn.stateBalance;
+    const mr = (summary.marginalRates || {});
+
+    let html = '';
+
+    // Input fields
+    html += `<div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
+        <div style="flex:1; min-width:140px;">
+            <label style="font-size:0.78rem; color:var(--text-dim); display:block; margin-bottom:4px;">Federal Withheld YTD</label>
+            <input type="number" value="${fw}" class="form-input" style="width:100%; font-size:0.85rem; text-align:right;" onchange="updateWithholding()">
+        </div>
+        <div style="flex:1; min-width:140px;">
+            <label style="font-size:0.78rem; color:var(--text-dim); display:block; margin-bottom:4px;">State Withheld YTD</label>
+            <input type="number" value="${sw}" class="form-input" style="width:100%; font-size:0.85rem; text-align:right;" onchange="updateWithholding()">
+        </div>
+        <div style="flex:1; min-width:140px;">
+            <label style="font-size:0.78rem; color:var(--text-dim); display:block; margin-bottom:4px;">Estimated Payments</label>
+            <input type="number" value="${ep}" class="form-input" style="width:100%; font-size:0.85rem; text-align:right;" onchange="updateWithholding()">
+        </div>
+    </div>`;
+
+    // Result KPIs
+    html += `<div class="kpi-grid" style="margin-bottom:16px;">
+        <div class="kpi-card" style="border-left:3px solid ${balColor};">
+            <div class="kpi-label">${balLabel}</div>
+            <div class="kpi-value" style="color:${balColor}; font-size:1.4rem;">${formatMoney(Math.abs(bal))}</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Federal ${fedBal <= 0 ? 'Refund' : 'Owed'}</div>
+            <div class="kpi-value" style="color:${fedBal <= 0 ? '#4ade80' : '#f87171'};">${formatMoney(Math.abs(fedBal))}</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">State ${stBal <= 0 ? 'Refund' : 'Owed'}</div>
+            <div class="kpi-value" style="color:${stBal <= 0 ? '#4ade80' : '#f87171'};">${formatMoney(Math.abs(stBal))}</div>
+        </div>
+    </div>`;
+
+    // Summary table
+    const lines = [
+        ['Total Tax Liability', taxReturn.totalTaxLiability, ''],
+        ['Federal Withheld', -taxReturn.federalWithheld, '#4ade80'],
+        ['State Withheld', -taxReturn.stateWithheld, '#4ade80'],
+        ['Estimated Payments', -taxReturn.estimatedPayments, '#4ade80'],
+    ];
+    html += `<table class="data-table" style="font-size:0.85rem; margin-bottom:12px;">
+        <thead><tr><th style="text-align:left;">Component</th><th style="text-align:right;">Amount</th></tr></thead><tbody>`;
+    for (const [label, amt, clr] of lines) {
+        const style = clr ? `color:${clr};` : '';
+        html += `<tr><td>${label}</td><td style="text-align:right; ${style}">${amt < 0 ? '-' : ''}${formatMoney(Math.abs(amt))}</td></tr>`;
+    }
+    html += `<tr style="font-weight:700; border-top:2px solid var(--border);">
+        <td>Balance</td>
+        <td style="text-align:right; color:${balColor};">${isRefund ? '-' : ''}${formatMoney(Math.abs(bal))}</td>
+    </tr></tbody></table>`;
+
+    // Marginal rates
+    if (mr.federalRate != null) {
+        html += `<div style="font-size:0.82rem; color:var(--text-dim);">
+            Marginal Federal Rate: <span style="color:var(--text);">${(mr.federalRate * 100).toFixed(1)}%</span>
+            &nbsp;&middot;&nbsp; Combined Marginal Rate: <span style="color:var(--text);">${(mr.combinedRate * 100).toFixed(1)}%</span>
+        </div>`;
+    }
+
+    el.innerHTML = html;
+}
+
+function updateWithholding() {
+    const inputs = document.querySelectorAll('#taxReturnEstimator input[type="number"]');
+    if (inputs.length < 3) return;
+    const info = {
+        federalWithheld: parseFloat(inputs[0].value) || 0,
+        stateWithheld: parseFloat(inputs[1].value) || 0,
+        estimatedPayments: parseFloat(inputs[2].value) || 0,
+    };
+    saveSalaryUpdate({ withholdingInfo: info });
 }
