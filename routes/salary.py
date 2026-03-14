@@ -3,7 +3,7 @@
 from datetime import datetime
 from flask import Blueprint, jsonify, request
 
-from models.salary_calc import _get_salary_data, compute_salary_breakdown, compute_retirement_plan, compute_filing_status_comparison, compute_tax_return, _default_taxes
+from models.salary_calc import _get_salary_data, compute_salary_breakdown, compute_retirement_plan, compute_filing_status_comparison, compute_tax_return, compute_household_filing, _default_taxes
 from services.data_store import load_portfolio, save_portfolio
 
 bp = Blueprint('salary', __name__)
@@ -39,6 +39,14 @@ def api_salary():
     withholding_info = profile.get("withholdingInfo", {})
     tax_return = compute_tax_return(breakdown, withholding_info)
 
+    # Household filing comparison (MFJ vs MFS)
+    household_config = salary.get("householdConfig", {})
+    household_filing = None
+    spouse_id = household_config.get("spouseProfile")
+    if spouse_id and spouse_id in salary.get("profiles", {}):
+        spouse_profile = salary["profiles"][spouse_id]
+        household_filing = compute_household_filing(profile, spouse_profile)
+
     return jsonify({
         "salary": salary,
         "profile": profile,
@@ -46,6 +54,8 @@ def api_salary():
         "breakdown": breakdown,
         "statusComparison": status_comparison,
         "household": household,
+        "householdConfig": household_config,
+        "householdFiling": household_filing,
         "retirement": retirement,
         "retirementConfig": retirement_config,
         "taxReturn": tax_return,
@@ -76,6 +86,8 @@ def api_salary_update():
     for key in ("savedMoney", "pctSavingsToInvest", "pctIncomeCanSave"):
         if key in b:
             salary[key] = float(b[key])
+    if "householdConfig" in b:
+        salary["householdConfig"] = b["householdConfig"]
     # Update retirement config
     if "retirement" in b:
         salary["retirement"] = b["retirement"]
@@ -87,7 +99,16 @@ def api_salary_update():
     status_comparison = compute_filing_status_comparison(profile)
     withholding_info = profile.get("withholdingInfo", {})
     tax_return = compute_tax_return(breakdown, withholding_info)
-    return jsonify({"ok": True, "profile": profile, "breakdown": breakdown, "statusComparison": status_comparison, "taxReturn": tax_return})
+
+    # Household filing comparison (MFJ vs MFS)
+    household_config = salary.get("householdConfig", {})
+    household_filing = None
+    spouse_id = household_config.get("spouseProfile")
+    if spouse_id and spouse_id in salary.get("profiles", {}):
+        spouse_profile = salary["profiles"][spouse_id]
+        household_filing = compute_household_filing(profile, spouse_profile)
+
+    return jsonify({"ok": True, "profile": profile, "breakdown": breakdown, "statusComparison": status_comparison, "taxReturn": tax_return, "householdFiling": household_filing})
 
 
 @bp.route("/api/salary/profile", methods=["POST"])

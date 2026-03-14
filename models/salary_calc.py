@@ -516,6 +516,74 @@ def compute_tax_return(breakdown, withholding_info):
     }
 
 
+def compute_household_filing(primary_profile, spouse_profile):
+    """Compare filing jointly (MFJ) vs separately (MFS) for a household."""
+    # Merge income streams from both profiles
+    primary_streams = primary_profile.get("incomeStreams", [])
+    spouse_streams = spouse_profile.get("incomeStreams", [])
+    combined_streams = list(primary_streams) + list(spouse_streams)
+
+    # Build synthetic joint profile using primary's tax config
+    joint_profile = {
+        "incomeStreams": combined_streams,
+        "filingStatus": "mfj",
+        "taxes": {**(primary_profile.get("taxes") or _default_taxes()), "standardDeduction": None},
+        "year": primary_profile.get("year"),
+    }
+    joint_bd = compute_salary_breakdown(joint_profile)
+
+    # Combine withholdings from both profiles for joint tax return
+    pri_wh = primary_profile.get("withholdingInfo", {})
+    sp_wh = spouse_profile.get("withholdingInfo", {})
+    joint_withholdings = {
+        "federalWithheld": (pri_wh.get("federalWithheld", 0) or 0) + (sp_wh.get("federalWithheld", 0) or 0),
+        "stateWithheld": (pri_wh.get("stateWithheld", 0) or 0) + (sp_wh.get("stateWithheld", 0) or 0),
+        "estimatedPayments": (pri_wh.get("estimatedPayments", 0) or 0) + (sp_wh.get("estimatedPayments", 0) or 0),
+    }
+    joint_tax_return = compute_tax_return(joint_bd, joint_withholdings)
+
+    # Compute separate (MFS) breakdowns — each profile with its own taxes but forced MFS
+    primary_mfs_profile = {
+        **primary_profile,
+        "filingStatus": "mfs",
+        "taxes": {**(primary_profile.get("taxes") or _default_taxes()), "standardDeduction": None},
+    }
+    spouse_mfs_profile = {
+        **spouse_profile,
+        "filingStatus": "mfs",
+        "taxes": {**(spouse_profile.get("taxes") or _default_taxes()), "standardDeduction": None},
+    }
+    primary_mfs_bd = compute_salary_breakdown(primary_mfs_profile)
+    spouse_mfs_bd = compute_salary_breakdown(spouse_mfs_profile)
+
+    # Extract take-home and tax totals
+    joint_take_home = joint_bd["summary"]["takeHomePay"]
+    primary_take_home = primary_mfs_bd["summary"]["takeHomePay"]
+    spouse_take_home = spouse_mfs_bd["summary"]["takeHomePay"]
+    separate_combined_take_home = round(primary_take_home + spouse_take_home, 2)
+
+    primary_tax = primary_mfs_bd["summary"]["totalWithhold"]
+    spouse_tax = spouse_mfs_bd["summary"]["totalWithhold"]
+    combined_tax = round(primary_tax + spouse_tax, 2)
+
+    savings = round(joint_take_home - separate_combined_take_home, 2)
+
+    return {
+        "joint": {
+            "summary": joint_bd["summary"],
+            "taxReturn": joint_tax_return,
+        },
+        "separate": {
+            "primary": primary_mfs_bd["summary"],
+            "spouse": spouse_mfs_bd["summary"],
+            "combinedTakeHome": separate_combined_take_home,
+            "combinedTax": combined_tax,
+        },
+        "savings": savings,
+        "recommendation": "joint" if savings >= 0 else "separate",
+    }
+
+
 def _future_value(rate, nper, pmt, pv):
     """Compute future value of current savings (pv) plus annual contributions (pmt)
     growing at annual rate for nper years. All inputs positive."""

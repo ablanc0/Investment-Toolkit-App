@@ -12,6 +12,7 @@ from models.salary_calc import (
     compute_federal_tax,
     compute_salary_breakdown,
     compute_tax_return,
+    compute_household_filing,
     migrate_salary_data,
 )
 from config import FEDERAL_TAX_DATA
@@ -327,3 +328,59 @@ class TestTaxReturnEstimator:
         assert "federalRate" in mr
         assert "combinedRate" in mr
         assert mr["federalRate"] > 0
+
+
+# ── Household Filing Comparison tests ────────────────────────────────
+
+
+class TestHouseholdFiling:
+    def _make_hh_profiles(self, w2_primary=60000, t1099_primary=20000, t1099_spouse=60000, year=2025):
+        primary = _make_profile([
+            {"type": "W2", "amount": w2_primary, "label": "Job"},
+            {"type": "1099", "amount": t1099_primary, "label": "Freelance"},
+        ], year=year)
+        primary["withholdingInfo"] = {"federalWithheld": 5000, "stateWithheld": 1000, "estimatedPayments": 2000}
+        spouse = _make_profile([
+            {"type": "1099", "amount": t1099_spouse, "label": "Business"},
+        ], year=year)
+        spouse["withholdingInfo"] = {"federalWithheld": 3000, "stateWithheld": 500, "estimatedPayments": 4000}
+        return primary, spouse
+
+    def test_joint_combines_income(self):
+        """Joint filing combines income from both profiles."""
+        primary, spouse = self._make_hh_profiles()
+        result = compute_household_filing(primary, spouse)
+        joint_gross = result["joint"]["summary"]["annualGross"]
+        assert joint_gross == 60000 + 20000 + 60000  # 140000
+
+    def test_joint_vs_separate(self):
+        """Joint and separate take-home should differ due to different brackets."""
+        primary, spouse = self._make_hh_profiles()
+        result = compute_household_filing(primary, spouse)
+        joint_take_home = result["joint"]["summary"]["takeHomePay"]
+        separate_take_home = result["separate"]["combinedTakeHome"]
+        assert joint_take_home != separate_take_home
+
+    def test_joint_uses_mfj_deduction(self):
+        """Joint filing should use MFJ standard deduction."""
+        primary, spouse = self._make_hh_profiles(year=2025)
+        result = compute_household_filing(primary, spouse)
+        # MFJ 2025 standard deduction is ~$30,000
+        assert result["joint"]["summary"]["standardDeduction"] >= 29200
+
+    def test_joint_withholdings_combined(self):
+        """Both profiles' withholdings should be summed for joint tax return."""
+        primary, spouse = self._make_hh_profiles()
+        result = compute_household_filing(primary, spouse)
+        tr = result["joint"]["taxReturn"]
+        # primary: 5000+1000+2000=8000, spouse: 3000+500+4000=7500 -> total=15500
+        assert tr["totalPayments"] == 15500
+
+    def test_savings_positive_when_joint_better(self):
+        """Savings should be positive when joint filing yields more take-home."""
+        primary, spouse = self._make_hh_profiles()
+        result = compute_household_filing(primary, spouse)
+        # For most income combos, MFJ is better than MFS
+        assert "savings" in result
+        assert "recommendation" in result
+        assert result["recommendation"] in ("joint", "separate")

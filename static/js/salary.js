@@ -47,6 +47,7 @@ function renderSalaryFull(data) {
     renderSalaryHistory(profile);
     renderFilingStatusComparison(data.statusComparison || []);
     renderTaxReturn(data.taxReturn, data.profile.withholdingInfo || {}, data.breakdown.summary);
+    renderHouseholdFiling(data);
 }
 
 function renderSalaryKpis(summ) {
@@ -832,4 +833,129 @@ function updateWithholding() {
         estimatedPayments: parseFloat(inputs[2].value) || 0,
     };
     saveSalaryUpdate({ withholdingInfo: info });
+}
+
+function renderHouseholdFiling(data) {
+    const container = document.getElementById('householdFilingSection');
+    if (!container) return;
+
+    const salary = data.salary || {};
+    const profiles = salary.profiles || {};
+    const profileIds = Object.keys(profiles);
+    const currentId = data.profileId;
+    const householdConfig = data.householdConfig || salary.householdConfig || {};
+    const selectedSpouse = householdConfig.spouseProfile || '';
+
+    // If only 1 profile, hide section
+    if (profileIds.length < 2) {
+        container.innerHTML = '<p style="color:var(--text-dim); font-size:0.85rem;">Add a second profile to compare joint vs separate filing.</p>';
+        return;
+    }
+
+    // Spouse selector
+    const otherProfiles = profileIds.filter(pid => pid !== currentId);
+    let html = `<div style="display:flex; gap:12px; align-items:center; margin-bottom:16px;">
+        <label style="font-size:0.85rem; color:var(--text-dim);">Spouse Profile:</label>
+        <select class="form-input" style="width:180px; font-size:0.85rem;" onchange="saveHouseholdConfig(this.value)">
+            <option value="">-- Select --</option>
+            ${otherProfiles.map(pid => `<option value="${pid}" ${pid === selectedSpouse ? 'selected' : ''}>${profiles[pid].name || pid}</option>`).join('')}
+        </select>
+    </div>`;
+
+    const hf = data.householdFiling;
+    if (!hf || !selectedSpouse) {
+        html += '<p style="color:var(--text-dim); font-size:0.85rem;">Select a spouse profile to compare joint vs separate filing.</p>';
+        container.innerHTML = html;
+        return;
+    }
+
+    const joint = hf.joint || {};
+    const separate = hf.separate || {};
+    const savings = hf.savings || 0;
+    const rec = hf.recommendation || 'joint';
+    const isJointBetter = rec === 'joint';
+
+    // KPI cards
+    html += `<div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
+        <div class="kpi-card" style="flex:1; min-width:180px; border-left:3px solid ${isJointBetter ? '#4ade80' : 'var(--border)'};">
+            <div class="kpi-label">Filing Jointly (MFJ)</div>
+            <div class="kpi-value" style="color:${isJointBetter ? '#4ade80' : 'var(--text)'};">${formatMoney(joint.summary?.takeHomePay || 0)}</div>
+            <div class="kpi-sub">Combined take-home${isJointBetter ? ' \u2605 BEST' : ''}</div>
+        </div>
+        <div class="kpi-card" style="flex:1; min-width:180px; border-left:3px solid ${!isJointBetter ? '#4ade80' : 'var(--border)'};">
+            <div class="kpi-label">Filing Separately (MFS)</div>
+            <div class="kpi-value" style="color:${!isJointBetter ? '#4ade80' : 'var(--text)'};">${formatMoney(separate.combinedTakeHome || 0)}</div>
+            <div class="kpi-sub">Combined take-home${!isJointBetter ? ' \u2605 BEST' : ''}</div>
+        </div>
+        <div class="kpi-card" style="flex:1; min-width:180px; border-left:3px solid ${savings >= 0 ? '#4ade80' : '#f87171'};">
+            <div class="kpi-label">${savings >= 0 ? 'Joint Savings' : 'Separate Savings'}</div>
+            <div class="kpi-value" style="color:${savings >= 0 ? '#4ade80' : '#f87171'};">${formatMoney(Math.abs(savings))}</div>
+            <div class="kpi-sub">${savings >= 0 ? 'saved by filing jointly' : 'saved by filing separately'}</div>
+        </div>
+    </div>`;
+
+    // Comparison table
+    const jointS = joint.summary || {};
+    const primS = separate.primary || {};
+    const spouseS = separate.spouse || {};
+
+    html += `<table class="data-table" style="font-size:0.82rem;">
+        <thead><tr>
+            <th>Metric</th>
+            <th style="text-align:right;">Joint (MFJ)</th>
+            <th style="text-align:right;">Primary (MFS)</th>
+            <th style="text-align:right;">Spouse (MFS)</th>
+            <th style="text-align:right;">Separate Combined</th>
+        </tr></thead>
+        <tbody>
+            <tr><td>Gross Income</td>
+                <td style="text-align:right;">${formatMoney(jointS.annualGross)}</td>
+                <td style="text-align:right;">${formatMoney(primS.annualGross)}</td>
+                <td style="text-align:right;">${formatMoney(spouseS.annualGross)}</td>
+                <td style="text-align:right;">${formatMoney((primS.annualGross||0) + (spouseS.annualGross||0))}</td></tr>
+            <tr><td>Standard Deduction</td>
+                <td style="text-align:right;">${formatMoney(jointS.standardDeduction)}</td>
+                <td style="text-align:right;">${formatMoney(primS.standardDeduction)}</td>
+                <td style="text-align:right;">${formatMoney(spouseS.standardDeduction)}</td>
+                <td style="text-align:right;">\u2014</td></tr>
+            <tr><td>Total Tax</td>
+                <td style="text-align:right; color:#f87171;">${formatMoney(jointS.totalWithhold)}</td>
+                <td style="text-align:right; color:#f87171;">${formatMoney(primS.totalWithhold)}</td>
+                <td style="text-align:right; color:#f87171;">${formatMoney(spouseS.totalWithhold)}</td>
+                <td style="text-align:right; color:#f87171;">${formatMoney(separate.combinedTax)}</td></tr>
+            <tr><td>Eff. Tax Rate</td>
+                <td style="text-align:right;">${((jointS.effectiveTaxRate||0)*100).toFixed(1)}%</td>
+                <td style="text-align:right;">${((primS.effectiveTaxRate||0)*100).toFixed(1)}%</td>
+                <td style="text-align:right;">${((spouseS.effectiveTaxRate||0)*100).toFixed(1)}%</td>
+                <td style="text-align:right;">\u2014</td></tr>
+            <tr style="font-weight:600;"><td>Take-Home Pay</td>
+                <td style="text-align:right; color:${isJointBetter ? '#4ade80' : 'var(--text)'};">${formatMoney(jointS.takeHomePay)}</td>
+                <td style="text-align:right;">${formatMoney(primS.takeHomePay)}</td>
+                <td style="text-align:right;">${formatMoney(spouseS.takeHomePay)}</td>
+                <td style="text-align:right; color:${!isJointBetter ? '#4ade80' : 'var(--text)'};">${formatMoney(separate.combinedTakeHome)}</td></tr>
+        </tbody>
+    </table>`;
+
+    // Joint tax return (if available)
+    const jtr = joint.taxReturn;
+    if (jtr) {
+        const bal = jtr.totalBalance || 0;
+        const isRefund = jtr.isRefund;
+        html += `<div style="margin-top:16px; padding:12px; border-radius:8px; border:1px solid ${isRefund ? '#4ade80' : '#f87171'}33; background:${isRefund ? '#4ade8010' : '#f8717110'};">
+            <div style="font-size:0.85rem; font-weight:600; margin-bottom:4px;">Joint Tax Return Estimate</div>
+            <div style="display:flex; gap:16px; flex-wrap:wrap; font-size:0.82rem;">
+                <span>Total Liability: <strong>${formatMoney(jtr.totalTaxLiability)}</strong></span>
+                <span>Combined Payments: <strong>${formatMoney(jtr.totalPayments)}</strong></span>
+                <span style="color:${isRefund ? '#4ade80' : '#f87171'}; font-weight:600;">
+                    ${isRefund ? 'Refund' : 'Owed'}: ${formatMoney(Math.abs(bal))}
+                </span>
+            </div>
+        </div>`;
+    }
+
+    container.innerHTML = html;
+}
+
+function saveHouseholdConfig(spouseId) {
+    saveSalaryUpdate({ householdConfig: { spouseProfile: spouseId || null } });
 }
