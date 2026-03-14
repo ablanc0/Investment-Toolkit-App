@@ -97,6 +97,9 @@ def get_marginal_rates(profile):
     t1099_gross = sum(s["amount"] for s in streams if s.get("type") in ("1099", "Other"))
     t1099_expenses = sum(s.get("businessExpenses", 0) for s in streams if s.get("type") in ("1099", "Other"))
     t1099 = max(0, t1099_gross - t1099_expenses)
+    t1099_qbi_gross = sum(s["amount"] for s in streams if s.get("type") in ("1099", "Other") and s.get("qbiEligible"))
+    t1099_qbi_exp = sum(s.get("businessExpenses", 0) for s in streams if s.get("type") in ("1099", "Other") and s.get("qbiEligible"))
+    t1099_qbi = max(0, t1099_qbi_gross - t1099_qbi_exp)
 
     ira_pct = taxes.get("iraContributionPct", 0.03)
     user_std = taxes.get("standardDeduction")
@@ -110,12 +113,12 @@ def get_marginal_rates(profile):
     t1099_se_tax = t1099 * se_factor * (ss_pct + medicare_pct) * 2
     t1099_fed_taxable = max(0, t1099 - round(t1099_se_tax / 2, 2))
 
-    # QBI deduction (Section 199A)
+    # QBI deduction (Section 199A) — only on streams marked qbiEligible
     qbi_deduction = 0
-    if t1099 > 0:
+    if t1099_qbi > 0:
         qbi_thresh = get_qbi_thresholds(year, filing_status)
         total_pre_qbi = w2_fed_taxable + t1099_fed_taxable
-        raw_qbi = round(t1099 * 0.20, 2)
+        raw_qbi = round(t1099_qbi * 0.20, 2)
         if total_pre_qbi <= qbi_thresh["lower"]:
             qbi_deduction = raw_qbi
         elif total_pre_qbi >= qbi_thresh["upper"]:
@@ -160,6 +163,9 @@ def compute_salary_breakdown(profile):
     t1099_gross = sum(s["amount"] for s in streams if s.get("type") in ("1099", "Other"))
     t1099_expenses = sum(s.get("businessExpenses", 0) for s in streams if s.get("type") in ("1099", "Other"))
     t1099 = max(0, t1099_gross - t1099_expenses)
+    t1099_qbi_gross = sum(s["amount"] for s in streams if s.get("type") in ("1099", "Other") and s.get("qbiEligible"))
+    t1099_qbi_exp = sum(s.get("businessExpenses", 0) for s in streams if s.get("type") in ("1099", "Other") and s.get("qbiEligible"))
+    t1099_qbi = max(0, t1099_qbi_gross - t1099_qbi_exp)
     total = w2 + t1099_gross
     if total == 0:
         total = 0.01  # avoid division by zero
@@ -231,12 +237,12 @@ def compute_salary_breakdown(profile):
     t1099_se_tax = t1099 * se_factor * (ss_pct + medicare_pct) * 2
     t1099_fed_taxable = max(0, t1099 - round(t1099_se_tax / 2, 2))
 
-    # QBI deduction (Section 199A)
+    # QBI deduction (Section 199A) — only on streams marked qbiEligible
     qbi_deduction = 0
-    if t1099 > 0:
+    if t1099_qbi > 0:
         qbi_thresh = get_qbi_thresholds(year, filing_status)
         total_pre_qbi = w2_fed_taxable + t1099_fed_taxable
-        raw_qbi = round(t1099 * 0.20, 2)
+        raw_qbi = round(t1099_qbi * 0.20, 2)
         if total_pre_qbi <= qbi_thresh["lower"]:
             qbi_deduction = raw_qbi
         elif total_pre_qbi >= qbi_thresh["upper"]:

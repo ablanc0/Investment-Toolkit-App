@@ -213,66 +213,59 @@ class TestBusinessExpensesAndQBI:
         assert summ["t1099Net"] == 80000
         assert summ["businessExpenses"] == 20000
 
-    def test_1099_no_expenses_unchanged(self):
-        """50k 1099 no expenses -> businessExpenses=0, qbiDeduction > 0"""
+    def test_1099_no_qbi_by_default(self):
+        """50k 1099 without qbiEligible -> qbiDeduction=0"""
         profile = _make_profile([
             {"type": "1099", "amount": 50000, "label": "Freelance"},
         ])
         result = compute_salary_breakdown(profile)
         summ = result["summary"]
         assert summ["businessExpenses"] == 0
-        assert summ["qbiDeduction"] > 0
+        assert summ["qbiDeduction"] == 0
 
     def test_qbi_full_deduction_below_threshold(self):
-        """100k 1099, single 2025 -> qbiDeduction should be 20% of net 1099 income.
-        Net 1099 = 100k. After SE tax half-deduction, federal taxable is ~92k,
-        well below 197300 threshold -> full QBI = 100k * 0.20 = 20000."""
+        """100k 1099 with qbiEligible, single 2025 -> full QBI = 20000."""
         profile = _make_profile([
-            {"type": "1099", "amount": 100000, "label": "Freelance"},
+            {"type": "1099", "amount": 100000, "label": "Freelance", "qbiEligible": True},
         ])
         result = compute_salary_breakdown(profile)
         summ = result["summary"]
         assert summ["qbiDeduction"] == 20000
 
     def test_qbi_phaseout(self):
-        """W2 150k + 1099 100k, single 2025 -> partial QBI (income in phase-out range).
-        The combined federal taxable exceeds 197300 lower but is below 247300 upper."""
+        """W2 150k + 1099 100k (qbiEligible), single 2025 -> partial QBI."""
         profile = _make_profile([
             {"type": "W2", "amount": 150000, "label": "Job"},
-            {"type": "1099", "amount": 100000, "label": "Freelance"},
+            {"type": "1099", "amount": 100000, "label": "Freelance", "qbiEligible": True},
         ])
         result = compute_salary_breakdown(profile)
         summ = result["summary"]
-        # QBI should be between 0 and 20000 (20% of 100k)
         assert 0 < summ["qbiDeduction"] < 20000
 
     def test_qbi_zero_above_upper(self):
-        """W2 300k + 1099 50k -> qbiDeduction=0 (well above upper threshold)."""
+        """W2 300k + 1099 50k (qbiEligible) -> qbiDeduction=0 (above upper threshold)."""
         profile = _make_profile([
             {"type": "W2", "amount": 300000, "label": "Job"},
-            {"type": "1099", "amount": 50000, "label": "Freelance"},
+            {"type": "1099", "amount": 50000, "label": "Freelance", "qbiEligible": True},
         ])
         result = compute_salary_breakdown(profile)
         summ = result["summary"]
         assert summ["qbiDeduction"] == 0
 
     def test_qbi_mfj_higher_threshold(self):
-        """W2 200k + 1099 100k, MFJ 2025 -> full QBI (below MFJ threshold 394600).
-        W2 fed taxable = 200k - 0 IRA - 30000 std ded = 170000
-        1099 fed taxable ~ 100k - SE/2 ~ 92k
-        Total ~ 262k, well below MFJ lower=394600 -> full QBI = 20000."""
+        """W2 200k + 1099 100k (qbiEligible), MFJ 2025 -> full QBI = 20000."""
         profile = _make_profile([
             {"type": "W2", "amount": 200000, "label": "Job"},
-            {"type": "1099", "amount": 100000, "label": "Freelance"},
+            {"type": "1099", "amount": 100000, "label": "Freelance", "qbiEligible": True},
         ], filing_status="mfj")
         result = compute_salary_breakdown(profile)
         summ = result["summary"]
         assert summ["qbiDeduction"] == 20000
 
-    def test_multiple_1099_streams_expenses(self):
-        """Two 1099 streams with different expenses -> total net and QBI correct."""
+    def test_multiple_1099_streams_mixed_qbi(self):
+        """Two 1099 streams, only one qbiEligible -> QBI on eligible stream only."""
         profile = _make_profile([
-            {"type": "1099", "amount": 60000, "label": "Consulting", "businessExpenses": 10000},
+            {"type": "1099", "amount": 60000, "label": "Consulting", "businessExpenses": 10000, "qbiEligible": True},
             {"type": "1099", "amount": 40000, "label": "Freelance", "businessExpenses": 5000},
         ])
         result = compute_salary_breakdown(profile)
@@ -280,5 +273,5 @@ class TestBusinessExpensesAndQBI:
         assert summ["t1099Gross"] == 100000
         assert summ["businessExpenses"] == 15000
         assert summ["t1099Net"] == 85000
-        # QBI = 20% of net 85000 = 17000 (below threshold -> full deduction)
-        assert summ["qbiDeduction"] == 17000
+        # QBI = 20% of eligible net only: (60000 - 10000) = 50000 * 0.20 = 10000
+        assert summ["qbiDeduction"] == 10000

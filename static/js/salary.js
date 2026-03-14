@@ -84,7 +84,9 @@ function renderIncomeStreams(streams) {
         if (is1099) {
             html += `<span style="color:var(--text-dim); font-size:0.78rem; margin-left:4px;">Expenses:</span>
                 <span style="color:var(--text-dim); font-size:0.82rem;">$</span>
-                <input type="number" value="${s.businessExpenses||0}" class="form-input" style="width:100px; font-size:0.82rem; text-align:right;" placeholder="0" title="Business expenses deducted before SE tax" onchange="updateIncomeStream(${i}, 'businessExpenses', parseFloat(this.value)||0)">`;
+                <input type="number" value="${s.businessExpenses||0}" class="form-input" style="width:100px; font-size:0.82rem; text-align:right;" placeholder="0" title="Business expenses deducted before SE tax" onchange="updateIncomeStream(${i}, 'businessExpenses', parseFloat(this.value)||0)">
+                <label style="color:var(--text-dim); font-size:0.78rem; margin-left:4px; cursor:pointer;" title="Qualified Business Income — enables 20% Section 199A deduction">
+                    <input type="checkbox" ${s.qbiEligible ? 'checked' : ''} onchange="updateIncomeStream(${i}, 'qbiEligible', this.checked)" style="margin-right:2px;">QBI</label>`;
         }
         html += `<button onclick="removeIncomeStream(${i})" style="background:none; border:none; color:#f87171; cursor:pointer; font-size:1rem; padding:2px 6px;" title="Remove">&times;</button>
         </div>`;
