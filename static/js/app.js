@@ -13,6 +13,7 @@ let watchlistData = null;
 let dividendData = null;
 let statusData = null;
 let isLoading = false;
+let currentAccountId = '_main'; // '_main' = taxable portfolio, or account id
 
 // Generic CRUD Table Builder
 class CrudTable {
@@ -235,6 +236,7 @@ function loadTabData(tabId) {
         screening: () => { populateScreening(); fetchFindTheDip(); },
         notesGoals: populateNotesGoals,
         taxAccounts: fetchTaxAccounts,
+        accountsOverview: fetchAccounts,
     };
     if (loaders[tabId]) loaders[tabId]();
 }
@@ -287,6 +289,9 @@ async function fetchAllData(retryCount = 0) {
         if (watchlist) watchlistData = watchlist;
         if (dividends) dividendData = dividends;
         if (status) statusData = status;
+
+        // Populate account selector (non-blocking)
+        populateAccountSelector();
 
         // Populate all tabs
         populateOverview();
@@ -376,3 +381,86 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     setInterval(fetchBackupStatus, 60000);
 });
+
+
+// ── Account Selector ────────────────────────────────────────────────
+
+async function populateAccountSelector() {
+    const select = document.getElementById('accountSelect');
+    if (!select) return;
+
+    try {
+        const resp = await fetch('/api/accounts');
+        const data = await resp.json();
+        const accounts = data.accounts || [];
+
+        // Keep current selection
+        const prev = select.value;
+        select.innerHTML = '<option value="_main">Taxable Brokerage</option>';
+        accounts.forEach(a => {
+            select.innerHTML += `<option value="${a.id}">${escapeHtml(a.name)}</option>`;
+        });
+
+        // Restore selection if still valid
+        if (prev && select.querySelector(`option[value="${prev}"]`)) {
+            select.value = prev;
+        }
+
+        // Show/hide selector based on whether accounts exist
+        const wrapper = document.getElementById('accountSelectWrapper');
+        if (wrapper) wrapper.style.display = accounts.length > 0 ? 'inline-flex' : 'none';
+    } catch (e) {
+        console.error('Error loading accounts for selector:', e);
+    }
+}
+
+function switchAccount() {
+    const select = document.getElementById('accountSelect');
+    if (!select) return;
+    currentAccountId = select.value;
+    _applyAccountView();
+}
+
+function switchAccountTo(accountId) {
+    currentAccountId = accountId;
+    const select = document.getElementById('accountSelect');
+    if (select) select.value = accountId;
+    _applyAccountView();
+}
+
+async function _applyAccountView() {
+    const isMain = currentAccountId === '_main';
+    const portfolioTabs = ['rebalancing', 'sold'];
+
+    // Show/hide tabs that are main-only
+    portfolioTabs.forEach(tabId => {
+        const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+        if (btn) btn.style.display = isMain ? '' : 'none';
+    });
+
+    // Update positions label
+    const posBtn = document.querySelector('.tab-btn[data-tab="positions"]');
+    if (posBtn) posBtn.textContent = isMain ? 'Positions' : 'Positions (limited)';
+
+    // Show/hide add position form (main portfolio uses its own flow)
+    const addPosBtn = document.getElementById('addPositionBtn');
+    const addPosForm = document.getElementById('addPositionForm');
+    if (addPosBtn) addPosBtn.style.display = isMain ? 'inline-flex' : 'none';
+    if (addPosForm && !isMain) addPosForm.style.display = 'none';
+
+    if (isMain) {
+        // Restore full positions view
+        if (typeof _restoreMainPositionsView === 'function') _restoreMainPositionsView();
+        loadedTabs['positions'] = false;
+        await fetchAllData();
+    } else {
+        // Fetch account positions
+        try {
+            const resp = await fetch(`/api/accounts/${currentAccountId}/positions`);
+            const data = await resp.json();
+            renderAccountPositionsView(data);
+        } catch (e) {
+            console.error('Error fetching account positions:', e);
+        }
+    }
+}

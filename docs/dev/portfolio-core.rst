@@ -41,6 +41,14 @@ No route directly reads or writes the file.
      - Pops item at index.
    * - ``crud_replace(section, data)``
      - Replaces entire section array.
+   * - ``get_accounts()``
+     - Returns ``portfolio["accounts"]`` (or ``[]``).
+   * - ``get_account(account_id)``
+     - Finds account by ``id``.  Returns ``None`` if not found.
+   * - ``save_account(account)``
+     - Insert-or-update by ``id`` in the ``accounts`` array.
+   * - ``delete_account(account_id)``
+     - Removes account by ``id``.  Returns ``True`` if found.
 
 **All mutations are load-mutate-save** — no partial file writes.
 No locking (single-user app).  No schema validation on read.
@@ -112,6 +120,9 @@ portfolio.json Top-Level Keys
    * - ``historicData``
      - array
      - ``models/simulation.py``
+   * - ``accounts``
+     - array
+     - ``routes/accounts.py``
 
 ----
 

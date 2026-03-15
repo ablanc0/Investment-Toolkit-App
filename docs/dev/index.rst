@@ -10,6 +10,7 @@ for each major subsystem.
    :caption: Subsystems
 
    portfolio-core
+   accounts
    stock-analyzer
    salary
    super-investors

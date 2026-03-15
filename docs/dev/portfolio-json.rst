@@ -75,6 +75,10 @@ Top-Level Sections
    * - ``annualData``
      - array
      - Manually entered S&P 500 yields per year
+   * - ``accounts``
+     - array
+     - Additional investment accounts (Roth IRA, 401(k), etc.) with
+       their own positions and cash balances
 
 Schemas
 -------
@@ -134,6 +138,29 @@ Monthly Data Entry Schema
      "portfolioValue": 85000.00,
      "accumulatedInvestment": 60000.00
    }
+
+Account Schema
+~~~~~~~~~~~~~~
+
+Each entry in the ``accounts`` array:
+
+.. code-block:: json
+
+   {
+     "id": "roth-ira",
+     "name": "Roth IRA",
+     "taxTreatment": "tax-free",
+     "custodian": "Fidelity",
+     "positions": [
+       {"ticker": "VTI", "shares": 100, "avgCost": 200, "category": "Index"}
+     ],
+     "cash": 500,
+     "created": "2024-01-15"
+   }
+
+``taxTreatment`` values: ``"taxable"``, ``"tax-deferred"``,
+``"tax-free"``.  Positions follow the same schema as top-level
+``positions``.  See :doc:`accounts` for full details.
 
 Salary Profile Schema
 ~~~~~~~~~~~~~~~~~~~~~

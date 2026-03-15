@@ -16,6 +16,7 @@ source code.
    :maxdepth: 2
    :caption: Features
 
+   accounts
    cost-of-living
 
 .. toctree::

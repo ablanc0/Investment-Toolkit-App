@@ -47,6 +47,7 @@
     <!-- Two-Level Top Navigation -->
     <div class="nav-groups" id="navGroups">
         <button class="group-btn active" data-group="dashboard" style="--group-color: #636363">📊 Dashboard</button>
+        <button class="group-btn" data-group="accounts" style="--group-color: #8E7CC3">🏛️ Accounts</button>
         <button class="group-btn" data-group="portfolio" style="--group-color: #4A86E8">💼 Portfolio</button>
         <button class="group-btn" data-group="dividends" style="--group-color: #6AA84F">💰 Dividends</button>
         <button class="group-btn" data-group="research" style="--group-color: #993333">🔍 Research</button>
@@ -62,10 +63,19 @@
             <button class="tab-btn" data-tab="screening">Screening</button>
             <button class="tab-btn" data-tab="notesGoals">Notes & Goals</button>
         </div>
+        <div class="tab-row" data-group="accounts" style="display:none">
+            <button class="tab-btn" data-tab="accountsOverview">Overview</button>
+        </div>
         <div class="tab-row" data-group="portfolio" style="display:none">
             <button class="tab-btn" data-tab="positions">Positions</button>
             <button class="tab-btn" data-tab="rebalancing">Rebalancing</button>
             <button class="tab-btn" data-tab="sold">Sold Positions</button>
+            <span id="accountSelectWrapper" style="display:none; margin-left:auto; align-items:center; gap:6px;">
+                <label style="font-size:12px; color:var(--text-dim);">Account:</label>
+                <select id="accountSelect" onchange="switchAccount()" style="padding:4px 8px; background:var(--card-hover); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px;">
+                    <option value="_main">Taxable Brokerage</option>
+                </select>
+            </span>
         </div>
         <div class="tab-row" data-group="dividends" style="display:none">
             <button class="tab-btn" data-tab="dividends">Summary</button>
@@ -164,6 +174,45 @@
             <div class="card">
                 <div class="card-title">📊 Day Movers</div>
                 <div id="dayMoversContainer"></div>
+            </div>
+        </div>
+
+        <!-- Accounts Overview Tab -->
+        <div class="tab-content" id="accountsOverview">
+            <div id="accountsKpiGrid" class="kpi-grid"></div>
+
+            <div id="accountCardsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 20px;"></div>
+
+            <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center;">
+                <button class="add-row-btn" onclick="showAddAccountForm()" id="addAccountBtn">➕ Add Account</button>
+                <div id="addAccountForm" style="display: none; flex: 1;">
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                        <input type="text" id="newAccountName" placeholder="Account Name" style="width: 160px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px;">
+                        <select id="newAccountTax" style="padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px;">
+                            <option value="tax-free">Tax-Free (Roth)</option>
+                            <option value="tax-deferred">Tax-Deferred (401k/IRA)</option>
+                            <option value="taxable">Taxable</option>
+                        </select>
+                        <input type="text" id="newAccountCustodian" placeholder="Custodian (optional)" style="width: 140px; padding: 6px 8px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px;">
+                        <button class="add-row-btn" onclick="addAccount()" style="border-color: var(--green); color: var(--green);">✓ Save</button>
+                        <button class="add-row-btn" onclick="hideAddAccountForm()">✕ Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 24px;">
+                <div class="card">
+                    <div class="card-title">Net Worth by Account</div>
+                    <div style="height: 250px;"><canvas id="acctByAccountChart"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Net Worth by Tax Treatment</div>
+                    <div style="height: 250px;"><canvas id="acctByTaxChart"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Aggregate Category Allocation</div>
+                    <div style="height: 250px;"><canvas id="acctAllocChart"></canvas></div>
+                </div>
             </div>
         </div>
 
@@ -1512,6 +1561,7 @@
     <script src="/static/js/app.js"></script>
 
     <!-- Per-tab JS modules -->
+    <script src="/static/js/accounts.js"></script>
     <script src="/static/js/overview.js"></script>
     <script src="/static/js/positions.js"></script>
     <script src="/static/js/performance.js"></script>

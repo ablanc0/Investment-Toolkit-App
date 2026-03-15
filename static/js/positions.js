@@ -312,3 +312,251 @@ async function deletePosition(ticker) {
         alert('Network error');
     }
 }
+
+
+// ── Account Positions (simplified view for non-main accounts) ───────
+
+function renderAccountPositionsView(data) {
+    if (!data || !data.positions) return;
+
+    const positions = data.positions;
+    const summary = data.summary || {};
+    const account = data.account || {};
+
+    // Update positions table with simplified columns
+    const thead = document.querySelector('#positionsTable thead tr');
+    const tbody = document.getElementById('positionsBody');
+    if (!thead || !tbody) return;
+
+    // Hide filters that don't apply
+    const signalMode = document.getElementById('signalMode');
+    if (signalMode) signalMode.style.display = 'none';
+
+    // Simplified header
+    thead.innerHTML = `
+        <th onclick="sortTable(this)">Ticker</th>
+        <th onclick="sortTable(this)">Company</th>
+        <th onclick="sortTable(this)">Shares</th>
+        <th onclick="sortTable(this)">Avg Cost</th>
+        <th onclick="sortTable(this)">Price</th>
+        <th onclick="sortTable(this)">Day Chg %</th>
+        <th onclick="sortTable(this)">Cost Basis</th>
+        <th onclick="sortTable(this)">Market Value</th>
+        <th onclick="sortTable(this)">Return</th>
+        <th onclick="sortTable(this)">Return %</th>
+        <th onclick="sortTable(this)">Weight</th>
+        <th>Category</th>
+        <th></th>
+    `;
+
+    const rows = positions.map((p, idx) => {
+        return `<tr>
+            <td>${tickerLogo(p.ticker)}<strong>${escapeHtml(p.ticker)}</strong></td>
+            <td>${escapeHtml(p.company)}</td>
+            <td>${parseFloat(p.shares).toFixed(3)}</td>
+            <td>${formatMoney(p.avgCost)}</td>
+            <td>${formatMoney(p.price)}</td>
+            <td class="${(p.dayChangePct||0) >= 0 ? 'positive' : 'negative'}">${formatPercent(p.dayChangePct)}</td>
+            <td>${formatMoney(p.costBasis)}</td>
+            <td>${formatMoney(p.marketValue)}</td>
+            <td class="${(p.marketReturn||0) >= 0 ? 'positive' : 'negative'}">${formatMoney(p.marketReturn)}</td>
+            <td class="${(p.marketReturnPct||0) >= 0 ? 'positive' : 'negative'}">${formatPercent(p.marketReturnPct)}</td>
+            <td>${formatPercent(p.weight)}</td>
+            <td>${getCategoryBadge(p.category)}</td>
+            <td><button class="delete-row-btn" onclick="deleteAccountPosition('${currentAccountId}', ${idx}, '${escapeHtml(p.ticker)}')" title="Remove position">✕</button></td>
+        </tr>`;
+    }).join('');
+
+    // Cash row (13 columns)
+    const cash = summary.cash || 0;
+    const totalPortfolio = summary.totalPortfolio || 1;
+    const cashWeight = (cash / totalPortfolio * 100);
+    const cashRow = `<tr class="summary-row">
+        <td><strong>CASH</strong></td>
+        <td>Cash & Equivalents</td>
+        <td>—</td><td>—</td><td>—</td><td>—</td>
+        <td>—</td>
+        <td>${formatMoney(cash)}</td>
+        <td>—</td><td>—</td>
+        <td>${formatPercent(cashWeight)}</td>
+        <td>${getCategoryBadge('Cash')}</td>
+        <td></td>
+    </tr>`;
+
+    tbody.innerHTML = rows + cashRow;
+
+    // Show account summary above table
+    _renderAccountSummaryBanner(account, summary);
+
+    // Show add position for accounts
+    _showAccountAddPosition();
+}
+
+function _renderAccountSummaryBanner(account, summary) {
+    let banner = document.getElementById('accountSummaryBanner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'accountSummaryBanner';
+        banner.style.cssText = 'display:flex; gap:20px; align-items:center; padding:12px 16px; background:var(--card); border:1px solid var(--border); border-radius:10px; margin-bottom:12px; flex-wrap:wrap;';
+        const posTab = document.getElementById('positions');
+        if (posTab) posTab.insertBefore(banner, posTab.firstChild);
+    }
+
+    const taxColor = {'taxable':'#4A86E8','tax-deferred':'#E69138','tax-free':'#6AA84F'}[account.taxTreatment] || '#6b7280';
+    const taxLabel = {'taxable':'Taxable','tax-deferred':'Tax-Deferred','tax-free':'Tax-Free'}[account.taxTreatment] || '';
+
+    banner.innerHTML = `
+        <div style="font-weight:600; font-size:15px;">${escapeHtml(account.name || '')}${account.custodian ? ' (' + escapeHtml(account.custodian) + ')' : ''}</div>
+        <span style="padding:2px 10px; border-radius:10px; font-size:11px; background:${taxColor}22; color:${taxColor};">${taxLabel}</span>
+        <div style="margin-left:auto; display:flex; gap:16px; font-size:13px;">
+            <span>Market Value: <strong>${formatMoney(summary.marketValue)}</strong></span>
+            <span class="${(summary.totalReturn||0) >= 0 ? 'positive' : 'negative'}">Return: <strong>${formatMoney(summary.totalReturn)} (${(summary.totalReturnPct||0).toFixed(2)}%)</strong></span>
+            <span>${summary.holdings} holdings</span>
+        </div>
+    `;
+    banner.style.display = 'flex';
+}
+
+function _showAccountAddPosition() {
+    // Replace main add position button with account-specific one
+    const container = document.getElementById('addPositionBtn');
+    if (!container) return;
+
+    let acctAddBtn = document.getElementById('acctAddPositionBtn');
+    if (!acctAddBtn) {
+        acctAddBtn = document.createElement('button');
+        acctAddBtn.id = 'acctAddPositionBtn';
+        acctAddBtn.className = 'add-row-btn';
+        acctAddBtn.textContent = '➕ Add Position';
+        acctAddBtn.onclick = showAcctAddPositionForm;
+        container.parentNode.insertBefore(acctAddBtn, container);
+    }
+    acctAddBtn.style.display = 'inline-flex';
+
+    // Create inline form if not exists
+    let form = document.getElementById('acctAddPositionForm');
+    if (!form) {
+        form = document.createElement('div');
+        form.id = 'acctAddPositionForm';
+        form.style.cssText = 'display:none; flex:1;';
+        form.innerHTML = `
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                <input type="text" id="acctNewTicker" placeholder="TICKER" style="width:80px; padding:6px 8px; background:var(--card-hover); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; text-transform:uppercase;">
+                <input type="number" id="acctNewShares" placeholder="Shares" step="0.001" style="width:80px; padding:6px 8px; background:var(--card-hover); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px;">
+                <input type="number" id="acctNewAvgCost" placeholder="Avg Cost" step="0.01" style="width:90px; padding:6px 8px; background:var(--card-hover); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px;">
+                <select id="acctNewCategory" style="padding:6px 8px; background:var(--card-hover); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px;">
+                    <option>Growth</option><option>Value</option><option>Income</option><option>Index</option>
+                </select>
+                <button class="add-row-btn" onclick="addAccountPosition()" style="border-color:var(--green); color:var(--green);">✓ Save</button>
+                <button class="add-row-btn" onclick="hideAcctAddPositionForm()">✕ Cancel</button>
+            </div>
+        `;
+        acctAddBtn.parentNode.insertBefore(form, acctAddBtn.nextSibling);
+    }
+}
+
+function showAcctAddPositionForm() {
+    document.getElementById('acctAddPositionBtn').style.display = 'none';
+    document.getElementById('acctAddPositionForm').style.display = 'block';
+    document.getElementById('acctNewTicker').focus();
+}
+
+function hideAcctAddPositionForm() {
+    document.getElementById('acctAddPositionBtn').style.display = 'inline-flex';
+    document.getElementById('acctAddPositionForm').style.display = 'none';
+    document.getElementById('acctNewTicker').value = '';
+    document.getElementById('acctNewShares').value = '';
+    document.getElementById('acctNewAvgCost').value = '';
+}
+
+async function addAccountPosition() {
+    const ticker = document.getElementById('acctNewTicker').value.toUpperCase().trim();
+    const shares = parseFloat(document.getElementById('acctNewShares').value);
+    const avgCost = parseFloat(document.getElementById('acctNewAvgCost').value);
+    const category = document.getElementById('acctNewCategory').value;
+
+    if (!ticker) { showAlert('Enter a ticker symbol', 'error'); return; }
+    if (isNaN(shares) || shares <= 0) { showAlert('Enter valid shares', 'error'); return; }
+    if (isNaN(avgCost) || avgCost <= 0) { showAlert('Enter valid avg cost', 'error'); return; }
+
+    try {
+        const resp = await fetch(`/api/accounts/${currentAccountId}/positions`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ticker, shares, avgCost, category }),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            showSaveToast(`${ticker} added`);
+            hideAcctAddPositionForm();
+            _applyAccountView();
+        } else {
+            showAlert(data.error || 'Error adding position', 'error');
+        }
+    } catch (e) {
+        showAlert('Network error', 'error');
+    }
+}
+
+async function deleteAccountPosition(accountId, idx, ticker) {
+    if (!confirm(`Remove ${ticker} from this account?`)) return;
+
+    try {
+        const resp = await fetch(`/api/accounts/${accountId}/positions/${idx}`, { method: 'DELETE' });
+        if (resp.ok) {
+            showSaveToast(`${ticker} removed`);
+            _applyAccountView();
+        }
+    } catch (e) {
+        showAlert('Network error', 'error');
+    }
+}
+
+function _restoreMainPositionsView() {
+    // Restore full header when switching back to main
+    const thead = document.querySelector('#positionsTable thead tr');
+    if (thead) {
+        thead.innerHTML = `
+            <th onclick="sortTable(this)">Ticker</th>
+            <th onclick="sortTable(this)">Company</th>
+            <th onclick="sortTable(this)">Shares</th>
+            <th onclick="sortTable(this)">Avg Cost</th>
+            <th onclick="sortTable(this)">Price</th>
+            <th onclick="sortTable(this)">Day Chg/Sh</th>
+            <th onclick="sortTable(this)">Day Chg %</th>
+            <th onclick="sortTable(this)">Cost Basis</th>
+            <th onclick="sortTable(this)">Market Value</th>
+            <th onclick="sortTable(this)">Market Ret.</th>
+            <th onclick="sortTable(this)">Market Ret.%</th>
+            <th onclick="sortTable(this)">Divs Recv'd</th>
+            <th onclick="sortTable(this)">Total Return</th>
+            <th onclick="sortTable(this)">Return %</th>
+            <th onclick="sortTable(this)">Weight</th>
+            <th onclick="sortTable(this)">Div Yield</th>
+            <th onclick="sortTable(this)">Yield on Cost</th>
+            <th onclick="sortTable(this)">Ann. Div Inc</th>
+            <th onclick="sortTable(this)">% of Income</th>
+            <th onclick="sortTable(this)">Ann. Sh Purch</th>
+            <th onclick="sortTable(this)">Intrinsic Val</th>
+            <th onclick="sortTable(this)">InvT Score</th>
+            <th onclick="sortTable(this)">Distance</th>
+            <th onclick="sortTable(this)">Signal</th>
+            <th>Category</th>
+            <th>Sector</th>
+            <th></th>
+        `;
+    }
+
+    // Remove account-specific UI elements
+    const banner = document.getElementById('accountSummaryBanner');
+    if (banner) banner.style.display = 'none';
+
+    const acctAddBtn = document.getElementById('acctAddPositionBtn');
+    if (acctAddBtn) acctAddBtn.style.display = 'none';
+    const acctAddForm = document.getElementById('acctAddPositionForm');
+    if (acctAddForm) acctAddForm.style.display = 'none';
+
+    // Restore signal mode visibility
+    const signalMode = document.getElementById('signalMode');
+    if (signalMode) signalMode.style.display = '';
+}

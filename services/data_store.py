@@ -96,3 +96,43 @@ def crud_replace(section, data):
     portfolio[section] = data
     save_portfolio(portfolio)
     return jsonify({"ok": True})
+
+
+# ── Account helpers ────────────────────────────────────────────────────
+
+def get_accounts():
+    """Return all investment accounts (excluding main taxable portfolio)."""
+    return load_portfolio().get("accounts", [])
+
+
+def get_account(account_id):
+    """Find a single account by id, or None."""
+    for acct in get_accounts():
+        if acct["id"] == account_id:
+            return acct
+    return None
+
+
+def save_account(account):
+    """Add or update an account in the accounts list."""
+    portfolio = load_portfolio()
+    accounts = portfolio.setdefault("accounts", [])
+    for i, acct in enumerate(accounts):
+        if acct["id"] == account["id"]:
+            accounts[i] = account
+            save_portfolio(portfolio)
+            return
+    accounts.append(account)
+    save_portfolio(portfolio)
+
+
+def delete_account(account_id):
+    """Remove an account by id. Returns True if found and deleted."""
+    portfolio = load_portfolio()
+    accounts = portfolio.get("accounts", [])
+    original_len = len(accounts)
+    portfolio["accounts"] = [a for a in accounts if a["id"] != account_id]
+    if len(portfolio["accounts"]) < original_len:
+        save_portfolio(portfolio)
+        return True
+    return False
