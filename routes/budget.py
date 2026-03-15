@@ -469,10 +469,14 @@ def api_budget_transactions_migrate():
             for sub_name, amount in cat_actuals.items():
                 if amount == 0:
                     continue
+                # Default date: 1st of month
+                month_idx = MONTH_KEYS.index(mk) + 1 if mk in MONTH_KEYS else 1
+                year = budget.get("year", 2026)
+                default_date = f"{year}-{month_idx:02d}-01"
                 cat_txns.append({
                     "id": uuid.uuid4().hex[:8],
                     "subcategory": sub_name,
-                    "date": "",
+                    "date": default_date,
                     "amount": float(amount),
                     "notes": "Migrated from legacy actuals",
                 })
@@ -485,6 +489,31 @@ def api_budget_transactions_migrate():
 
     save_portfolio(portfolio)
     return jsonify({"ok": True, "migrated": migrated_count})
+
+
+@bp.route("/api/budget/transactions/backfill-dates", methods=["POST"])
+def api_budget_backfill_dates():
+    """Set default dates for transactions with empty dates."""
+    portfolio = load_portfolio()
+    budget = portfolio.get("budget", {})
+    months = budget.get("months", {})
+    year = budget.get("year", 2026)
+    patched = 0
+
+    for mk, month_data in months.items():
+        transactions = month_data.get("transactions", {})
+        if not transactions:
+            continue
+        month_idx = MONTH_KEYS.index(mk) + 1 if mk in MONTH_KEYS else 1
+        default_date = f"{year}-{month_idx:02d}-01"
+        for cat_txns in transactions.values():
+            for txn in cat_txns:
+                if not txn.get("date"):
+                    txn["date"] = default_date
+                    patched += 1
+
+    save_portfolio(portfolio)
+    return jsonify({"ok": True, "patched": patched})
 
 
 @bp.route("/api/budget/annual")
