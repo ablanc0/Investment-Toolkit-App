@@ -111,7 +111,7 @@ function renderBM() {
         { label: '💰 Total Income', value: formatMoney(summary.totalIncome), sub: 'This month' },
         { label: '💸 Total Expenses', value: formatMoney(summary.totalExpenses), sub: 'Essential + Disc + Debt' },
         { label: '📊 Savings Rate', value: formatPercent(summary.savingsRate), sub: 'Savings + Investments', positive: summary.savingsRate > 20 },
-        { label: '🎯 REMANENTE', value: formatMoney(summary.remainder + rolloverAmt), sub: summary.remainder + rolloverAmt >= 0 ? 'On track' : 'Over budget', positive: summary.remainder + rolloverAmt >= 0 },
+        { label: '🎯 REMAINDER', value: formatMoney(summary.remainder + rolloverAmt), sub: summary.remainder + rolloverAmt >= 0 ? 'On track' : 'Over budget', positive: summary.remainder + rolloverAmt >= 0 },
         { label: '🔄 Rollover', value: formatMoney(rolloverAmt), sub: monthData.rollover ? 'From prev month' : 'Disabled' },
     ]);
 

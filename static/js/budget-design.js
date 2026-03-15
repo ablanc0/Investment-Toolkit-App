@@ -85,7 +85,7 @@ function renderBudgetDesign() {
     renderKpiGrid('budgetDesignKpis', [
         { label: '📋 Total Monthly Budget', value: formatMoney(totalBudget), sub: 'Expenses + Savings + Investments' },
         { label: '💰 Total Monthly Income', value: formatMoney(totalIncome), sub: 'Budgeted income' },
-        { label: '🎯 REMANENTE', value: formatMoney(remainder), sub: remainder >= 0 ? 'Surplus' : 'Over budget', positive: remainder >= 0 },
+        { label: '🎯 REMAINDER', value: formatMoney(remainder), sub: remainder >= 0 ? 'Surplus' : 'Over budget', positive: remainder >= 0 },
         { label: '📊 Budget Savings Rate', value: formatPercent(budgetSavingsRate), sub: 'Target savings rate', positive: budgetSavingsRate >= 20 },
     ]);
 

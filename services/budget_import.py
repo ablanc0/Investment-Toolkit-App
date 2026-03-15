@@ -20,7 +20,7 @@ MONTH_KEYS = [
 
 # Presupuesto: 6 category columns (name_col, amount_col)
 CATEGORY_COLS = [
-    ("income",        "INGRESOS",                "income",      "A", "C"),
+    ("income",        "Income",                   "income",      "A", "C"),
     ("essential",     "Essential Expenses",       "expense",     "E", "G"),
     ("discretionary", "Discretionary Expenses",   "expense",     "I", "K"),
     ("debt",          "Debt Payments",            "expense",     "M", "O"),
