@@ -32,6 +32,7 @@ def create_app(testing=False):
     from routes.tax_accounts import bp as tax_accounts_bp
     from routes.export import bp as export_bp
     from routes.accounts import bp as accounts_bp
+    from routes.budget import bp as budget_bp
 
     application.register_blueprint(portfolio_bp)
     application.register_blueprint(dividends_bp)
@@ -47,6 +48,7 @@ def create_app(testing=False):
     application.register_blueprint(tax_accounts_bp)
     application.register_blueprint(export_bp)
     application.register_blueprint(accounts_bp)
+    application.register_blueprint(budget_bp)
 
     @application.after_request
     def add_security_headers(response):

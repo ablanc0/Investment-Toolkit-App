@@ -260,6 +260,10 @@
         .editable:hover::after {
             opacity: 0.6;
         }
+        .editable-cell:hover {
+            background: rgba(99,102,241,0.08);
+            border-bottom: 1px dashed var(--accent);
+        }
         .cell-editing {
             padding: 4px !important;
         }

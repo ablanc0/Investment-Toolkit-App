@@ -237,6 +237,10 @@ function loadTabData(tabId) {
         notesGoals: populateNotesGoals,
         taxAccounts: fetchTaxAccounts,
         accountsOverview: fetchAccounts,
+        budgetDesign: fetchBudgetDesign,
+        budgetMonthly: fetchBudgetMonthly,
+        budgetAnnual: fetchBudgetAnnual,
+        netWorthTab: fetchNetWorthData,
     };
     if (loaders[tabId]) loaders[tabId]();
 }

@@ -51,6 +51,7 @@
         <button class="group-btn" data-group="portfolio" style="--group-color: #4A86E8">💼 Portfolio</button>
         <button class="group-btn" data-group="dividends" style="--group-color: #6AA84F">💰 Dividends</button>
         <button class="group-btn" data-group="research" style="--group-color: #993333">🔍 Research</button>
+        <button class="group-btn" data-group="budget" style="--group-color: #10b981">💳 Budget</button>
         <button class="group-btn" data-group="planning" style="--group-color: #E69138">🏦 Planning</button>
         <button class="group-btn" data-group="incometax" style="--group-color: #e8594a">🧾 Taxes</button>
         <button class="group-btn" data-group="analytics" style="--group-color: #1BBC9D">📈 Analytics</button>
@@ -91,6 +92,12 @@
             <button class="tab-btn" data-tab="ivlist">Intrinsic Values</button>
             <button class="tab-btn" data-tab="superinv">Super Investors</button>
             <button class="tab-btn" data-tab="projections">Projections</button>
+        </div>
+        <div class="tab-row" data-group="budget" style="display:none">
+            <button class="tab-btn" data-tab="budgetDesign">Budget Design</button>
+            <button class="tab-btn" data-tab="budgetMonthly">Monthly</button>
+            <button class="tab-btn" data-tab="budgetAnnual">Annual</button>
+            <button class="tab-btn" data-tab="netWorthTab">Net Worth</button>
         </div>
         <div class="tab-row" data-group="planning" style="display:none">
             <button class="tab-btn" data-tab="retirement">Retirement</button>
@@ -1552,6 +1559,233 @@
             </div>
         </div>
 
+        <!-- Budget Design Tab -->
+        <div class="tab-content" id="budgetDesign">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 12px 0;">
+                <h3 class="section-title" style="margin:0;">Budget Design — <span id="bdYear">2026</span></h3>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                    <button id="budgetImportBtn" onclick="importBudget()" class="add-row-btn" title="Import from Excel">Import Excel</button>
+                    <button onclick="bmMigrateTxns()" class="add-row-btn" title="Migrate legacy actuals to transactions">Migrate</button>
+                </div>
+            </div>
+            <!-- Goals -->
+            <div class="card" style="margin-bottom:16px; padding:12px 16px;">
+                <div class="card-title">🎯 Goals</div>
+                <div id="budgetDesignGoals" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+            </div>
+            <!-- KPIs -->
+            <div class="kpi-grid" id="budgetDesignKpis"></div>
+            <!-- Category Cards -->
+            <div id="budgetDesignCategories" style="display:grid; grid-template-columns: repeat(2, 1fr); gap:16px; margin-top:16px;"></div>
+        </div>
+
+        <!-- Budget Monthly Tab -->
+        <div class="tab-content" id="budgetMonthly">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 12px 0;">
+                <h3 class="section-title" style="margin:0;">Monthly Budget</h3>
+            </div>
+            <!-- Month Navigation -->
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+                <button onclick="bmPrevMonth()" class="add-row-btn">&larr;</button>
+                <span id="bmMonthLabel" style="font-size:16px; font-weight:600; color:var(--text); min-width:140px; text-align:center;"></span>
+                <button onclick="bmNextMonth()" class="add-row-btn">&rarr;</button>
+                <select id="bmMonthSelect" onchange="bmSelectMonth()" style="padding:4px 8px;background:var(--card-hover);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;">
+                    <option value="0">January</option><option value="1">February</option><option value="2">March</option>
+                    <option value="3">April</option><option value="4">May</option><option value="5">June</option>
+                    <option value="6">July</option><option value="7">August</option><option value="8">September</option>
+                    <option value="9">October</option><option value="10">November</option><option value="11">December</option>
+                </select>
+                <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-dim);margin-left:auto;">
+                    <input type="checkbox" id="bmRolloverCb" onchange="bmToggleRollover()"> Rollover
+                </label>
+            </div>
+            <!-- KPIs -->
+            <div class="kpi-grid" id="bmKpis"></div>
+            <!-- Quick Add Transaction -->
+            <div class="card" style="padding:16px;margin-bottom:16px;">
+                <div class="card-title" style="margin-bottom:12px;">Quick Add Transaction</div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <select id="bmQaCat" onchange="bmQaCategoryChanged()" style="padding:6px 8px;background:var(--card-hover);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+                        <option value="">Category...</option>
+                    </select>
+                    <select id="bmQaSub" style="padding:6px 8px;background:var(--card-hover);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+                        <option value="">Subcategory...</option>
+                    </select>
+                    <input type="date" id="bmQaDate" style="padding:6px 8px;background:var(--card-hover);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+                    <input type="number" id="bmQaAmt" placeholder="Amount" step="0.01" onkeydown="if(event.key==='Enter') bmQuickAdd()" style="width:100px;padding:6px 8px;background:var(--card-hover);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+                    <input type="text" id="bmQaNotes" placeholder="Notes (optional)" onkeydown="if(event.key==='Enter') bmQuickAdd()" style="flex:1;min-width:100px;padding:6px 8px;background:var(--card-hover);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+                    <button onclick="bmQuickAdd()" class="add-row-btn" style="font-size:13px;padding:6px 14px;">Add</button>
+                </div>
+                <div id="bmQaFeedback" style="font-size:12px;color:var(--text-dim);margin-top:6px;min-height:18px;"></div>
+            </div>
+            <!-- Budget vs Actual Bars -->
+            <div class="card" style="padding:16px;margin-bottom:16px;">
+                <div class="card-title" style="margin-bottom:8px;">Budget vs Actual</div>
+                <div id="bmBudgetBars"></div>
+            </div>
+            <!-- Transactions -->
+            <div class="card" style="padding:16px;margin-bottom:16px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                    <div class="card-title" style="margin:0;">Transactions</div>
+                    <span id="bmTxnCount" style="font-size:12px;color:var(--text-dim);"></span>
+                </div>
+                <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+                    <select id="bmFilterCat" onchange="bmRenderTxnTable()" style="padding:6px 8px;background:var(--card-hover);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+                        <option value="">All Categories</option>
+                    </select>
+                    <input type="text" id="bmFilterSearch" placeholder="Search subcategory or notes..." oninput="bmRenderTxnTable()" style="flex:1;min-width:150px;padding:6px 8px;background:var(--card-hover);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+                    <select id="bmSortBy" onchange="bmRenderTxnTable()" style="padding:6px 8px;background:var(--card-hover);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+                        <option value="date-desc">Date (newest)</option>
+                        <option value="date-asc">Date (oldest)</option>
+                        <option value="amount-desc">Amount (high)</option>
+                        <option value="amount-asc">Amount (low)</option>
+                        <option value="category">Category</option>
+                    </select>
+                </div>
+                <div class="table-wrapper">
+                    <table style="width:100%;border-collapse:collapse;">
+                        <thead><tr>
+                            <th style="text-align:left;font-size:11px;padding:6px 8px;">Date</th>
+                            <th style="text-align:left;font-size:11px;padding:6px 8px;">Category</th>
+                            <th style="text-align:left;font-size:11px;padding:6px 8px;">Subcategory</th>
+                            <th style="text-align:right;font-size:11px;padding:6px 8px;">Amount</th>
+                            <th style="text-align:left;font-size:11px;padding:6px 8px;">Notes</th>
+                            <th style="width:30px;"></th>
+                        </tr></thead>
+                        <tbody id="bmTxnBody"></tbody>
+                        <tfoot id="bmTxnFoot"></tfoot>
+                    </table>
+                </div>
+            </div>
+            <!-- Charts (collapsed by default) -->
+            <details id="bmChartsSection" ontoggle="bmChartsToggled()">
+                <summary style="cursor:pointer;font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text);list-style:none;display:flex;align-items:center;gap:8px;">
+                    <span style="transition:transform 0.2s;display:inline-block;" id="bmChartsArrow">&#9654;</span> Charts
+                </summary>
+                <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:24px;">
+                    <div class="card">
+                        <div class="card-title">Estimated vs Actual</div>
+                        <div class="chart-container"><canvas id="bmEstVsActChart"></canvas></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Expense Distribution</div>
+                        <div class="chart-container"><canvas id="bmDistChart"></canvas></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Top Spending</div>
+                        <div class="chart-container large"><canvas id="bmTopSpendChart"></canvas></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Overview</div>
+                        <div class="chart-container large"><canvas id="bmOverviewChart"></canvas></div>
+                    </div>
+                </div>
+            </details>
+        </div>
+
+        <!-- Budget Annual Tab -->
+        <div class="tab-content" id="budgetAnnual">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 12px 0;">
+                <h3 class="section-title" style="margin:0;">Annual Dashboard</h3>
+            </div>
+            <!-- KPIs -->
+            <div class="kpi-grid" id="baKpis"></div>
+            <!-- Savings Rate Table -->
+            <div class="card" style="margin-top:16px;padding:16px;">
+                <div class="card-title">📊 Monthly Savings Rate</div>
+                <div id="baSavingsTable"></div>
+            </div>
+            <!-- Savings Rate Chart -->
+            <div class="card" style="margin-top:16px;">
+                <div class="card-title">📈 Savings Rate Trend</div>
+                <div class="chart-container large"><canvas id="baSavingsRateChart"></canvas></div>
+            </div>
+            <!-- Main Summary Grid -->
+            <div class="card" style="margin-top:16px;padding:16px;">
+                <div class="card-title">📋 Category × Month Summary</div>
+                <div id="baSummaryGrid"></div>
+            </div>
+            <!-- Per-Category Detail Sections -->
+            <div id="baDetailSections" style="margin-top:16px;"></div>
+            <!-- Per-Category Monthly Charts -->
+            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-top:24px;">
+                <div class="card"><div class="card-title">💰 Income</div><div class="chart-container"><canvas id="baCat_incomeChart"></canvas></div></div>
+                <div class="card"><div class="card-title">🏠 Essential</div><div class="chart-container"><canvas id="baCat_essentialChart"></canvas></div></div>
+                <div class="card"><div class="card-title">🎭 Discretionary</div><div class="chart-container"><canvas id="baCat_discretionaryChart"></canvas></div></div>
+                <div class="card"><div class="card-title">💳 Debt</div><div class="chart-container"><canvas id="baCat_debtChart"></canvas></div></div>
+                <div class="card"><div class="card-title">🏦 Savings</div><div class="chart-container"><canvas id="baCat_savingsChart"></canvas></div></div>
+                <div class="card"><div class="card-title">📈 Investments</div><div class="chart-container"><canvas id="baCat_investmentsChart"></canvas></div></div>
+            </div>
+            <!-- Aggregate Charts -->
+            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-top:24px;">
+                <div class="card"><div class="card-title">📈 Income vs Expenses</div><div class="chart-container"><canvas id="baIncVsExpChart"></canvas></div></div>
+                <div class="card"><div class="card-title">📊 Estimated vs Actual</div><div class="chart-container"><canvas id="baEstVsActChart"></canvas></div></div>
+                <div class="card"><div class="card-title">💸 Annual Top Spending</div><div class="chart-container"><canvas id="baTopSpendChart"></canvas></div></div>
+            </div>
+            <!-- Notes -->
+            <div class="card" style="margin-top:16px;padding:16px;" id="baNotesArea">
+                <div class="card-title">📝 Annual Notes</div>
+                <textarea style="width:100%;min-height:100px;padding:8px;background:var(--card-hover);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;font-family:Inter,sans-serif;resize:vertical;" onblur="baSaveNotes()" placeholder="Write annual notes here..."></textarea>
+            </div>
+        </div>
+
+        <!-- Net Worth Tab -->
+        <div class="tab-content" id="netWorthTab">
+            <h3 class="section-title" style="margin: 0 0 12px 0;">Net Worth</h3>
+            <div class="kpi-grid" id="netWorthKpis"></div>
+            <!-- Editable Asset/Liability Grid -->
+            <div class="card" style="margin-top:16px;padding:16px;">
+                <div class="card-title">📋 Asset & Liability Grid</div>
+                <div id="nwEditableGrid"></div>
+            </div>
+            <!-- Growth Table -->
+            <div class="card" style="margin-top:16px;">
+                <div class="card-title">📅 Monthly Progression</div>
+                <div class="table-wrapper">
+                    <table class="data-table" id="netWorthTable">
+                        <thead><tr><th>Month</th><th>Assets</th><th>Liabilities</th><th>Net Worth</th><th>Monthly Growth</th><th>Cumulative</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+            <!-- Top/Bottom Contributors -->
+            <div class="card" style="margin-top:16px;padding:16px;">
+                <div class="card-title">📊 Top Contributors (vs Previous Month)</div>
+                <div id="nwContributors"></div>
+            </div>
+            <!-- Charts -->
+            <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:24px; margin-top:24px;">
+                <div class="card">
+                    <div class="card-title">📈 Net Worth Over Time</div>
+                    <div class="chart-container large"><canvas id="netWorthLineChart"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-title">📊 Assets vs Liabilities</div>
+                    <div class="chart-container large"><canvas id="netWorthBarChart"></canvas></div>
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:24px; margin-top:24px;">
+                <div class="card">
+                    <div class="card-title">🍩 Asset Distribution</div>
+                    <div class="chart-container"><canvas id="netWorthPieChart"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-title">📊 Top Changes</div>
+                    <div class="chart-container"><canvas id="netWorthContribChart"></canvas></div>
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:24px; margin-top:24px;">
+                <div class="card">
+                    <div class="card-title">🏦 Assets Over Time</div>
+                    <div class="chart-container"><canvas id="netWorthAssetsChart"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-title">💳 Liabilities Over Time</div>
+                    <div class="chart-container"><canvas id="netWorthLiabChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+
     </div><!-- /tabContainer -->
 
 
@@ -1584,5 +1818,9 @@
     <script src="/static/js/risk.js"></script>
     <script src="/static/js/attribution.js"></script>
     <script src="/static/js/divdeep.js"></script>
+    <script src="/static/js/budget-design.js"></script>
+    <script src="/static/js/budget-monthly.js"></script>
+    <script src="/static/js/budget-annual.js"></script>
+    <script src="/static/js/networth.js"></script>
 </body>
 </html>
