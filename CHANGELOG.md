@@ -6,6 +6,10 @@ All notable changes to InvToolkit will be documented in this file.
 
 
 
+## 2026-03-15
+- 🟩 Feature budget & net worth tracking — Excel import, monthly transaction entry, annual dashboard, net worth snapshots
+- 🟦 Enhancement monthly tab UX redesign — quick-add form, compact budget bars, unified filterable/sortable transaction table, lazy charts
+
 ## 2026-03-14
 - 🟩 Feature super investor key stats panel — sector breakdown, yield tiers, avg P/E, beta, payout ratio, 5Y avg yield
 - 🟩 Feature income tax phase 3 — tax return estimator + household filing

@@ -16,6 +16,7 @@ for each major subsystem.
    super-investors
    simulation-projections
    cost-of-living
+   budget
 
 .. toctree::
    :maxdepth: 2
